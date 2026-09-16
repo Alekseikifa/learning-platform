@@ -20,8 +20,26 @@ class Course(Base):
     description = Column(Text, default="")
 
 
+class Group(Base):
+    __tablename__ = "groups"
+    id = Column(Integer, primary_key=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    name = Column(String, nullable=False)
+
+
+class GroupTeacher(Base):
+    __tablename__ = "group_teachers"
+    group_id = Column(Integer, ForeignKey("groups.id"), primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+
+
+class GroupStudent(Base):
+    __tablename__ = "group_students"
+    group_id = Column(Integer, ForeignKey("groups.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+
+
 class Theme(Base):
-    """Тема внутри курса."""
     __tablename__ = "themes"
     id = Column(Integer, primary_key=True)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
@@ -29,35 +47,23 @@ class Theme(Base):
     order_index = Column(Integer, default=0)
 
 
-class CourseTeacher(Base):
-    __tablename__ = "course_teachers"
-    course_id = Column(Integer, ForeignKey("courses.id"), primary_key=True)
-    teacher_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-
-
-class Enrollment(Base):
-    __tablename__ = "enrollments"
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    course_id = Column(Integer, ForeignKey("courses.id"), primary_key=True)
-
-
 class Material(Base):
     __tablename__ = "materials"
     id = Column(Integer, primary_key=True)
-    theme_id = Column(Integer, ForeignKey("themes.id"), nullable=False)  # ИЗМЕНЕНО
+    theme_id = Column(Integer, ForeignKey("themes.id"), nullable=False)
     title = Column(String, nullable=False)
-    type = Column(String, nullable=False)     # video / audio
-    url = Column(String, nullable=False)
+    type = Column(String, nullable=False)   # video/audio/image/document/note
+    url = Column(Text, nullable=False)      # для note — текст
     order_index = Column(Integer, default=0)
 
 
 class Test(Base):
-    """Тест привязан к теме (один тест на тему)."""
     __tablename__ = "tests"
     id = Column(Integer, primary_key=True)
-    theme_id = Column(Integer, ForeignKey("themes.id"), unique=True, nullable=False)  # ИЗМЕНЕНО
+    theme_id = Column(Integer, ForeignKey("themes.id"), unique=True, nullable=False)
     title = Column(String, nullable=False)
     passing_score = Column(Integer, default=70)
+    max_attempts = Column(Integer, default=0)   # 0 = без ограничений
 
 
 class Question(Base):
@@ -85,8 +91,41 @@ class Attempt(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AttemptAnswer(Base):
+    __tablename__ = "attempt_answers"
+    id = Column(Integer, primary_key=True)
+    attempt_id = Column(Integer, ForeignKey("attempts.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    answer_id = Column(Integer, ForeignKey("answers.id"), nullable=True)
+    is_correct = Column(Boolean, default=False)
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+    id = Column(Integer, primary_key=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AnnouncementTarget(Base):
+    __tablename__ = "announcement_targets"
+    announcement_id = Column(Integer, ForeignKey("announcements.id"), primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), primary_key=True)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id = Column(Integer, primary_key=True)
+    theme_id = Column(Integer, ForeignKey("themes.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Setting(Base):
-    """Ключ-значение для настроек (например, названия ролей)."""
     __tablename__ = "settings"
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)

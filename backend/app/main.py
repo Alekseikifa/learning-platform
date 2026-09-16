@@ -10,13 +10,12 @@ from .routers import auth as auth_router, admin, teacher, student, public
 Base.metadata.create_all(bind=engine)
 
 db = SessionLocal()
-# сид админа
 if not db.query(models.User).filter_by(role="admin").first():
     db.add(models.User(role="admin", username="admin",
                        password_hash=hash_password("admin"), name="Администратор"))
     db.commit()
     print("→ Создан администратор: admin / admin")
-# сид настроек ролей
+
 DEFAULT_SETTINGS = {
     "role_admin_name": "Администратор",
     "role_teacher_name": "Преподаватель",
@@ -31,7 +30,6 @@ db.close()
 os.makedirs("uploads", exist_ok=True)
 
 app = FastAPI(title="Learning Platform API")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,7 +37,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(public.router, prefix="/api/public", tags=["public"])

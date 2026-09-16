@@ -30,8 +30,19 @@ class UserIn(BaseModel):
     name: str
 
 
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+
+
 class PasswordResetIn(BaseModel):
     password: str
+
+
+class AdminCredsIn(BaseModel):
+    username: str
+    password: str
+    old_password: str
 
 
 class RoleNamesIn(BaseModel):
@@ -45,10 +56,24 @@ class CourseIn(BaseModel):
     description: str = ""
 
 
+class GroupIn(BaseModel):
+    course_id: int
+    name: str
+
+
+class GroupUpdateIn(BaseModel):
+    name: str
+
+
 class ThemeIn(BaseModel):
     course_id: int
     title: str
     order_index: int = 0
+
+
+class ThemeUpdateIn(BaseModel):
+    title: Optional[str] = None
+    order_index: Optional[int] = None
 
 
 class MaterialIn(BaseModel):
@@ -57,6 +82,13 @@ class MaterialIn(BaseModel):
     type: str
     url: str
     order_index: int = 0
+
+
+class MaterialUpdateIn(BaseModel):
+    title: Optional[str] = None
+    type: Optional[str] = None
+    url: Optional[str] = None
+    order_index: Optional[int] = None
 
 
 class AnswerIn(BaseModel):
@@ -70,10 +102,22 @@ class QuestionIn(BaseModel):
     answers: List[AnswerIn]
 
 
+class QuestionUpdateIn(BaseModel):
+    text: Optional[str] = None
+    answers: Optional[List[AnswerIn]] = None
+
+
 class TestIn(BaseModel):
     theme_id: int
     title: str
     passing_score: int = 70
+    max_attempts: int = 0
+
+
+class TestUpdateIn(BaseModel):
+    title: Optional[str] = None
+    passing_score: Optional[int] = None
+    max_attempts: Optional[int] = None
 
 
 class EnrollIn(BaseModel):
@@ -81,8 +125,28 @@ class EnrollIn(BaseModel):
     course_id: int
 
 
+class GroupMemberIn(BaseModel):
+    user_id: int
+
+
 class TeacherAssignIn(BaseModel):
     teacher_id: int
+
+
+class AnnouncementIn(BaseModel):
+    title: str
+    body: str
+    group_ids: List[int]
+
+
+class AnnouncementUpdateIn(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    group_ids: Optional[List[int]] = None
+
+
+class ChatIn(BaseModel):
+    text: str
 
 
 class FileOut(BaseModel):
