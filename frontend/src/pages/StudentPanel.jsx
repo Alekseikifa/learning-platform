@@ -47,8 +47,15 @@ function ThemesList({ courseId }) {
   const [themes, setThemes] = useState([]);
   const [chatFor, setChatFor] = useState(null);
 
-  const load = () => api(`/api/student/course/${courseId}/themes`).then(setThemes);
-  useEffect(load, [courseId]);
+  const load = async () => {
+    if (!courseId) return;
+    const data = await api(`/api/student/course/${courseId}/themes`);
+    setThemes(data);
+  };
+
+  useEffect(() => {
+    load();
+  }, [courseId]);
 
   return (
     <div className="list">

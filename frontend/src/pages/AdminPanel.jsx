@@ -449,8 +449,18 @@ function MaterialsTab({ courses }) {
     if (!themes.find(t => t.id === +themeId)) setThemeId(themes[0].id);
   }, [courseId, courses]);
 
-  const reload = () => themeId && api(`/api/admin/themes/${themeId}/materials`).then(setMaterials);
-  useEffect(reload, [themeId]);
+  const reload = async () => {
+    if (!themeId) {
+      setMaterials([]);
+      return;
+    }
+    const data = await api(`/api/admin/themes/${themeId}/materials`);
+    setMaterials(data);
+  };
+
+  useEffect(() => {
+    reload();
+  }, [themeId]);
 
   const add = async (e) => {
     e.preventDefault();
