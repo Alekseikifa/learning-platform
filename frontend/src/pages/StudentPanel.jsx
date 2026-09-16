@@ -5,9 +5,8 @@ import { api } from "../api";
 export default function StudentPanel() {
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState("");
-  const [materials, setMaterials] = useState([]);
-  const [test, setTest] = useState(null); // {test, questions}
-  const [msg, setMsg] = useState(null);
+  const [themes, setThemes] = useState([]);
+  const [test, setTest] = useState(null);
 
   useEffect(() => {
     api("/api/student/courses").then(cs => {
@@ -16,16 +15,14 @@ export default function StudentPanel() {
     });
   }, []);
 
-  const loadMaterials = () => {
+  const loadThemes = () => {
     if (!courseId) return;
-    api(`/api/student/course/${courseId}/materials`).then(setMaterials);
+    api(`/api/student/course/${courseId}/themes`).then(setThemes);
   };
-  useEffect(loadMaterials, [courseId]);
+  useEffect(loadThemes, [courseId]);
 
   const openTest = async (id) => {
-    const t = await api("/api/student/test/" + id);
-    setTest(t);
-    setMsg(null);
+    setTest(await api("/api/student/test/" + id));
   };
 
   return (
@@ -37,47 +34,65 @@ export default function StudentPanel() {
         </select>
       </div>
 
-      {!courses.length && <div className="card muted">Вам пока не назначено ни одного курса</div>}
+      {!courses.length && <div className="card muted">Вам пока не назначено курсов</div>}
 
       <div className="list">
-        {materials.map(m => (
-          <div className={"card " + (m.unlocked ? "" : "locked")} key={m.id}>
+        {themes.map(th => (
+          <div className={"card " + (th.unlocked ? "" : "locked")} key={th.id}>
             <div className="spread">
-              <b>
-                {m.order_index}. {m.type === "video" ? "🎬" : "🎧"} {m.title}
-              </b>
+              <h3 style={{ margin: 0 }}>
+                Тема {th.order_index}. {th.title}
+              </h3>
               <div>
-                {m.test
-                  ? (m.test.passed
+                {th.test
+                  ? (th.test.passed
                      ? <span className="tag ok">Тест сдан</span>
                      : <span className="tag no">Тест не сдан</span>)
                   : <span className="tag">Без теста</span>}
               </div>
             </div>
-            {m.unlocked ? (
+
+            {th.unlocked ? (
               <>
-                {m.type === "video"
-                  ? <video controls style={{ width: "100%", maxHeight: 360 }} src={m.url} />
-                  : <audio controls style={{ width: "100%" }} src={m.url} />}
-                <div className="row" style={{ marginTop: 8 }}>
-                  <a className="btn ghost" href={m.url} target="_blank" rel="noreferrer">Открыть в новой вкладке</a>
-                  {m.test && !m.test.passed && (
-                    <button className="btn primary" onClick={() => openTest(m.test.id)}>
-                      Пройти тест «{m.test.title}»
-                    </button>
+                <div style={{ marginTop: 12 }}>
+                  {th.materials.map(m => (
+                    <div key={m.id} style={{ marginBottom: 12 }}>
+                      <div><b>{m.type === "video" ? "🎬" : "🎧"} {m.title}</b></div>
+                      {m.type === "video" ? (
+                        <video controls src={m.url}
+                               style={{ width: "100%", maxHeight: 360 }} />
+                      ) : (
+                        <audio controls src={m.url} style={{ width: "100%" }} />
+                      )}
+                    </div>
+                  ))}
+                  {!th.materials.length && (
+                    <div className="muted small">В этой теме пока нет материалов</div>
                   )}
                 </div>
+
+                {th.test && !th.test.passed && (
+                  <button className="btn primary" onClick={() => openTest(th.test.id)}>
+                    Пройти тест «{th.test.title}»
+                  </button>
+                )}
+                {th.test && th.test.passed && (
+                  <div className="muted small">Тест сдан. Следующая тема разблокирована.</div>
+                )}
               </>
             ) : (
-              <div className="muted">🔒 Заблокировано. Сдайте предыдущий тест.</div>
+              <div className="muted" style={{ marginTop: 8 }}>
+                🔒 Заблокировано. Сдайте тест предыдущей темы.
+              </div>
             )}
           </div>
         ))}
       </div>
 
       {test && (
-        <TestModal data={test} onClose={() => setTest(null)}
-                   onDone={() => { setTest(null); loadMaterials(); }} />
+        <TestModal data={test}
+                   onClose={() => setTest(null)}
+                   onDone={() => { setTest(null); loadThemes(); }} />
       )}
     </Layout>
   );

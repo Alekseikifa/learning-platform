@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from ..database import get_db
@@ -31,6 +30,17 @@ def create_user(data: schemas.UserIn, db: Session = Depends(get_db), _=Depends(r
     return u
 
 
+@router.put("/users/{user_id}/password")
+def reset_password(user_id: int, data: schemas.PasswordResetIn,
+                   db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    u = db.query(models.User).get(user_id)
+    if not u or u.role == "admin":
+        raise HTTPException(404)
+    u.password_hash = hash_password(data.password)
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
     u = db.query(models.User).get(user_id)
@@ -43,17 +53,51 @@ def delete_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_r
     return {"ok": True}
 
 
+# ---------- SETTINGS ----------
+@router.get("/settings/roles")
+def get_role_names(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    defaults = {
+        "role_admin_name": "Администратор",
+        "role_teacher_name": "Преподаватель",
+        "role_student_name": "Ученик",
+    }
+    out = {}
+    for k, default in defaults.items():
+        s = db.query(models.Setting).filter_by(key=k).first()
+        out[k] = s.value if s else default
+    return out
+
+
+@router.put("/settings/roles")
+def set_role_names(data: schemas.RoleNamesIn, db: Session = Depends(get_db),
+                   _=Depends(require_role("admin"))):
+    for key, val in [("role_admin_name", data.admin),
+                     ("role_teacher_name", data.teacher),
+                     ("role_student_name", data.student)]:
+        s = db.query(models.Setting).filter_by(key=key).first()
+        if s:
+            s.value = val
+        else:
+            db.add(models.Setting(key=key, value=val))
+    db.commit()
+    return {"ok": True}
+
+
 # ---------- COURSES ----------
 @router.get("/courses")
 def list_courses(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
     courses = db.query(models.Course).order_by(models.Course.id).all()
     out = []
     for c in courses:
-        teacher_ids = [ct.teacher_id for ct in db.query(models.CourseTeacher).filter_by(course_id=c.id).all()]
+        teacher_ids = [ct.teacher_id for ct in
+                       db.query(models.CourseTeacher).filter_by(course_id=c.id).all()]
         teachers = db.query(models.User).filter(models.User.id.in_(teacher_ids)).all() if teacher_ids else []
+        themes = db.query(models.Theme).filter_by(course_id=c.id).order_by(
+            models.Theme.order_index, models.Theme.id).all()
         out.append({
             "id": c.id, "title": c.title, "description": c.description,
             "teachers": [{"id": t.id, "name": t.name} for t in teachers],
+            "themes": [{"id": t.id, "title": t.title, "order_index": t.order_index} for t in themes],
         })
     return out
 
@@ -67,16 +111,18 @@ def create_course(data: schemas.CourseIn, db: Session = Depends(get_db), _=Depen
 
 @router.delete("/courses/{course_id}")
 def delete_course(course_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    material_ids = [m.id for m in db.query(models.Material).filter_by(course_id=course_id).all()]
-    test_ids = [t.id for t in db.query(models.Test).filter_by(course_id=course_id).all()]
-    q_ids = [q.id for q in db.query(models.Question).filter(models.Question.test_id.in_(test_ids)).all()] if test_ids else []
-    if q_ids:
-        db.query(models.Answer).filter(models.Answer.question_id.in_(q_ids)).delete(synchronize_session=False)
-        db.query(models.Question).filter(models.Question.id.in_(q_ids)).delete(synchronize_session=False)
-    if test_ids:
-        db.query(models.Attempt).filter(models.Attempt.test_id.in_(test_ids)).delete(synchronize_session=False)
-        db.query(models.Test).filter(models.Test.id.in_(test_ids)).delete(synchronize_session=False)
-    db.query(models.Material).filter_by(course_id=course_id).delete()
+    theme_ids = [t.id for t in db.query(models.Theme).filter_by(course_id=course_id).all()]
+    if theme_ids:
+        test_ids = [t.id for t in db.query(models.Test).filter(models.Test.theme_id.in_(theme_ids)).all()]
+        if test_ids:
+            q_ids = [q.id for q in db.query(models.Question).filter(models.Question.test_id.in_(test_ids)).all()]
+            if q_ids:
+                db.query(models.Answer).filter(models.Answer.question_id.in_(q_ids)).delete(synchronize_session=False)
+                db.query(models.Question).filter(models.Question.id.in_(q_ids)).delete(synchronize_session=False)
+            db.query(models.Attempt).filter(models.Attempt.test_id.in_(test_ids)).delete(synchronize_session=False)
+            db.query(models.Test).filter(models.Test.id.in_(test_ids)).delete(synchronize_session=False)
+        db.query(models.Material).filter(models.Material.theme_id.in_(theme_ids)).delete(synchronize_session=False)
+        db.query(models.Theme).filter(models.Theme.id.in_(theme_ids)).delete(synchronize_session=False)
     db.query(models.Enrollment).filter_by(course_id=course_id).delete()
     db.query(models.CourseTeacher).filter_by(course_id=course_id).delete()
     db.query(models.Course).filter_by(id=course_id).delete()
@@ -87,7 +133,8 @@ def delete_course(course_id: int, db: Session = Depends(get_db), _=Depends(requi
 @router.post("/courses/{course_id}/teachers")
 def assign_teacher(course_id: int, data: schemas.TeacherAssignIn,
                    db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    if not db.query(models.CourseTeacher).filter_by(course_id=course_id, teacher_id=data.teacher_id).first():
+    if not db.query(models.CourseTeacher).filter_by(
+            course_id=course_id, teacher_id=data.teacher_id).first():
         db.add(models.CourseTeacher(course_id=course_id, teacher_id=data.teacher_id))
         db.commit()
     return {"ok": True}
@@ -101,13 +148,37 @@ def unassign_teacher(course_id: int, teacher_id: int,
     return {"ok": True}
 
 
+# ---------- THEMES ----------
+@router.post("/themes")
+def create_theme(data: schemas.ThemeIn, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    t = models.Theme(**data.model_dump())
+    db.add(t); db.commit(); db.refresh(t)
+    return {"id": t.id}
+
+
+@router.delete("/themes/{theme_id}")
+def delete_theme(theme_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    test = db.query(models.Test).filter_by(theme_id=theme_id).first()
+    if test:
+        q_ids = [q.id for q in db.query(models.Question).filter_by(test_id=test.id).all()]
+        if q_ids:
+            db.query(models.Answer).filter(models.Answer.question_id.in_(q_ids)).delete(synchronize_session=False)
+            db.query(models.Question).filter(models.Question.id.in_(q_ids)).delete(synchronize_session=False)
+        db.query(models.Attempt).filter_by(test_id=test.id).delete()
+        db.delete(test)
+    db.query(models.Material).filter_by(theme_id=theme_id).delete()
+    db.query(models.Theme).filter_by(id=theme_id).delete()
+    db.commit()
+    return {"ok": True}
+
+
 # ---------- MATERIALS ----------
-@router.get("/materials/{course_id}")
-def list_materials(course_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    return [{"id": m.id, "course_id": m.course_id, "title": m.title, "type": m.type,
-             "url": m.url, "order_index": m.order_index}
-            for m in db.query(models.Material).filter_by(course_id=course_id)
-            .order_by(models.Material.order_index, models.Material.id).all()]
+@router.get("/themes/{theme_id}/materials")
+def list_materials(theme_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    mats = (db.query(models.Material).filter_by(theme_id=theme_id)
+            .order_by(models.Material.order_index, models.Material.id).all())
+    return [{"id": m.id, "theme_id": m.theme_id, "title": m.title, "type": m.type,
+             "url": m.url, "order_index": m.order_index} for m in mats]
 
 
 @router.post("/materials")
@@ -119,42 +190,33 @@ def create_material(data: schemas.MaterialIn, db: Session = Depends(get_db), _=D
 
 @router.delete("/materials/{material_id}")
 def delete_material(material_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    test = db.query(models.Test).filter_by(material_id=material_id).first()
-    if test:
-        q_ids = [q.id for q in db.query(models.Question).filter_by(test_id=test.id).all()]
-        if q_ids:
-            db.query(models.Answer).filter(models.Answer.question_id.in_(q_ids)).delete(synchronize_session=False)
-            db.query(models.Question).filter(models.Question.id.in_(q_ids)).delete(synchronize_session=False)
-        db.query(models.Attempt).filter_by(test_id=test.id).delete()
-        db.delete(test)
     db.query(models.Material).filter_by(id=material_id).delete()
     db.commit()
     return {"ok": True}
 
 
-# ---------- TESTS & QUESTIONS ----------
-@router.get("/tests/{course_id}")
-def list_tests(course_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    tests = db.query(models.Test).filter_by(course_id=course_id).all()
-    out = []
-    for t in tests:
-        qs = db.query(models.Question).filter_by(test_id=t.id).all()
-        out.append({
-            "id": t.id, "title": t.title, "material_id": t.material_id,
-            "passing_score": t.passing_score,
-            "questions": [{
-                "id": q.id, "text": q.text,
-                "answers": [{"id": a.id, "text": a.text, "is_correct": a.is_correct}
-                            for a in db.query(models.Answer).filter_by(question_id=q.id).all()],
-            } for q in qs],
-        })
-    return out
+# ---------- TESTS ----------
+@router.get("/themes/{theme_id}/test")
+def get_test_for_theme(theme_id: int, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    t = db.query(models.Test).filter_by(theme_id=theme_id).first()
+    if not t:
+        return None
+    qs = db.query(models.Question).filter_by(test_id=t.id).all()
+    return {
+        "id": t.id, "title": t.title, "theme_id": t.theme_id,
+        "passing_score": t.passing_score,
+        "questions": [{
+            "id": q.id, "text": q.text,
+            "answers": [{"id": a.id, "text": a.text, "is_correct": a.is_correct}
+                        for a in db.query(models.Answer).filter_by(question_id=q.id).all()],
+        } for q in qs],
+    }
 
 
 @router.post("/tests")
 def create_test(data: schemas.TestIn, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    if db.query(models.Test).filter_by(material_id=data.material_id).first():
-        raise HTTPException(400, "У материала уже есть тест")
+    if db.query(models.Test).filter_by(theme_id=data.theme_id).first():
+        raise HTTPException(400, "У темы уже есть тест")
     t = models.Test(**data.model_dump())
     db.add(t); db.commit(); db.refresh(t)
     return {"id": t.id}
@@ -203,7 +265,8 @@ def list_enrollments(db: Session = Depends(get_db), _=Depends(require_role("admi
         u = db.query(models.User).get(e.user_id)
         c = db.query(models.Course).get(e.course_id)
         if u and c:
-            out.append({"user_id": u.id, "course_id": c.id, "student": u.name, "course": c.title})
+            out.append({"user_id": u.id, "course_id": c.id,
+                        "student": u.name, "course": c.title})
     return out
 
 
@@ -224,7 +287,8 @@ def remove_enrollment(data: schemas.EnrollIn, db: Session = Depends(get_db), _=D
 
 # ---------- UPLOADS ----------
 @router.post("/uploads", response_model=schemas.FileOut)
-def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db),
+                _=Depends(require_role("admin"))):
     ext = os.path.splitext(file.filename or "")[1].lower()
     stored = f"{uuid.uuid4().hex}{ext}"
     dest = os.path.join(UPLOAD_DIR, stored)

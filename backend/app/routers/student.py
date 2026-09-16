@@ -16,25 +16,30 @@ def my_courses(db: Session = Depends(get_db), user=Depends(require_role("student
             for c in db.query(models.Course).filter(models.Course.id.in_(ids)).all()]
 
 
-@router.get("/course/{course_id}/materials")
-def my_materials(course_id: int, db: Session = Depends(get_db), user=Depends(require_role("student"))):
+@router.get("/course/{course_id}/themes")
+def my_themes(course_id: int, db: Session = Depends(get_db),
+              user=Depends(require_role("student"))):
     if not db.query(models.Enrollment).filter_by(user_id=user.id, course_id=course_id).first():
         raise HTTPException(403, "Не записан на курс")
 
-    materials = (db.query(models.Material).filter_by(course_id=course_id)
-                 .order_by(models.Material.order_index, models.Material.id).all())
+    themes = (db.query(models.Theme).filter_by(course_id=course_id)
+              .order_by(models.Theme.order_index, models.Theme.id).all())
 
     out = []
     unlocked = True
-    for m in materials:
-        test = db.query(models.Test).filter_by(material_id=m.id).first()
+    for th in themes:
+        materials = (db.query(models.Material).filter_by(theme_id=th.id)
+                     .order_by(models.Material.order_index, models.Material.id).all())
+        test = db.query(models.Test).filter_by(theme_id=th.id).first()
         test_passed = False
         if test:
             test_passed = db.query(models.Attempt).filter_by(
                 user_id=user.id, test_id=test.id, passed=True).first() is not None
         out.append({
-            "id": m.id, "title": m.title, "type": m.type, "url": m.url,
-            "order_index": m.order_index, "unlocked": unlocked,
+            "id": th.id, "title": th.title, "order_index": th.order_index,
+            "unlocked": unlocked,
+            "materials": [{"id": m.id, "title": m.title, "type": m.type,
+                           "url": m.url, "order_index": m.order_index} for m in materials],
             "test": ({"id": test.id, "title": test.title,
                       "passing_score": test.passing_score, "passed": test_passed}
                      if test else None),
@@ -44,18 +49,20 @@ def my_materials(course_id: int, db: Session = Depends(get_db), user=Depends(req
 
 
 @router.get("/test/{test_id}")
-def get_test(test_id: int, db: Session = Depends(get_db), user=Depends(require_role("student"))):
+def get_test(test_id: int, db: Session = Depends(get_db),
+             user=Depends(require_role("student"))):
     test = db.query(models.Test).get(test_id)
     if not test:
         raise HTTPException(404)
-    if not db.query(models.Enrollment).filter_by(user_id=user.id, course_id=test.course_id).first():
+    theme = db.query(models.Theme).get(test.theme_id)
+    if not theme or not db.query(models.Enrollment).filter_by(
+            user_id=user.id, course_id=theme.course_id).first():
         raise HTTPException(403)
     questions = db.query(models.Question).filter_by(test_id=test.id).all()
     return {
         "test": {"id": test.id, "title": test.title, "passing_score": test.passing_score},
         "questions": [{
             "id": q.id, "text": q.text,
-            # ОТДАЁМ БЕЗ флага is_correct, чтобы не палить ответы
             "answers": [{"id": a.id, "text": a.text}
                         for a in db.query(models.Answer).filter_by(question_id=q.id).all()],
         } for q in questions],
@@ -68,7 +75,9 @@ def submit_test(test_id: int, data: schemas.SubmitIn,
     test = db.query(models.Test).get(test_id)
     if not test:
         raise HTTPException(404)
-    if not db.query(models.Enrollment).filter_by(user_id=user.id, course_id=test.course_id).first():
+    theme = db.query(models.Theme).get(test.theme_id)
+    if not theme or not db.query(models.Enrollment).filter_by(
+            user_id=user.id, course_id=theme.course_id).first():
         raise HTTPException(403)
 
     questions = db.query(models.Question).filter_by(test_id=test.id).all()
@@ -90,11 +99,9 @@ def submit_test(test_id: int, data: schemas.SubmitIn,
 
 @router.get("/history")
 def my_history(db: Session = Depends(get_db), user=Depends(require_role("student"))):
-    rows = (db.query(models.Attempt, models.Test.title, models.Course.title)
+    rows = (db.query(models.Attempt, models.Test.title)
             .join(models.Test, models.Test.id == models.Attempt.test_id)
-            .join(models.Course, models.Course.id == models.Test.course_id)
             .filter(models.Attempt.user_id == user.id)
             .order_by(models.Attempt.created_at.desc()).limit(100).all())
-    return [{"id": a.id, "test": t, "course": c, "score": a.score,
-             "passed": a.passed, "created_at": a.created_at.isoformat()}
-            for a, t, c in rows]
+    return [{"id": a.id, "test": t, "score": a.score, "passed": a.passed,
+             "created_at": a.created_at.isoformat()} for a, t in rows]

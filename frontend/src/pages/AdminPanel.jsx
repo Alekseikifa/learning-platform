@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import SearchSelect from "../components/SearchSelect";
 import { api, uploadFile } from "../api";
 
 const TABS = [
-  { id: "users", label: "Пользователи" },
-  { id: "courses", label: "Курсы" },
+  { id: "users",     label: "Пользователи" },
+  { id: "courses",   label: "Курсы и темы" },
   { id: "materials", label: "Материалы" },
-  { id: "tests", label: "Тесты" },
-  { id: "enroll", label: "Зачисления" },
-  { id: "uploads", label: "Файлы" },
+  { id: "tests",     label: "Тесты" },
+  { id: "enroll",    label: "Зачисления" },
+  { id: "uploads",   label: "Файлы" },
+  { id: "settings",  label: "Настройки" },
 ];
 
 export default function AdminPanel() {
@@ -26,12 +28,13 @@ export default function AdminPanel() {
 
   return (
     <Layout title="Панель администратора" tabs={TABS} active={tab} onChange={setTab}>
-      {tab === "users"    && <UsersTab users={users} reload={reload} />}
-      {tab === "courses"  && <CoursesTab courses={courses} users={users} reload={reload} />}
-      {tab === "materials"&& <MaterialsTab courses={courses} />}
-      {tab === "tests"    && <TestsTab courses={courses} />}
-      {tab === "enroll"   && <EnrollTab users={users} courses={courses} />}
-      {tab === "uploads"  && <UploadsTab />}
+      {tab === "users"     && <UsersTab users={users} reload={reload} />}
+      {tab === "courses"   && <CoursesTab courses={courses} users={users} reload={reload} />}
+      {tab === "materials" && <MaterialsTab courses={courses} />}
+      {tab === "tests"     && <TestsTab courses={courses} />}
+      {tab === "enroll"    && <EnrollTab users={users} courses={courses} />}
+      {tab === "uploads"   && <UploadsTab />}
+      {tab === "settings"  && <SettingsTab />}
     </Layout>
   );
 }
@@ -39,6 +42,8 @@ export default function AdminPanel() {
 /* ------------ USERS ------------ */
 function UsersTab({ users, reload }) {
   const [form, setForm] = useState({ name: "", username: "", password: "", role: "student" });
+  const [reset, setReset] = useState(null); // { id, name }
+
   const submit = async (e) => {
     e.preventDefault();
     try {
@@ -52,6 +57,16 @@ function UsersTab({ users, reload }) {
     await api("/api/admin/users/" + id, { method: "DELETE" });
     reload();
   };
+  const doReset = async (pw) => {
+    try {
+      await api(`/api/admin/users/${reset.id}/password`, {
+        method: "PUT", body: JSON.stringify({ password: pw }),
+      });
+      alert("Пароль изменён");
+      setReset(null);
+    } catch (e) { alert(e.message); }
+  };
+
   return (
     <div>
       <form className="card row" onSubmit={submit}>
@@ -73,16 +88,48 @@ function UsersTab({ users, reload }) {
           {users.map(u => (
             <tr key={u.id}>
               <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td><td>{u.role}</td>
-              <td><button className="btn danger small" onClick={() => del(u.id)}>Удалить</button></td>
+              <td>
+                <button className="btn small"
+                        onClick={() => setReset({ id: u.id, name: u.name })}>
+                  Сменить пароль
+                </button>{" "}
+                <button className="btn danger small" onClick={() => del(u.id)}>Удалить</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {reset && (
+        <PasswordModal name={reset.name}
+                       onClose={() => setReset(null)}
+                       onSubmit={doReset} />
+      )}
     </div>
   );
 }
 
-/* ------------ COURSES ------------ */
+function PasswordModal({ name, onClose, onSubmit }) {
+  const [pw, setPw] = useState("");
+  return (
+    <div className="modal-back">
+      <div className="card modal" style={{ maxWidth: 420 }}>
+        <h3>Смена пароля</h3>
+        <div className="muted small">Пользователь: <b>{name}</b></div>
+        <input type="text" placeholder="Новый пароль" value={pw}
+               onChange={e => setPw(e.target.value)} autoFocus
+               style={{ width: "100%", marginTop: 10 }} />
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+          <button className="btn ghost" onClick={onClose}>Отмена</button>
+          <button className="btn primary" disabled={!pw}
+                  onClick={() => onSubmit(pw)}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------ COURSES + THEMES ------------ */
 function CoursesTab({ courses, users, reload }) {
   const [form, setForm] = useState({ title: "", description: "" });
   const teachers = users.filter(u => u.role === "teacher");
@@ -113,19 +160,23 @@ function CoursesTab({ courses, users, reload }) {
   return (
     <div>
       <form className="card row" onSubmit={add}>
-        <input placeholder="Название курса" value={form.title}
-               onChange={e => setForm({ ...form, title: e.target.value })} required />
+        <input placeholder="Название курса (например, «Python: 1 год»)" value={form.title}
+               onChange={e => setForm({ ...form, title: e.target.value })} required style={{ flex: 1 }} />
         <input placeholder="Описание" value={form.description}
-               onChange={e => setForm({ ...form, description: e.target.value })} />
-        <button className="btn primary">Создать</button>
+               onChange={e => setForm({ ...form, description: e.target.value })} style={{ flex: 1 }} />
+        <button className="btn primary">Создать курс</button>
       </form>
+
       {courses.map(c => (
         <div className="card" key={c.id}>
           <div className="spread">
             <b>#{c.id} {c.title}</b>
-            <button className="btn danger small" onClick={() => del(c.id)}>Удалить</button>
+            <button className="btn danger small" onClick={() => del(c.id)}>Удалить курс</button>
           </div>
           <div className="muted small">{c.description}</div>
+
+          {/* Преподаватели */}
+          <div className="section-title">Преподаватели</div>
           <div className="chips">
             {c.teachers.map(t => (
               <span key={t.id} className="chip">
@@ -133,11 +184,11 @@ function CoursesTab({ courses, users, reload }) {
                 <button onClick={() => unassign(c.id, t.id)}>✕</button>
               </span>
             ))}
-            {!c.teachers.length && <span className="muted small">нет преподавателей</span>}
+            {!c.teachers.length && <span className="muted small">нет</span>}
           </div>
           <div className="row">
             <select id={"sel-" + c.id} defaultValue="">
-              <option value="">— назначить —</option>
+              <option value="">— назначить преподавателя —</option>
               {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <button className="btn" onClick={() => {
@@ -145,46 +196,101 @@ function CoursesTab({ courses, users, reload }) {
               assign(c.id, v);
             }}>Назначить</button>
           </div>
+
+          {/* Темы */}
+          <div className="section-title">Темы курса</div>
+          <ThemesList course={c} reload={reload} />
         </div>
       ))}
     </div>
   );
 }
 
-/* ------------ MATERIALS ------------ */
+function ThemesList({ course, reload }) {
+  const [form, setForm] = useState({ title: "", order_index: (course.themes.length + 1) });
+
+  const add = async (e) => {
+    e.preventDefault();
+    await api("/api/admin/themes", {
+      method: "POST",
+      body: JSON.stringify({ course_id: course.id, title: form.title,
+                             order_index: +form.order_index }),
+    });
+    setForm({ title: "", order_index: course.themes.length + 2 });
+    reload();
+  };
+  const del = async (id) => {
+    if (!confirm("Удалить тему вместе с материалами и тестом?")) return;
+    await api("/api/admin/themes/" + id, { method: "DELETE" });
+    reload();
+  };
+
+  return (
+    <div>
+      {course.themes.map(t => (
+        <div className="card" key={t.id} style={{ background: "#f9fafb", marginBottom: 8 }}>
+          <div className="spread">
+            <div><b>Тема {t.order_index}. {t.title}</b></div>
+            <button className="btn danger small" onClick={() => del(t.id)}>✕</button>
+          </div>
+        </div>
+      ))}
+      <form className="row" onSubmit={add}>
+        <input placeholder="Название темы" value={form.title}
+               onChange={e => setForm({ ...form, title: e.target.value })} required
+               style={{ flex: 1 }} />
+        <input type="number" placeholder="Порядок" value={form.order_index}
+               onChange={e => setForm({ ...form, order_index: e.target.value })}
+               style={{ width: 90 }} />
+        <button className="btn primary">Добавить тему</button>
+      </form>
+    </div>
+  );
+}
+
+/* ------------ MATERIALS (по темам) ------------ */
 function MaterialsTab({ courses }) {
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
+  const [themeId, setThemeId] = useState("");
   const [materials, setMaterials] = useState([]);
   const [form, setForm] = useState({ title: "", type: "video", url: "", order_index: 0 });
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    if (!courseId) { setMaterials([]); return; }
-    api(`/api/admin/materials/${courseId}`).then(setMaterials);
-  }, [courseId]);
+  const currentCourse = courses.find(c => c.id === +courseId);
+  const themes = currentCourse?.themes || [];
 
   useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
+
+  useEffect(() => {
+    if (!themes.length) { setThemeId(""); return; }
+    if (!themes.find(t => t.id === +themeId)) setThemeId(themes[0].id);
+  }, [courseId, courses]);
+
+  useEffect(() => {
+    if (!themeId) { setMaterials([]); return; }
+    api(`/api/admin/themes/${themeId}/materials`).then(setMaterials);
+  }, [themeId]);
+
+  const reload = async () => setMaterials(await api(`/api/admin/themes/${themeId}/materials`));
 
   const add = async (e) => {
     e.preventDefault();
     await api("/api/admin/materials", {
       method: "POST",
-      body: JSON.stringify({ ...form, course_id: +courseId, order_index: +form.order_index }),
+      body: JSON.stringify({ ...form, theme_id: +themeId, order_index: +form.order_index }),
     });
     setForm({ title: "", type: "video", url: "", order_index: 0 });
-    const list = await api(`/api/admin/materials/${courseId}`);
-    setMaterials(list);
+    reload();
   };
 
   const del = async (id) => {
-    if (!confirm("Удалить материал (и связанный тест)?")) return;
+    if (!confirm("Удалить материал?")) return;
     await api("/api/admin/materials/" + id, { method: "DELETE" });
-    setMaterials(await api(`/api/admin/materials/${courseId}`));
+    reload();
   };
 
   const onUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     setUploading(true);
     try {
       const rec = await uploadFile(file);
@@ -196,142 +302,148 @@ function MaterialsTab({ courses }) {
 
   return (
     <div>
-      <div className="row card">
+      <div className="card row">
         <label>Курс:</label>
         <select value={courseId} onChange={e => setCourseId(e.target.value)}>
           {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
+        <label>Тема:</label>
+        <select value={themeId} onChange={e => setThemeId(e.target.value)}>
+          {themes.map(t => <option key={t.id} value={t.id}>
+            Тема {t.order_index}. {t.title}
+          </option>)}
+        </select>
       </div>
 
-      {courseId && (
-        <form className="card" onSubmit={add}>
-          <div className="row">
-            <input placeholder="Название материала" value={form.title}
-                   onChange={e => setForm({ ...form, title: e.target.value })} required style={{flex:1}} />
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-              <option value="video">Видео</option>
-              <option value="audio">Аудио</option>
-            </select>
-            <input type="number" placeholder="Порядок" value={form.order_index}
-                   onChange={e => setForm({ ...form, order_index: e.target.value })} style={{width:100}} />
-          </div>
-          <div className="row">
-            <input placeholder="URL (или загрузите файл →)" value={form.url}
-                   onChange={e => setForm({ ...form, url: e.target.value })} required style={{flex:1}} />
-            <label className="btn">
-              {uploading ? "Загрузка..." : "Загрузить файл"}
-              <input type="file" hidden accept="video/*,audio/*" onChange={onUpload} />
-            </label>
-            <button className="btn primary">Добавить материал</button>
-          </div>
-        </form>
-      )}
+      {!themes.length && <div className="card muted">Сначала добавьте темы на вкладке «Курсы и темы»</div>}
 
-      <div className="list">
-        {materials.map(m => (
-          <div className="card spread" key={m.id}>
-            <div>
-              <b>#{m.order_index} [{m.type}] {m.title}</b>
-              <div className="muted small"><a href={m.url} target="_blank" rel="noreferrer">{m.url}</a></div>
+      {themeId && (
+        <>
+          <form className="card" onSubmit={add}>
+            <div className="row">
+              <input placeholder="Название материала" value={form.title}
+                     onChange={e => setForm({ ...form, title: e.target.value })} required
+                     style={{ flex: 1 }} />
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                <option value="video">Видео</option>
+                <option value="audio">Аудио</option>
+              </select>
+              <input type="number" placeholder="Порядок" value={form.order_index}
+                     onChange={e => setForm({ ...form, order_index: e.target.value })}
+                     style={{ width: 100 }} />
             </div>
-            <button className="btn danger small" onClick={() => del(m.id)}>✕</button>
+            <div className="row">
+              <input placeholder="URL или загрузите файл →" value={form.url}
+                     onChange={e => setForm({ ...form, url: e.target.value })} required
+                     style={{ flex: 1 }} />
+              <label className="btn">
+                {uploading ? "Загрузка..." : "Загрузить файл"}
+                <input type="file" hidden accept="video/*,audio/*" onChange={onUpload} />
+              </label>
+              <button className="btn primary">Добавить</button>
+            </div>
+          </form>
+
+          <div className="list">
+            {materials.map(m => (
+              <div className="card spread" key={m.id}>
+                <div>
+                  <b>#{m.order_index} [{m.type}] {m.title}</b>
+                  <div className="muted small">
+                    <a href={m.url} target="_blank" rel="noreferrer">{m.url}</a>
+                  </div>
+                </div>
+                <button className="btn danger small" onClick={() => del(m.id)}>✕</button>
+              </div>
+            ))}
+            {!materials.length && <div className="muted">Материалов пока нет</div>}
           </div>
-        ))}
-        {!materials.length && <div className="muted">Материалов пока нет</div>}
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
-/* ------------ TESTS ------------ */
+/* ------------ TESTS (по темам) ------------ */
 function TestsTab({ courses }) {
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
-  const [materials, setMaterials] = useState([]);
-  const [tests, setTests] = useState([]);
-  const [testForm, setTestForm] = useState({ material_id: "", title: "", passing_score: 70 });
+  const [themeId, setThemeId] = useState("");
+  const [test, setTest] = useState(null);
+
+  const currentCourse = courses.find(c => c.id === +courseId);
+  const themes = currentCourse?.themes || [];
+
+  useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
+  useEffect(() => {
+    if (!themes.length) { setThemeId(""); return; }
+    if (!themes.find(t => t.id === +themeId)) setThemeId(themes[0].id);
+  }, [courseId, courses]);
 
   const load = async () => {
-    if (!courseId) return;
-    setMaterials(await api(`/api/admin/materials/${courseId}`));
-    setTests(await api(`/api/admin/tests/${courseId}`));
+    if (!themeId) { setTest(null); return; }
+    setTest(await api(`/api/admin/themes/${themeId}/test`));
   };
+  useEffect(() => { load(); }, [themeId]);
 
-  useEffect(() => { load(); }, [courseId]);
-  useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
-
-  const createTest = async (e) => {
-    e.preventDefault();
+  const createTest = async (payload) => {
     try {
-      await api("/api/admin/tests", {
-        method: "POST",
-        body: JSON.stringify({ ...testForm, course_id: +courseId, material_id: +testForm.material_id,
-                               passing_score: +testForm.passing_score }),
-      });
-      setTestForm({ material_id: "", title: "", passing_score: 70 });
+      await api("/api/admin/tests", { method: "POST", body: JSON.stringify(payload) });
       load();
     } catch (e) { alert(e.message); }
   };
-
-  const delTest = async (id) => {
-    if (!confirm("Удалить тест со всеми вопросами и попытками?")) return;
-    await api("/api/admin/tests/" + id, { method: "DELETE" });
+  const delTest = async () => {
+    if (!confirm("Удалить тест?")) return;
+    await api("/api/admin/tests/" + test.id, { method: "DELETE" });
     load();
   };
-
+  const addQuestion = async (payload) => {
+    try {
+      await api("/api/admin/questions", {
+        method: "POST", body: JSON.stringify({ test_id: test.id, ...payload }),
+      });
+      load();
+    } catch (e) { alert(e.message); }
+  };
   const delQuestion = async (id) => {
     await api("/api/admin/questions/" + id, { method: "DELETE" });
     load();
   };
 
-  const addQuestion = async (testId, payload) => {
-    try {
-      await api("/api/admin/questions", {
-        method: "POST",
-        body: JSON.stringify({ test_id: testId, ...payload }),
-      });
-      load();
-    } catch (e) { alert(e.message); }
-  };
-
   return (
     <div>
-      <div className="row card">
+      <div className="card row">
         <label>Курс:</label>
         <select value={courseId} onChange={e => setCourseId(e.target.value)}>
           {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
+        <label>Тема:</label>
+        <select value={themeId} onChange={e => setThemeId(e.target.value)}>
+          {themes.map(t => <option key={t.id} value={t.id}>
+            Тема {t.order_index}. {t.title}
+          </option>)}
+        </select>
       </div>
 
-      {courseId && (
-        <form className="card row" onSubmit={createTest}>
-          <select value={testForm.material_id} required
-                  onChange={e => setTestForm({ ...testForm, material_id: e.target.value })}>
-            <option value="">— материал —</option>
-            {materials.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
-          </select>
-          <input placeholder="Название теста" value={testForm.title}
-                 onChange={e => setTestForm({ ...testForm, title: e.target.value })} required />
-          <input type="number" placeholder="Проходной %" value={testForm.passing_score}
-                 onChange={e => setTestForm({ ...testForm, passing_score: e.target.value })}
-                 style={{ width: 130 }} />
-          <button className="btn primary">Создать тест</button>
-        </form>
+      {!themes.length && <div className="card muted">Сначала добавьте темы</div>}
+
+      {themeId && !test && (
+        <CreateTestForm themeId={+themeId} onCreate={createTest} />
       )}
 
-      {tests.map(t => (
-        <div className="card" key={t.id}>
+      {test && (
+        <div className="card">
           <div className="spread">
-            <b>#{t.id} {t.title}</b>
+            <b>Тест: {test.title}</b>
             <div>
-              <span className="muted small">проходной {t.passing_score}% · материал #{t.material_id}</span>
+              <span className="muted small">проходной {test.passing_score}%</span>
               <button className="btn danger small" style={{ marginLeft: 8 }}
-                      onClick={() => delTest(t.id)}>Удалить тест</button>
+                      onClick={delTest}>Удалить тест</button>
             </div>
           </div>
 
-          <div className="list">
-            {t.questions.map(q => (
-              <div className="card q" key={q.id}>
+          <div className="list" style={{ marginTop: 10 }}>
+            {test.questions.map(q => (
+              <div className="q" key={q.id}>
                 <div className="spread">
                   <b>{q.text}</b>
                   <button className="btn danger small" onClick={() => delQuestion(q.id)}>✕</button>
@@ -345,10 +457,28 @@ function TestsTab({ courses }) {
             ))}
           </div>
 
-          <NewQuestionForm testId={t.id} onSubmit={addQuestion} />
+          <NewQuestionForm testId={test.id} onSubmit={addQuestion} />
         </div>
-      ))}
+      )}
     </div>
+  );
+}
+
+function CreateTestForm({ themeId, onCreate }) {
+  const [title, setTitle] = useState("");
+  const [pass, setPass] = useState(70);
+  return (
+    <form className="card row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onCreate({ theme_id: themeId, title, passing_score: +pass });
+          }}>
+      <input placeholder="Название теста" value={title}
+             onChange={e => setTitle(e.target.value)} required style={{ flex: 1 }} />
+      <input type="number" value={pass}
+             onChange={e => setPass(e.target.value)} style={{ width: 120 }} />
+      <button className="btn primary">Создать тест</button>
+    </form>
   );
 }
 
@@ -360,7 +490,7 @@ function NewQuestionForm({ testId, onSubmit }) {
   const submit = (e) => {
     e.preventDefault();
     if (!text || answers.some(a => !a.trim())) return alert("Заполните вопрос и все 4 ответа");
-    onSubmit(testId, {
+    onSubmit({
       text,
       answers: answers.map((a, i) => ({ text: a, is_correct: i === correct })),
     });
@@ -368,11 +498,12 @@ function NewQuestionForm({ testId, onSubmit }) {
   };
 
   return (
-    <form className="card qform" onSubmit={submit}>
+    <form className="card qform" onSubmit={submit} style={{ marginTop: 10 }}>
       <b>Добавить вопрос</b>
-      <input placeholder="Текст вопроса" value={text} onChange={e => setText(e.target.value)} />
+      <input placeholder="Текст вопроса" value={text} onChange={e => setText(e.target.value)}
+             style={{ width: "100%", marginTop: 6 }} />
       {answers.map((a, i) => (
-        <div className="row" key={i}>
+        <div className="row" key={i} style={{ marginTop: 4 }}>
           <label className="radio">
             <input type="radio" name={"ok-" + testId} checked={correct === i}
                    onChange={() => setCorrect(i)} />
@@ -383,7 +514,7 @@ function NewQuestionForm({ testId, onSubmit }) {
                  }} />
         </div>
       ))}
-      <button className="btn primary">Добавить вопрос</button>
+      <button className="btn primary" style={{ marginTop: 6 }}>Добавить вопрос</button>
     </form>
   );
 }
@@ -411,17 +542,33 @@ function EnrollTab({ users, courses }) {
     load();
   };
 
+  const studentOptions = students.map(s => ({
+    value: s.id, label: `${s.name} (${s.username})`,
+  }));
+  const courseOptions = courses.map(c => ({ value: c.id, label: c.title }));
+
   return (
     <div>
       <div className="card row">
-        <select value={userId} onChange={e => setUserId(e.target.value)}>
-          {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select value={courseId} onChange={e => setCourseId(e.target.value)}>
-          {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-        </select>
+        <div style={{ minWidth: 240 }}>
+          <SearchSelect
+            options={studentOptions}
+            value={userId}
+            onChange={v => setUserId(v)}
+            placeholder="Поиск ученика по ФИО..."
+          />
+        </div>
+        <div style={{ minWidth: 240 }}>
+          <SearchSelect
+            options={courseOptions}
+            value={courseId}
+            onChange={v => setCourseId(v)}
+            placeholder="Поиск курса..."
+          />
+        </div>
         <button className="btn primary" onClick={add}>Зачислить</button>
       </div>
+
       <table className="table">
         <thead><tr><th>Ученик</th><th>Курс</th><th></th></tr></thead>
         <tbody>
@@ -453,7 +600,6 @@ function UploadsTab() {
     catch (e) { alert(e.message); }
     finally { setBusy(false); e.target.value = ""; }
   };
-
   const del = async (id) => {
     if (!confirm("Удалить файл?")) return;
     await api("/api/admin/uploads/" + id, { method: "DELETE" });
@@ -467,7 +613,6 @@ function UploadsTab() {
           {busy ? "Загрузка..." : "Загрузить файл"}
           <input type="file" hidden onChange={onUpload} />
         </label>
-        <span className="muted small">файл появится в /uploads/ и станет доступен для использования в материалах</span>
       </div>
       <table className="table">
         <thead><tr><th>Файл</th><th>Тип</th><th>Размер</th><th>URL</th><th></th></tr></thead>
@@ -483,6 +628,66 @@ function UploadsTab() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ------------ SETTINGS ------------ */
+function SettingsTab() {
+  const [names, setNames] = useState({ admin: "", teacher: "", student: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api("/api/admin/settings/roles").then(r => setNames({
+      admin: r.role_admin_name || "",
+      teacher: r.role_teacher_name || "",
+      student: r.role_student_name || "",
+    }));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api("/api/admin/settings/roles", {
+        method: "PUT",
+        body: JSON.stringify({
+          admin: names.admin, teacher: names.teacher, student: names.student,
+        }),
+      });
+      alert("Сохранено");
+    } catch (e) { alert(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card">
+      <h3>Названия ролей</h3>
+      <div className="muted small">
+        Внутренние значения (<code>admin / teacher / student</code>) не меняются —
+        меняется только отображаемое название в интерфейсе.
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <label>Администратор</label>
+        <input value={names.admin}
+               onChange={e => setNames({ ...names, admin: e.target.value })}
+               style={{ width: "100%" }} />
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <label>Преподаватель</label>
+        <input value={names.teacher}
+               onChange={e => setNames({ ...names, teacher: e.target.value })}
+               style={{ width: "100%" }} />
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <label>Ученик</label>
+        <input value={names.student}
+               onChange={e => setNames({ ...names, student: e.target.value })}
+               style={{ width: "100%" }} />
+      </div>
+      <button className="btn primary" disabled={saving} onClick={save}
+              style={{ marginTop: 12 }}>
+        {saving ? "Сохранение..." : "Сохранить"}
+      </button>
     </div>
   );
 }

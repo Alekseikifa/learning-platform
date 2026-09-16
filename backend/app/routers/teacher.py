@@ -14,6 +14,13 @@ def _own_course(course_id: int, teacher_id: int, db: Session) -> bool:
         course_id=course_id, teacher_id=teacher_id).first() is not None
 
 
+def _test_ids_for_course(course_id: int, db: Session):
+    theme_ids = [t.id for t in db.query(models.Theme).filter_by(course_id=course_id).all()]
+    if not theme_ids:
+        return []
+    return [t.id for t in db.query(models.Test).filter(models.Test.theme_id.in_(theme_ids)).all()]
+
+
 @router.get("/courses")
 def my_courses(db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
     ids = [ct.course_id for ct in db.query(models.CourseTeacher).filter_by(teacher_id=user.id).all()]
@@ -24,12 +31,11 @@ def my_courses(db: Session = Depends(get_db), user=Depends(require_role("teacher
 
 
 @router.get("/course/{course_id}/students")
-def course_students(course_id: int, db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+def course_students(course_id: int, db: Session = Depends(get_db),
+                    user=Depends(require_role("teacher"))):
     if not _own_course(course_id, user.id, db):
         raise HTTPException(403)
-
-    tests = db.query(models.Test).filter_by(course_id=course_id).all()
-    test_ids = [t.id for t in tests]
+    test_ids = _test_ids_for_course(course_id, db)
 
     enrolled = (db.query(models.User)
                 .join(models.Enrollment, models.Enrollment.user_id == models.User.id)
@@ -58,13 +64,17 @@ def course_students(course_id: int, db: Session = Depends(get_db), user=Depends(
 
 
 @router.get("/course/{course_id}/attempts")
-def course_attempts(course_id: int, db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+def course_attempts(course_id: int, db: Session = Depends(get_db),
+                    user=Depends(require_role("teacher"))):
     if not _own_course(course_id, user.id, db):
         raise HTTPException(403)
+    test_ids = _test_ids_for_course(course_id, db)
+    if not test_ids:
+        return []
     rows = (db.query(models.Attempt, models.User.name, models.Test.title)
             .join(models.User, models.User.id == models.Attempt.user_id)
             .join(models.Test, models.Test.id == models.Attempt.test_id)
-            .filter(models.Test.course_id == course_id)
+            .filter(models.Attempt.test_id.in_(test_ids))
             .order_by(models.Attempt.created_at.desc()).limit(300).all())
     return [{"id": a.id, "student": name, "test": title, "score": a.score,
              "passed": a.passed, "created_at": a.created_at.isoformat()}
@@ -72,14 +82,14 @@ def course_attempts(course_id: int, db: Session = Depends(get_db), user=Depends(
 
 
 @router.get("/course/{course_id}/analytics")
-def analytics(course_id: int, db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+def analytics(course_id: int, db: Session = Depends(get_db),
+              user=Depends(require_role("teacher"))):
     if not _own_course(course_id, user.id, db):
         raise HTTPException(403)
 
-    tests = db.query(models.Test).filter_by(course_id=course_id).all()
-    test_ids = [t.id for t in tests]
+    test_ids = _test_ids_for_course(course_id, db)
+    tests = db.query(models.Test).filter(models.Test.id.in_(test_ids)).all() if test_ids else []
 
-    # --- per test ---
     per_test = []
     for t in tests:
         attempts = db.query(models.Attempt).filter_by(test_id=t.id).all()
@@ -88,7 +98,6 @@ def analytics(course_id: int, db: Session = Depends(get_db), user=Depends(requir
         pass_rate = round(100 * sum(1 for a in attempts if a.passed) / n, 1) if n else 0
         per_test.append({"test": t.title, "avg_score": avg, "pass_rate": pass_rate, "attempts": n})
 
-    # --- per student ---
     enrolled = (db.query(models.User)
                 .join(models.Enrollment, models.Enrollment.user_id == models.User.id)
                 .filter(models.Enrollment.course_id == course_id).all())
@@ -110,14 +119,16 @@ def analytics(course_id: int, db: Session = Depends(get_db), user=Depends(requir
         per_student.append({"name": s.name, "progress": progress, "avg_score": avg,
                             "passed": passed, "total": len(test_ids)})
 
-    # --- timeline (last 30 days) ---
     cutoff = datetime.utcnow() - timedelta(days=30)
-    rows = (db.query(func.date(models.Attempt.created_at).label("d"),
-                     func.count().label("n"),
-                     func.avg(models.Attempt.score).label("avg"))
-            .join(models.Test, models.Test.id == models.Attempt.test_id)
-            .filter(models.Test.course_id == course_id, models.Attempt.created_at >= cutoff)
-            .group_by("d").order_by("d").all())
-    timeline = [{"date": str(r.d), "attempts": r.n, "avg_score": round(r.avg or 0, 1)} for r in rows]
+    timeline = []
+    if test_ids:
+        rows = (db.query(func.date(models.Attempt.created_at).label("d"),
+                         func.count().label("n"),
+                         func.avg(models.Attempt.score).label("avg"))
+                .filter(models.Attempt.test_id.in_(test_ids),
+                        models.Attempt.created_at >= cutoff)
+                .group_by("d").order_by("d").all())
+        timeline = [{"date": str(r.d), "attempts": r.n,
+                     "avg_score": round(r.avg or 0, 1)} for r in rows]
 
     return {"per_test": per_test, "per_student": per_student, "timeline": timeline}

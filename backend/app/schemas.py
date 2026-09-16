@@ -3,7 +3,6 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 
-# --- auth ---
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -24,7 +23,6 @@ class UserOut(BaseModel):
     name: str
 
 
-# --- admin ---
 class UserIn(BaseModel):
     role: str
     username: str
@@ -32,13 +30,29 @@ class UserIn(BaseModel):
     name: str
 
 
+class PasswordResetIn(BaseModel):
+    password: str
+
+
+class RoleNamesIn(BaseModel):
+    admin: str
+    teacher: str
+    student: str
+
+
 class CourseIn(BaseModel):
     title: str
     description: str = ""
 
 
-class MaterialIn(BaseModel):
+class ThemeIn(BaseModel):
     course_id: int
+    title: str
+    order_index: int = 0
+
+
+class MaterialIn(BaseModel):
+    theme_id: int
     title: str
     type: str
     url: str
@@ -53,12 +67,11 @@ class AnswerIn(BaseModel):
 class QuestionIn(BaseModel):
     test_id: int
     text: str
-    answers: List[AnswerIn]      # ровно 4, один is_correct=true
+    answers: List[AnswerIn]
 
 
 class TestIn(BaseModel):
-    course_id: int
-    material_id: int
+    theme_id: int
     title: str
     passing_score: int = 70
 
@@ -82,6 +95,5 @@ class FileOut(BaseModel):
     uploaded_at: datetime
 
 
-# --- student ---
 class SubmitIn(BaseModel):
-    answers: Dict[int, int]      # question_id -> answer_id
+    answers: Dict[int, int]

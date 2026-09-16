@@ -7,7 +7,7 @@ from .database import Base
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    role = Column(String, nullable=False)          # admin / teacher / student
+    role = Column(String, nullable=False)
     username = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     name = Column(String, nullable=False)
@@ -18,6 +18,15 @@ class Course(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     description = Column(Text, default="")
+
+
+class Theme(Base):
+    """Тема внутри курса."""
+    __tablename__ = "themes"
+    id = Column(Integer, primary_key=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    title = Column(String, nullable=False)
+    order_index = Column(Integer, default=0)
 
 
 class CourseTeacher(Base):
@@ -35,18 +44,18 @@ class Enrollment(Base):
 class Material(Base):
     __tablename__ = "materials"
     id = Column(Integer, primary_key=True)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    theme_id = Column(Integer, ForeignKey("themes.id"), nullable=False)  # ИЗМЕНЕНО
     title = Column(String, nullable=False)
-    type = Column(String, nullable=False)          # video / audio
-    url = Column(String, nullable=False)           # ссылка или /uploads/xxx.mp4
+    type = Column(String, nullable=False)     # video / audio
+    url = Column(String, nullable=False)
     order_index = Column(Integer, default=0)
 
 
 class Test(Base):
+    """Тест привязан к теме (один тест на тему)."""
     __tablename__ = "tests"
     id = Column(Integer, primary_key=True)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    material_id = Column(Integer, ForeignKey("materials.id"), unique=True, nullable=False)
+    theme_id = Column(Integer, ForeignKey("themes.id"), unique=True, nullable=False)  # ИЗМЕНЕНО
     title = Column(String, nullable=False)
     passing_score = Column(Integer, default=70)
 
@@ -74,6 +83,13 @@ class Attempt(Base):
     score = Column(Integer, nullable=False)
     passed = Column(Boolean, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Setting(Base):
+    """Ключ-значение для настроек (например, названия ролей)."""
+    __tablename__ = "settings"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
 
 
 class UploadedFile(Base):
