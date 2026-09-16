@@ -1,4 +1,9 @@
-const BASE = ""; // используем vite proxy
+// Автоматически выбираем адрес бэкенда:
+// - локально (при npm run dev) — Vite-прокси
+// - на проде (Render) — жёстко указываем URL
+const BASE = import.meta.env.DEV
+  ? ""
+  : "https://learning-platform-backend-42b6.onrender.com";
 
 export function getToken() {
   return localStorage.getItem("token");
