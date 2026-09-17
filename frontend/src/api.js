@@ -42,10 +42,10 @@ export async function api(path, opts = {}) {
   return ct.includes("application/json") ? res.json() : res.text();
 }
 
-export async function uploadFile(file) {
+export async function uploadFile(file, url = "/api/admin/uploads") {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(BASE + "/api/admin/uploads", {
+  const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${getToken()}` },
     body: fd,
