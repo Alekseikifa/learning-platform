@@ -48,7 +48,16 @@ export default function StudentPanel() {
             </select>
           </div>
           {!courses.length && <div className="card muted">Вам пока не назначено курсов</div>}
-          {courseId && <ThemesList courseId={+courseId} />}
+          {courseId && (
+            <ThemesList
+              courseId={+courseId}
+              initialTheme={pendingTheme}
+              onThemeConsumed={() => {
+                setPendingTheme(null);
+                setSearchParams({}, { replace: true });
+              }}
+            />
+          )}
         </>
       )}
       {tab === "announcements" && <Announcements />}
