@@ -105,7 +105,6 @@ def create_invite(data: schemas.PhoneInviteIn, db: Session = Depends(get_db),
                   _=Depends(require_role("admin"))):
     if data.role not in ("teacher", "student", "manager"):
         raise HTTPException(400, "role must be teacher, student or manager")
-    # нормализуем телефон так же, как в auth.py
     raw = (data.phone or "").strip()
     plus = raw.startswith("+")
     digits = "".join(ch for ch in raw if ch.isdigit())
