@@ -887,7 +887,7 @@ function UploadsTab() {
 
 /* ---------- SETTINGS ---------- */
 function SettingsTab() {
-  const [names, setNames] = useState({ admin: "", teacher: "", student: "" });
+  const [names, setNames] = useState({ admin: "", teacher: "", student: "", manager: "" });
   const [creds, setCreds] = useState({ username: "", password: "", old_password: "" });
   const [saving, setSaving] = useState(false);
 
@@ -896,6 +896,7 @@ function SettingsTab() {
       admin: r.role_admin_name || "",
       teacher: r.role_teacher_name || "",
       student: r.role_student_name || "",
+      manager: r.role_manager_name || "",
     }));
     api("/api/auth/me").then(me => setCreds(c => ({ ...c, username: me.username })));
   }, []);
@@ -905,7 +906,12 @@ function SettingsTab() {
     try {
       await api("/api/admin/settings/roles", {
         method: "PUT",
-        body: JSON.stringify({ admin: names.admin, teacher: names.teacher, student: names.student }),
+        body: JSON.stringify({
+          admin: names.admin,
+          teacher: names.teacher,
+          student: names.student,
+          manager: names.manager,
+        }),
       });
       alert("Названия ролей сохранены");
     } catch (e) { alert(e.message); }
