@@ -219,6 +219,7 @@ def my_announcements(db: Session = Depends(get_db), user=Depends(require_role("t
 @router.post("/announcements")
 def create_announcement(data: schemas.AnnouncementIn,
                         db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+    from .notifications import notify
     if not data.group_ids:
         raise HTTPException(400, "Нужно выбрать хотя бы одну группу")
     for gid in data.group_ids:
@@ -228,6 +229,15 @@ def create_announcement(data: schemas.AnnouncementIn,
     db.add(a); db.flush()
     for gid in data.group_ids:
         db.add(models.AnnouncementTarget(announcement_id=a.id, group_id=gid))
+
+    # уведомляем учеников целевых групп
+    student_ids = []
+    for gid in data.group_ids:
+        student_ids += [gs.user_id for gs in
+                        db.query(models.GroupStudent).filter_by(group_id=gid).all()]
+    notify(db, student_ids, "announcement",
+           f"Объявление: {data.title}", body=data.body[:160],
+           link="/student?tab=announcements")
     db.commit()
     return {"id": a.id}
 
