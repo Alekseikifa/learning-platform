@@ -68,6 +68,84 @@ def create_student(data: dict, db: Session = Depends(get_db),
     db.commit()
     return {"id": u.id}
 
+# ---------- STUDENTS ----------
+@router.get("/students")
+def list_students_full(db: Session = Depends(get_db),
+                       _=Depends(require_role("manager"))):
+    students = (db.query(models.User).filter_by(role="student")
+                .order_by(models.User.name).all())
+    out = []
+    for s in students:
+        gids = [gs.group_id for gs in
+                db.query(models.GroupStudent).filter_by(user_id=s.id).all()]
+        groups = []
+        for gid in gids:
+            g = db.query(models.Group).get(gid)
+            if g:
+                c = db.query(models.Course).get(g.course_id)
+                groups.append({"id": g.id, "name": g.name,
+                               "course": c.title if c else ""})
+        out.append({
+            "id": s.id, "name": s.name, "username": s.username,
+            "groups": groups,
+        })
+    return out
+
+
+@router.put("/students/{user_id}")
+def update_student(user_id: int, data: schemas.UserUpdateIn,
+                   db: Session = Depends(get_db),
+                   _=Depends(require_role("manager"))):
+    u = db.query(models.User).get(user_id)
+    if not u or u.role != "student":
+        raise HTTPException(404, "Ученик не найден")
+    if data.name is not None:
+        u.name = data.name
+    if data.username is not None:
+        if db.query(models.User).filter(models.User.username == data.username,
+                                        models.User.id != user_id).first():
+            raise HTTPException(400, "Логин занят")
+        u.username = data.username
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/students/{user_id}/password")
+def reset_student_password(user_id: int, data: schemas.PasswordResetIn,
+                           db: Session = Depends(get_db),
+                           _=Depends(require_role("manager"))):
+    u = db.query(models.User).get(user_id)
+    if not u or u.role != "student":
+        raise HTTPException(404)
+    u.password_hash = hash_password(data.password)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/students/{user_id}/groups/{group_id}")
+def add_student_to_group(user_id: int, group_id: int,
+                         db: Session = Depends(get_db),
+                         _=Depends(require_role("manager"))):
+    u = db.query(models.User).get(user_id)
+    g = db.query(models.Group).get(group_id)
+    if not u or u.role != "student" or not g:
+        raise HTTPException(404)
+    if not db.query(models.GroupStudent).filter_by(group_id=group_id,
+                                                    user_id=user_id).first():
+        db.add(models.GroupStudent(group_id=group_id, user_id=user_id))
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete("/students/{user_id}/groups/{group_id}")
+def remove_student_from_group(user_id: int, group_id: int,
+                              db: Session = Depends(get_db),
+                              _=Depends(require_role("manager"))):
+    db.query(models.GroupStudent).filter_by(group_id=group_id,
+                                            user_id=user_id).delete()
+    db.commit()
+    return {"ok": True}
+
 
 # Материалы
 @router.get("/themes/{theme_id}/materials")
