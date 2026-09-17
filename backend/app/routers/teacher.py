@@ -362,6 +362,7 @@ def chat_send(theme_id: int, data: schemas.ChatIn,
                         db.query(models.GroupStudent).filter_by(group_id=gid).all()]
     notify(db, student_ids, "chat",
            f"Новое сообщение в теме «{theme.title}»",
-           body=data.text[:160], link=f"/student?theme={theme_id}")
+           body=data.text[:160],
+           link=f"/student?course={theme.course_id}&theme={theme_id}")
     db.commit(); db.refresh(m)
     return {"id": m.id}
