@@ -24,7 +24,8 @@ def create_user(data: schemas.UserIn, db: Session = Depends(get_db), _=Depends(r
         raise HTTPException(400, "role must be teacher, student or manager")
     if db.query(models.User).filter_by(username=data.username).first():
         raise HTTPException(400, "Логин занят")
-    u = models.User(role=data.role, username=data.username,
+    u = models.User(role=data.role, extra_roles=data.extra_roles or "",
+                    username=data.username,
                     password_hash=hash_password(data.password), name=data.name)
     db.add(u); db.commit(); db.refresh(u)
     return u
@@ -34,7 +35,7 @@ def create_user(data: schemas.UserIn, db: Session = Depends(get_db), _=Depends(r
 def update_user(user_id: int, data: schemas.UserUpdateIn,
                 db: Session = Depends(get_db), _=Depends(require_role("admin"))):
     u = db.query(models.User).get(user_id)
-    if not u or u.role == "admin":
+    if not u:
         raise HTTPException(404)
     if data.name is not None:
         u.name = data.name
@@ -43,6 +44,12 @@ def update_user(user_id: int, data: schemas.UserUpdateIn,
                                          models.User.id != user_id).first():
             raise HTTPException(400, "Логин занят")
         u.username = data.username
+    if data.role is not None and u.role != "admin":
+        if data.role not in ("teacher", "student", "manager"):
+            raise HTTPException(400, "Недопустимая роль")
+        u.role = data.role
+    if data.extra_roles is not None:
+        u.extra_roles = data.extra_roles
     db.commit(); db.refresh(u)
     return u
 
