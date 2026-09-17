@@ -941,7 +941,13 @@ function SettingsTab() {
                  style={{ width: "100%" }} />
         </div>
         <div style={{ marginTop: 8 }}>
-          <label>Преподаватель</label>
+          <label>Методист</label>
+          <input value={names.manager || ""}
+         onChange={e => setNames({ ...names, manager: e.target.value })}
+         style={{ width: "100%" }} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <label>Куратор</label>
           <input value={names.teacher} onChange={e => setNames({ ...names, teacher: e.target.value })}
                  style={{ width: "100%" }} />
         </div>
