@@ -70,7 +70,8 @@ function UsersTab({ users, reload }) {
                onChange={e => setForm({ ...form, password: e.target.value })} required />
         <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
           <option value="student">Ученик</option>
-          <option value="teacher">Учитель</option>
+          <option value="teacher">Куратор</option>
+          <option value="manager">Методист</option>
         </select>
         <button className="btn primary">Добавить</button>
       </form>
