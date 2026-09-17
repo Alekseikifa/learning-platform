@@ -52,8 +52,8 @@ class Material(Base):
     id = Column(Integer, primary_key=True)
     theme_id = Column(Integer, ForeignKey("themes.id"), nullable=False)
     title = Column(String, nullable=False)
-    type = Column(String, nullable=False)   # video/audio/image/document/note
-    url = Column(Text, nullable=False)      # для note — текст
+    type = Column(String, nullable=False)
+    url = Column(Text, nullable=False)
     order_index = Column(Integer, default=0)
 
 
@@ -63,7 +63,7 @@ class Test(Base):
     theme_id = Column(Integer, ForeignKey("themes.id"), unique=True, nullable=False)
     title = Column(String, nullable=False)
     passing_score = Column(Integer, default=70)
-    max_attempts = Column(Integer, default=0)   # 0 = без ограничений
+    max_attempts = Column(Integer, default=0)
 
 
 class Question(Base):
@@ -141,32 +141,10 @@ class UploadedFile(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Notification(Base):
-    __tablename__ = "notifications"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    type = Column(String, nullable=False)   # chat / announcement / attempt
-    title = Column(String, nullable=False)
-    body = Column(Text, default="")
-    link = Column(String, default="")
-    read_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class UploadedFile(Base):
-    __tablename__ = "uploaded_files"
-    id = Column(Integer, primary_key=True)
-    filename = Column(String, nullable=False)
-    original_name = Column(String)
-    mimetype = Column(String)
-    size = Column(Integer)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
-
 class PhoneInvite(Base):
-    """Приглашение: админ вносит телефон + роль, человек потом регистрируется сам."""
     __tablename__ = "phone_invites"
     id = Column(Integer, primary_key=True)
     phone = Column(String, unique=True, nullable=False, index=True)
-    role = Column(String, nullable=False)   # student / teacher / manager
-    note = Column(String, default="")       # комментарий от админа (необязательно)
+    role = Column(String, nullable=False)
+    note = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
