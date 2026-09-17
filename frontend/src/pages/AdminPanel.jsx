@@ -82,7 +82,13 @@ function UsersTab({ users, reload }) {
         <tbody>
           {users.map(u => (
             <tr key={u.id}>
-              <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td><td>{u.role}</td>
+               <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td>
+              <td>
+                {u.role}
+                {u.extra_roles && (
+                  <span className="muted small"> + {u.extra_roles}</span>
+                )}
+              </td>
               <td>
                 <button className="btn small" onClick={() => setEditing(u)}>Изм.</button>{" "}
                 <button className="btn small" onClick={() => setResetting({ id: u.id, name: u.name })}>
@@ -109,25 +115,69 @@ function UsersTab({ users, reload }) {
 }
 
 function UserEditModal({ user, onClose, onSaved }) {
+  const isAdminUser = user.role === "admin";
   const [name, setName] = useState(user.name);
   const [username, setUsername] = useState(user.username);
+  const [role, setRole] = useState(user.role);
+  const [extra, setExtra] = useState(
+    (user.extra_roles || "").split(",").map(s => s.trim()).filter(Boolean)
+  );
+
+  const toggleExtra = (r) => {
+    setExtra(extra.includes(r) ? extra.filter(x => x !== r) : [...extra, r]);
+  };
+
   const save = async () => {
     try {
+      const payload = {
+        name,
+        username,
+        extra_roles: extra.join(","),
+      };
+      if (!isAdminUser) payload.role = role;
       await api(`/api/admin/users/${user.id}`, {
-        method: "PUT", body: JSON.stringify({ name, username }),
+        method: "PUT", body: JSON.stringify(payload),
       });
       onSaved();
     } catch (e) { alert(e.message); }
   };
+
   return (
     <div className="modal-back">
-      <div className="card modal" style={{ maxWidth: 420 }}>
+      <div className="card modal" style={{ maxWidth: 480 }}>
         <h3>Редактирование пользователя</h3>
         <label>ФИО</label>
         <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%" }} />
         <label style={{ marginTop: 8, display: "block" }}>Логин</label>
         <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: "100%" }} />
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+
+        {!isAdminUser && (
+          <>
+            <label style={{ marginTop: 8, display: "block" }}>Основная роль</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={{ width: "100%" }}>
+              <option value="student">Ученик</option>
+              <option value="teacher">Куратор</option>
+              <option value="manager">Методист</option>
+            </select>
+          </>
+        )}
+
+        <label style={{ marginTop: 12, display: "block" }}>Дополнительные роли</label>
+        <div className="muted small" style={{ marginBottom: 6 }}>
+          Пользователь сможет переключаться между ролями при входе и в шапке сайта.
+        </div>
+        <div className="chips">
+          {["student", "teacher", "manager"].map(r => (
+            <label key={r} className="chip" style={{ cursor: "pointer" }}>
+              <input type="checkbox"
+                     checked={extra.includes(r)}
+                     onChange={() => toggleExtra(r)} />
+              {r === "student" ? "Ученик" : r === "teacher" ? "Куратор" : "Методист"}
+            </label>
+          ))}
+        </div>
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn ghost" onClick={onClose}>Отмена</button>
           <button className="btn primary" onClick={save}>Сохранить</button>
         </div>
