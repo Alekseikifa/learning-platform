@@ -20,8 +20,8 @@ def list_users(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
 
 @router.post("/users", response_model=schemas.UserOut)
 def create_user(data: schemas.UserIn, db: Session = Depends(get_db), _=Depends(require_role("admin"))):
-    if data.role not in ("teacher", "student"):
-        raise HTTPException(400, "role must be teacher or student")
+    if data.role not in ("teacher", "student", "manager"):
+        raise HTTPException(400, "role must be teacher, student or manager")
     if db.query(models.User).filter_by(username=data.username).first():
         raise HTTPException(400, "Логин занят")
     u = models.User(role=data.role, username=data.username,
