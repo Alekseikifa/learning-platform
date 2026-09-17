@@ -8,6 +8,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     role = Column(String, nullable=False)
+    extra_roles = Column(String, default="")   # CSV: "manager,student"
     username = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     name = Column(String, nullable=False)
