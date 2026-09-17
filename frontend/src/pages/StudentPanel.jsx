@@ -66,7 +66,7 @@ export default function StudentPanel() {
   );
 }
 
-function ThemesList({ courseId }) {
+function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
   const [themes, setThemes] = useState([]);
   const [chatFor, setChatFor] = useState(null);
 
@@ -74,11 +74,21 @@ function ThemesList({ courseId }) {
     if (!courseId) return;
     const data = await api(`/api/student/course/${courseId}/themes`);
     setThemes(data);
+    if (initialTheme) {
+      setChatFor({ chatThemeId: initialTheme, chatTitle:
+        data.find(t => t.id === initialTheme)?.title || "" });
+    }
   };
 
   useEffect(() => {
     load();
   }, [courseId]);
+
+  useEffect(() => {
+    if (chatFor?.chatThemeId === initialTheme && initialTheme && onThemeConsumed) {
+      onThemeConsumed();
+    }
+  }, [chatFor, initialTheme]);
 
   return (
     <div className="list">
