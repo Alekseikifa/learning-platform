@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from .database import Base, engine, SessionLocal
 from . import models
 from .auth import hash_password
-from .routers import auth as auth_router, admin, teacher, student, public, manager, notifications
+from .routers import (auth as auth_router, admin, teacher, student,
+                      public, manager, notifications, staff)
 
 Base.metadata.create_all(bind=engine)
 
@@ -57,6 +58,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(manager.router, prefix="/api/manager", tags=["manager"])
 app.include_router(teacher.router, prefix="/api/teacher", tags=["teacher"])
 app.include_router(student.router, prefix="/api/student", tags=["student"])
+app.include_router(staff.router, prefix="/api/staff", tags=["staff"])
 
 @app.get("/api/health")
 def health():
