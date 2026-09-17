@@ -149,3 +149,15 @@ class PhoneInvite(Base):
     role = Column(String, nullable=False)
     note = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)      # chat / announcement / attempt
+    title = Column(String, nullable=False)
+    body = Column(Text, default="")
+    link = Column(String, default="")
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
