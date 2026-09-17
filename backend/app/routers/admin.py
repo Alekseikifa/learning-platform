@@ -93,6 +93,44 @@ def change_admin_creds(data: schemas.AdminCredsIn, db: Session = Depends(get_db)
     return {"ok": True}
 
 
+# ---------- PHONE INVITES ----------
+@router.get("/invites", response_model=list[schemas.PhoneInviteOut])
+def list_invites(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
+    return (db.query(models.PhoneInvite)
+            .order_by(models.PhoneInvite.created_at.desc()).all())
+
+
+@router.post("/invites", response_model=schemas.PhoneInviteOut)
+def create_invite(data: schemas.PhoneInviteIn, db: Session = Depends(get_db),
+                  _=Depends(require_role("admin"))):
+    if data.role not in ("teacher", "student", "manager"):
+        raise HTTPException(400, "role must be teacher, student or manager")
+    # нормализуем телефон так же, как в auth.py
+    raw = (data.phone or "").strip()
+    plus = raw.startswith("+")
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    phone = ("+" if plus else "") + digits
+    if not phone:
+        raise HTTPException(400, "Введите номер телефона")
+    if db.query(models.PhoneInvite).filter_by(phone=phone).first():
+        raise HTTPException(400, "Этот номер уже приглашён")
+    if db.query(models.User).filter_by(username=phone).first():
+        raise HTTPException(400, "Этот номер уже зарегистрирован")
+    inv = models.PhoneInvite(phone=phone, role=data.role, note=data.note or "")
+    db.add(inv); db.commit(); db.refresh(inv)
+    return inv
+
+
+@router.delete("/invites/{invite_id}")
+def delete_invite(invite_id: int, db: Session = Depends(get_db),
+                  _=Depends(require_role("admin"))):
+    db.query(models.PhoneInvite).filter_by(id=invite_id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+
+
 # ---------- SETTINGS ----------
 @router.get("/settings/roles")
 def get_role_names(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
