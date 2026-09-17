@@ -151,3 +151,22 @@ class Notification(Base):
     link = Column(String, default="")
     read_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String, nullable=False)
+    original_name = Column(String)
+    mimetype = Column(String)
+    size = Column(Integer)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+class PhoneInvite(Base):
+    """Приглашение: админ вносит телефон + роль, человек потом регистрируется сам."""
+    __tablename__ = "phone_invites"
+    id = Column(Integer, primary_key=True)
+    phone = Column(String, unique=True, nullable=False, index=True)
+    role = Column(String, nullable=False)   # student / teacher / manager
+    note = Column(String, default="")       # комментарий от админа (необязательно)
+    created_at = Column(DateTime, default=datetime.utcnow)
