@@ -4,6 +4,20 @@ import AdminPanel from "./pages/AdminPanel";
 import TeacherPanel from "./pages/TeacherPanel";
 import StudentPanel from "./pages/StudentPanel";
 import { getToken, getUser } from "./api";
+import ManagerPanel from "./pages/ManagerPanel";
+
+// в Private заменить навигацию:
+if (role && user.role !== role) {
+  const path = user.role === "admin" ? "/admin"
+             : user.role === "manager" ? "/manager"
+             : user.role === "teacher" ? "/teacher" : "/student";
+  return <Navigate to={path} replace />;
+}
+
+// в Routes:
+<Route path="/manager" element={<Private role="manager"><ManagerPanel /></Private>} />
+
+
 
 function Private({ role, children }) {
   if (!getToken()) return <Navigate to="/login" replace />;
