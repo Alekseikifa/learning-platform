@@ -5,6 +5,7 @@ import ManagerPanel from "./pages/ManagerPanel";
 import TeacherPanel from "./pages/TeacherPanel";
 import StudentPanel from "./pages/StudentPanel";
 import { getToken, getUser } from "./api";
+import Register from "./pages/Register";
 
 function Private({ role, children }) {
   if (!getToken()) return <Navigate to="/login" replace />;
@@ -28,6 +29,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route
           path="/admin"
           element={<Private role="admin"><AdminPanel /></Private>}
