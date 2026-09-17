@@ -40,7 +40,7 @@ export default function Register() {
         body: JSON.stringify(form),
       });
       setToken(r.access_token);
-      setUser({ role: r.role, name: r.name });
+      setUser({ role: r.role, roles: r.roles || [r.role], name: r.name });
       const dest = r.role === "admin" ? "/admin"
                  : r.role === "manager" ? "/manager"
                  : r.role === "teacher" ? "/teacher" : "/student";
