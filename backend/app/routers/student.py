@@ -121,6 +121,18 @@ def submit_test(test_id: int, data: schemas.SubmitIn,
     for qid, chosen, ok in aa_rows:
         db.add(models.AttemptAnswer(attempt_id=a.id, question_id=qid,
                                      answer_id=chosen, is_correct=ok))
+
+    # уведомляем кураторов групп ученика
+    from .notifications import notify
+    gids = [gs.group_id for gs in db.query(models.GroupStudent).filter_by(user_id=user.id).all()]
+    teacher_ids = []
+    for gid in gids:
+        teacher_ids += [gt.teacher_id for gt in
+                        db.query(models.GroupTeacher).filter_by(group_id=gid).all()]
+    notify(db, teacher_ids, "attempt",
+           f"{user.name}: тест «{test.title}» — {score}%",
+           body="сдан" if passed else "не сдан",
+           link="/teacher?tab=attempts")
     db.commit()
     return {"attempt_id": a.id, "score": score, "passed": passed,
             "correct": correct, "total": total,
@@ -214,10 +226,22 @@ def chat_list(theme_id: int, db: Session = Depends(get_db),
 @router.post("/themes/{theme_id}/chat")
 def chat_send(theme_id: int, data: schemas.ChatIn,
               db: Session = Depends(get_db), user=Depends(require_role("student"))):
+    from .notifications import notify
     theme = db.query(models.Theme).get(theme_id)
     if not theme: raise HTTPException(404)
     if not _in_course(user.id, theme.course_id, db):
         raise HTTPException(403)
     m = models.ChatMessage(theme_id=theme_id, user_id=user.id, text=data.text)
-    db.add(m); db.commit(); db.refresh(m)
+    db.add(m); db.flush()
+
+    gids = [gs.group_id for gs in db.query(models.GroupStudent).filter_by(user_id=user.id).all()]
+    gids = [g for g in gids if db.query(models.Group).get(g).course_id == theme.course_id]
+    teacher_ids = []
+    for gid in gids:
+        teacher_ids += [gt.teacher_id for gt in
+                        db.query(models.GroupTeacher).filter_by(group_id=gid).all()]
+    notify(db, teacher_ids, "chat",
+           f"Новое сообщение от {user.name} в «{theme.title}»",
+           body=data.text[:160], link=f"/teacher?theme={theme_id}")
+    db.commit(); db.refresh(m)
     return {"id": m.id}
