@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { api, setToken, setUser } from "../api";
 import { SCHOOL_NAME } from "../components/Layout";
 
@@ -39,6 +39,9 @@ export default function Login() {
         <input type="password" placeholder="Пароль" value={p} onChange={e => setP(e.target.value)} />
         {err && <div className="error">{err}</div>}
         <button className="btn primary" disabled={busy}>{busy ? "..." : "Войти"}</button>
+        <div className="muted small" style={{ textAlign: "center" }}>
+          Нет аккаунта? <Link to="/register">Зарегистрироваться по телефону</Link>
+        </div>
       </form>
     </div>
   );
