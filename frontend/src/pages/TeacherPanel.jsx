@@ -23,28 +23,38 @@ export default function TeacherPanel() {
   const [groups, setGroups] = useState([]);
   const [groupId, setGroupId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialThemeId = searchParams.get("theme");
-  const [pendingTheme, setPendingTheme] = useState(initialThemeId ? +initialThemeId : null);
+  const [pendingTheme, setPendingTheme] = useState(null);
 
+  // 1. Загружаем группы
   useEffect(() => {
-    (async () => {
-      const gs = await api("/api/teacher/groups");
-      setGroups(gs);
-
-      let targetGroupId = gs[0]?.id;
-      if (initialThemeId) {
-        try {
-          const theme = await api(`/api/public/theme/${initialThemeId}`);
-          const matching = gs.find(g => g.course_id === theme.course_id);
-          if (matching) {
-            targetGroupId = matching.id;
-            setTab("students");   // открываем вкладку «Ученики», там чат
-          }
-        } catch {}
-      }
-      if (targetGroupId) setGroupId(targetGroupId);
-    })();
+    api("/api/teacher/groups").then(setGroups);
   }, []);
+
+  // 2. Дефолтная группа
+  useEffect(() => {
+    if (!groupId && groups[0]) setGroupId(groups[0].id);
+  }, [groups, groupId]);
+
+  // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению
+  useEffect(() => {
+    const urlTheme = searchParams.get("theme");
+    if (urlTheme) {
+      setPendingTheme(+urlTheme);
+      setTab("students");
+    }
+  }, [searchParams.toString()]);
+
+  // 4. Выбираем группу по теме
+  useEffect(() => {
+    if (!pendingTheme || !groups.length) return;
+    (async () => {
+      try {
+        const theme = await api(`/api/public/theme/${pendingTheme}`);
+        const matching = groups.find(g => g.course_id === theme.course_id);
+        if (matching) setGroupId(matching.id);
+      } catch (e) { console.error(e); }
+    })();
+  }, [pendingTheme, groups]);
 
   return (
     <Layout title="Панель преподавателя" tabs={TABS} active={tab} onChange={setTab}>
