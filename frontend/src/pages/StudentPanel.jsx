@@ -19,23 +19,25 @@ export default function StudentPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingTheme, setPendingTheme] = useState(null);
 
+  // 1. Загружаем курсы один раз
   useEffect(() => {
-    (async () => {
-      const cs = await api("/api/student/courses");
+    api("/api/student/courses").then(cs => {
       setCourses(cs);
-
-      const urlCourse = searchParams.get("course");
-      const urlTheme = searchParams.get("theme");
-
-      if (urlCourse && cs.find(c => c.id === +urlCourse)) {
-        setCourseId(+urlCourse);
-      } else if (cs[0]) {
-        setCourseId(cs[0].id);
-      }
-
-      if (urlTheme) setPendingTheme(+urlTheme);
-    })();
+    });
   }, []);
+
+  // 2. Ставим дефолтный курс, если ещё не выбран
+  useEffect(() => {
+    if (!courseId && courses[0]) setCourseId(courses[0].id);
+  }, [courses, courseId]);
+
+  // 3. Реакция на URL — срабатывает и при монтировании, и при клике по уведомлению
+  useEffect(() => {
+    const urlCourse = searchParams.get("course");
+    const urlTheme = searchParams.get("theme");
+    if (urlCourse) setCourseId(+urlCourse);
+    if (urlTheme) setPendingTheme(+urlTheme);
+  }, [searchParams.toString()]);
 
   return (
     <Layout title="Кабинет ученика" tabs={TABS} active={tab} onChange={setTab}>
@@ -70,25 +72,23 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
   const [themes, setThemes] = useState([]);
   const [chatFor, setChatFor] = useState(null);
 
-  const load = async () => {
-    if (!courseId) return;
-    const data = await api(`/api/student/course/${courseId}/themes`);
-    setThemes(data);
-    if (initialTheme) {
-      setChatFor({ chatThemeId: initialTheme, chatTitle:
-        data.find(t => t.id === initialTheme)?.title || "" });
-    }
-  };
-
+  // загрузка тем
   useEffect(() => {
-    load();
+    if (!courseId) return;
+    api(`/api/student/course/${courseId}/themes`).then(setThemes);
   }, [courseId]);
 
+  // открываем чат при получении initialTheme
   useEffect(() => {
-    if (chatFor?.chatThemeId === initialTheme && initialTheme && onThemeConsumed) {
-      onThemeConsumed();
+    if (initialTheme && themes.length) {
+      const found = themes.find(t => t.id === initialTheme);
+      setChatFor({
+        chatThemeId: initialTheme,
+        chatTitle: found?.title || "",
+      });
+      if (onThemeConsumed) onThemeConsumed();
     }
-  }, [chatFor, initialTheme]);
+  }, [initialTheme, themes]);
 
   return (
     <div className="list">
@@ -135,7 +135,8 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
               )}
 
               <div style={{ marginTop: 12 }}>
-                <button className="btn" onClick={() => setChatFor({ chatThemeId: th.id, chatTitle: th.title })}>
+                <button className="btn"
+                        onClick={() => setChatFor({ chatThemeId: th.id, chatTitle: th.title })}>
                   💬 Обсуждение темы
                 </button>
               </div>
@@ -148,7 +149,7 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
 
       {chatFor?.test && (
         <TestModal testId={chatFor.test.id} onClose={() => setChatFor(null)}
-                   onDone={() => { setChatFor(null); load(); }} />
+                   onDone={() => { setChatFor(null); }} />
       )}
       {chatFor?.chatThemeId && (
         <div className="modal-back">
