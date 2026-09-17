@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import SearchSelect from "../components/SearchSelect";
 import { api, uploadFile } from "../api";
+import AnnouncementsPanel from "../components/AnnouncementsPanel";
+import StaffChatsPanel from "../components/StaffChatsPanel";
 
 const TABS = [
-  { id: "students",  label: "Ученики" },
-  { id: "materials", label: "Материалы" },
-  { id: "uploads",   label: "Файлы" },
+  { id: "students",      label: "Ученики" },
+  { id: "materials",     label: "Материалы" },
+  { id: "announcements", label: "Объявления" },
+  { id: "chats",         label: "Чаты" },
+  { id: "uploads",       label: "Файлы" },
 ];
 
 const MAT_TYPES = [
@@ -33,9 +37,11 @@ export default function ManagerPanel() {
 
   return (
     <Layout title="Панель методиста" tabs={TABS} active={tab} onChange={setTab}>
-      {tab === "students"  && <StudentsTab groups={groups} users={users} reload={reload} />}
-      {tab === "materials" && <MaterialsTab courses={courses} />}
-      {tab === "uploads"   && <UploadsTab />}
+      {tab === "students"      && <StudentsTab groups={groups} users={users} reload={reload} />}
+      {tab === "materials"     && <MaterialsTab courses={courses} />}
+      {tab === "announcements" && <AnnouncementsPanel />}
+      {tab === "chats"         && <StaffChatsPanel />}
+      {tab === "uploads"       && <UploadsTab />}
     </Layout>
   );
 }
