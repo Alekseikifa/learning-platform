@@ -29,23 +29,18 @@ class PhoneInviteOut(BaseModel):
     note: str
     created_at: datetime
 
-class TokenOut(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    role: str
-    name: str
-
-
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     role: str
+    extra_roles: str = ""
     username: str
     name: str
 
 
 class UserIn(BaseModel):
     role: str
+    extra_roles: str = ""
     username: str
     password: str
     name: str
@@ -54,6 +49,16 @@ class UserIn(BaseModel):
 class UserUpdateIn(BaseModel):
     name: Optional[str] = None
     username: Optional[str] = None
+    role: Optional[str] = None
+    extra_roles: Optional[str] = None
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    roles: List[str] = []
+    name: str
 
 
 class PasswordResetIn(BaseModel):
@@ -182,3 +187,7 @@ class FileOut(BaseModel):
 
 class SubmitIn(BaseModel):
     answers: Dict[int, int]
+
+
+class SwitchRoleIn(BaseModel):
+    role: str
