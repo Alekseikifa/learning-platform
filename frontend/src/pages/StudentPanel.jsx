@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
@@ -15,12 +16,25 @@ export default function StudentPanel() {
   const [tab, setTab] = useState("themes");
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [pendingTheme, setPendingTheme] = useState(null);
 
   useEffect(() => {
-    api("/api/student/courses").then(cs => {
+    (async () => {
+      const cs = await api("/api/student/courses");
       setCourses(cs);
-      if (cs[0]) setCourseId(cs[0].id);
-    });
+
+      const urlCourse = searchParams.get("course");
+      const urlTheme = searchParams.get("theme");
+
+      if (urlCourse && cs.find(c => c.id === +urlCourse)) {
+        setCourseId(+urlCourse);
+      } else if (cs[0]) {
+        setCourseId(cs[0].id);
+      }
+
+      if (urlTheme) setPendingTheme(+urlTheme);
+    })();
   }, []);
 
   return (
