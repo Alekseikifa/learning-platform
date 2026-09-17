@@ -337,8 +337,21 @@ def chat_list(theme_id: int, db: Session = Depends(get_db),
 @router.post("/themes/{theme_id}/chat")
 def chat_send(theme_id: int, data: schemas.ChatIn,
               db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+    from .notifications import notify
     theme = db.query(models.Theme).get(theme_id)
     if not theme: raise HTTPException(404)
     m = models.ChatMessage(theme_id=theme_id, user_id=user.id, text=data.text)
-    db.add(m); db.commit(); db.refresh(m)
+    db.add(m); db.flush()
+
+    # уведомляем учеников всех групп этого курса, где есть этот преподаватель
+    gids = _my_group_ids(user.id, db)
+    target_groups = [g for g in gids if db.query(models.Group).get(g).course_id == theme.course_id]
+    student_ids = []
+    for gid in target_groups:
+        student_ids += [gs.user_id for gs in
+                        db.query(models.GroupStudent).filter_by(group_id=gid).all()]
+    notify(db, student_ids, "chat",
+           f"Новое сообщение в теме «{theme.title}»",
+           body=data.text[:160], link=f"/student?theme={theme_id}")
+    db.commit(); db.refresh(m)
     return {"id": m.id}
