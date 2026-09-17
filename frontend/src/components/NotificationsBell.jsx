@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-
-const SCHOOL = "МКУ — Международные Курсы Ученичества";
 
 export default function NotificationsBell() {
   const [count, setCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const ref = useRef(null);
+  const nav = useNavigate();
 
   const loadCount = async () => {
     try {
@@ -39,13 +39,18 @@ export default function NotificationsBell() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const markRead = async (id) => {
+  const openNotification = async (n) => {
     try {
-      await api(`/api/notifications/${id}/read`, { method: "POST" });
-      setItems(items => items.map(n => n.id === id ? { ...n, read: true } : n));
+      await api(`/api/notifications/${n.id}/read`, { method: "POST" });
+      setItems(items => items.map(x => x.id === n.id ? { ...x, read: true } : x));
       loadCount();
     } catch {}
+    setOpen(false);
+    if (n.link) {
+      nav(n.link);
+    }
   };
+
   const markAll = async () => {
     try {
       await api("/api/notifications/read-all", { method: "POST" });
@@ -72,7 +77,8 @@ export default function NotificationsBell() {
           {items.map(n => (
             <div key={n.id}
                  className={"notif-item " + (n.read ? "" : "unread")}
-                 onClick={() => markRead(n.id)}>
+                 onClick={() => openNotification(n)}
+                 style={{ cursor: n.link ? "pointer" : "default" }}>
               <div className="notif-title">{n.title}</div>
               {n.body && <div className="notif-body">{n.body}</div>}
               <div className="notif-time">
@@ -86,4 +92,4 @@ export default function NotificationsBell() {
   );
 }
 
-export { SCHOOL };
+export const SCHOOL_NAME = "МКУ — Международные Курсы Ученичества";
