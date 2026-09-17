@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, setToken, setUser } from "../api";
+import { SCHOOL_NAME } from "../components/Layout";
 
 export default function Login() {
   const [u, setU] = useState("");
@@ -19,23 +20,25 @@ export default function Login() {
       });
       setToken(r.access_token);
       setUser({ role: r.role, name: r.name });
-      nav(r.role === "admin" ? "/admin" : r.role === "teacher" ? "/teacher" : "/student");
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+      const dest = r.role === "admin" ? "/admin"
+                 : r.role === "manager" ? "/manager"
+                 : r.role === "teacher" ? "/teacher" : "/student";
+      nav(dest);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="login-wrap">
       <form className="card login-card" onSubmit={submit}>
-        <h2>Вход в платформу</h2>
+        <div className="logo">
+          <h1>{SCHOOL_NAME}</h1>
+          <div className="sub">Вход в систему</div>
+        </div>
         <input placeholder="Логин" value={u} onChange={e => setU(e.target.value)} autoFocus />
         <input type="password" placeholder="Пароль" value={p} onChange={e => setP(e.target.value)} />
         {err && <div className="error">{err}</div>}
         <button className="btn primary" disabled={busy}>{busy ? "..." : "Войти"}</button>
-        <div className="muted small">По умолчанию: admin / admin</div>
       </form>
     </div>
   );
