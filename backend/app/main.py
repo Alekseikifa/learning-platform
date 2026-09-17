@@ -9,6 +9,15 @@ from .routers import auth as auth_router, admin, teacher, student, public, manag
 
 Base.metadata.create_all(bind=engine)
 
+# Простая миграция: добавить колонку extra_roles, если её нет
+with engine.connect() as conn:
+    try:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN extra_roles VARCHAR DEFAULT ''")
+        conn.commit()
+        print("→ Добавлена колонка users.extra_roles")
+    except Exception:
+        pass  # колонка уже есть
+
 db = SessionLocal()
 if not db.query(models.User).filter_by(role="admin").first():
     db.add(models.User(role="admin", username="admin",
