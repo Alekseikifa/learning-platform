@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, getUser, setToken, setUser, logout } from "../api";
 
 const ROLE_LABELS = {
@@ -12,6 +13,7 @@ export default function RoleSwitcher() {
   const user = getUser();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const nav = useNavigate();
 
   if (!user || !user.roles || user.roles.length < 2) return null;
 
@@ -25,9 +27,11 @@ export default function RoleSwitcher() {
       });
       setToken(r.access_token);
       setUser({ role: r.role, roles: r.roles, name: r.name });
-      // перезагрузка, чтобы все панели подхватили новую роль
-      window.location.href = `/${r.role}`;
-    } catch (e) { alert(e.message); setBusy(false); }
+      setOpen(false);
+      // SPA-навигация без перезагрузки страницы
+      nav(`/${r.role}`, { replace: true });
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
   };
 
   return (
