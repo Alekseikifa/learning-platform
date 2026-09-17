@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
@@ -21,12 +22,28 @@ export default function TeacherPanel() {
   const [tab, setTab] = useState("students");
   const [groups, setGroups] = useState([]);
   const [groupId, setGroupId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialThemeId = searchParams.get("theme");
+  const [pendingTheme, setPendingTheme] = useState(initialThemeId ? +initialThemeId : null);
 
   useEffect(() => {
-    api("/api/teacher/groups").then(gs => {
+    (async () => {
+      const gs = await api("/api/teacher/groups");
       setGroups(gs);
-      if (gs[0]) setGroupId(gs[0].id);
-    });
+
+      let targetGroupId = gs[0]?.id;
+      if (initialThemeId) {
+        try {
+          const theme = await api(`/api/public/theme/${initialThemeId}`);
+          const matching = gs.find(g => g.course_id === theme.course_id);
+          if (matching) {
+            targetGroupId = matching.id;
+            setTab("students");   // открываем вкладку «Ученики», там чат
+          }
+        } catch {}
+      }
+      if (targetGroupId) setGroupId(targetGroupId);
+    })();
   }, []);
 
   return (
@@ -44,7 +61,14 @@ export default function TeacherPanel() {
 
       {!groups.length && <div className="card muted">Вам ещё не назначены группы</div>}
 
-      {groupId && tab === "students"      && <StudentsTab groupId={+groupId} />}
+       {groupId && tab === "students"      && (
+        <StudentsTab groupId={+groupId}
+                     initialTheme={pendingTheme}
+                     onThemeConsumed={() => {
+                       setPendingTheme(null);
+                       setSearchParams({}, { replace: true });
+                     }} />
+      )}
       {groupId && tab === "progress"      && <ProgressTable groupId={+groupId} />}
       {groupId && tab === "attempts"      && <AttemptsTab groupId={+groupId} />}
       {groupId && tab === "analytics"     && <AnalyticsTab groupId={+groupId} />}
@@ -53,15 +77,26 @@ export default function TeacherPanel() {
   );
 }
 
-function StudentsTab({ groupId }) {
+function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   const [students, setStudents] = useState([]);
-  const [chatFor, setChatFor] = useState(null);
+  const [chatFor, setChatFor] = useState(initialTheme || null);
   const [themes, setThemes] = useState([]);
 
   useEffect(() => {
     api(`/api/teacher/groups/${groupId}/students`).then(setStudents);
-    api(`/api/teacher/groups/${groupId}/progress`).then(p => setThemes(p.themes));
+    api(`/api/teacher/groups/${groupId}/progress`).then(p => {
+      setThemes(p.themes);
+      // если пришло уведомление и группу нашли — открываем чат
+      if (initialTheme) setChatFor(initialTheme);
+    });
   }, [groupId]);
+
+  useEffect(() => {
+    // когда чат открыли «извне» — сообщаем наверх, чтобы почистить URL
+    if (chatFor === initialTheme && initialTheme && onThemeConsumed) {
+      onThemeConsumed();
+    }
+  }, [chatFor, initialTheme]);
 
   return (
     <div className="card">
