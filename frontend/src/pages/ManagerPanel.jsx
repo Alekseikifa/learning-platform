@@ -152,11 +152,6 @@ function MaterialsTab({ courses }) {
     setForm({ title: "", type: "video", url: "", order_index: 0 });
     reload();
   };
-  const del = async (id) => {
-    if (!confirm("Удалить материал?")) return;
-    await api("/api/manager/materials/" + id, { method: "DELETE" });
-    reload();
-  };
   const onUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setUploading(true);
@@ -193,42 +188,115 @@ function MaterialsTab({ courses }) {
               <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
                 {MAT_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
               </select>
-              <input type="number" value={form.order_index}
-                     onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 90 }} />
+              <input type="number" placeholder="Порядок" value={form.order_index}
+                     onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 100 }} />
             </div>
             {form.type === "note" ? (
-              <textarea value={form.url} onChange={e => setForm({ ...form, url: e.target.value })}
-                        rows={3} style={{ width: "100%" }} placeholder="Текст заметки" />
+              <textarea placeholder="Текст заметки" value={form.url}
+                        onChange={e => setForm({ ...form, url: e.target.value })}
+                        rows={3} style={{ width: "100%" }} required />
             ) : (
               <div className="row">
-                <input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })}
-                       placeholder="URL или загрузите файл →" required style={{ flex: 1 }} />
+                <input placeholder="URL или загрузите файл →" value={form.url}
+                       onChange={e => setForm({ ...form, url: e.target.value })} required style={{ flex: 1 }} />
                 <label className="btn">
                   {uploading ? "Загрузка..." : "Загрузить файл"}
                   <input type="file" hidden onChange={onUpload} />
                 </label>
               </div>
             )}
-            <button className="btn primary" style={{ marginTop: 8 }}>Добавить</button>
+            <button className="btn primary" style={{ marginTop: 6 }}>Добавить материал</button>
           </form>
 
           <div className="list">
             {materials.map(m => (
-              <div className="card spread" key={m.id}>
-                <div>
-                  <b>#{m.order_index} [{m.type}] {m.title}</b>
-                  <div className="muted small">
-                    {m.type === "note" ? m.url.slice(0, 100) + "…" :
-                      <a href={m.url} target="_blank" rel="noreferrer">{m.url}</a>}
-                  </div>
-                </div>
-                <button className="btn danger small" onClick={() => del(m.id)}>✕</button>
-              </div>
+              <ManagerMaterialRow key={m.id} material={m} reload={reload} />
             ))}
             {!materials.length && <div className="muted">Материалов пока нет</div>}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ManagerMaterialRow({ material, reload }) {
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState({
+    title: material.title, type: material.type,
+    url: material.url, order_index: material.order_index,
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const save = async () => {
+    try {
+      await api(`/api/manager/materials/${material.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...form, order_index: +form.order_index }),
+      });
+      setEdit(false);
+      reload();
+    } catch (e) { alert(e.message); }
+  };
+  const del = async () => {
+    if (!confirm("Удалить материал?")) return;
+    await api("/api/manager/materials/" + material.id, { method: "DELETE" });
+    reload();
+  };
+  const onUpload = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setUploading(true);
+    try {
+      const rec = await uploadFile(file, "/api/manager/uploads");
+      setForm(f => ({ ...f, url: "/uploads/" + rec.filename }));
+    } catch (e) { alert(e.message); }
+    finally { setUploading(false); e.target.value = ""; }
+  };
+
+  if (!edit) {
+    return (
+      <div className="card spread">
+        <div>
+          <b>#{material.order_index} [{material.type}] {material.title}</b>
+          <div className="muted small">
+            {material.type === "note"
+              ? material.url.slice(0, 100) + (material.url.length > 100 ? "…" : "")
+              : <a href={material.url} target="_blank" rel="noreferrer">{material.url}</a>}
+          </div>
+        </div>
+        <div>
+          <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
+          <button className="btn danger small" onClick={del}>✕</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <div className="row">
+        <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={{ flex: 1 }} />
+        <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+          {MAT_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
+        </select>
+        <input type="number" value={form.order_index}
+               onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 90 }} />
+      </div>
+      {form.type === "note" ? (
+        <textarea value={form.url} onChange={e => setForm({ ...form, url: e.target.value })}
+                  rows={4} style={{ width: "100%", marginTop: 6 }} />
+      ) : (
+        <div className="row" style={{ marginTop: 6 }}>
+          <input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} style={{ flex: 1 }} />
+          <label className="btn">
+            {uploading ? "Загрузка..." : "Заменить файл"}
+            <input type="file" hidden onChange={onUpload} />
+          </label>
+        </div>
+      )}
+      <div className="row" style={{ marginTop: 6, justifyContent: "flex-end" }}>
+        <button className="btn ghost" onClick={() => setEdit(false)}>Отмена</button>
+        <button className="btn primary" onClick={save}>Сохранить</button>
+      </div>
     </div>
   );
 }
@@ -273,6 +341,59 @@ function UploadsTab() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ---------- Модалка редактирования ученика ---------- */
+function UserEditModal({ user, onClose, onSaved }) {
+  const [name, setName] = useState(user.name);
+  const [username, setUsername] = useState(user.username);
+
+  const save = async () => {
+    try {
+      await api(`/api/manager/students/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, username }),
+      });
+      onSaved();
+    } catch (e) { alert(e.message); }
+  };
+
+  return (
+    <div className="modal-back">
+      <div className="card modal" style={{ maxWidth: 420 }}>
+        <h3>Редактирование ученика</h3>
+        <label>ФИО</label>
+        <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%" }} />
+        <label style={{ marginTop: 8, display: "block" }}>Логин</label>
+        <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: "100%" }} />
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+          <button className="btn ghost" onClick={onClose}>Отмена</button>
+          <button className="btn primary" onClick={save}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Модалка смены пароля ---------- */
+function PasswordModal({ name, onClose, onSubmit }) {
+  const [pw, setPw] = useState("");
+  return (
+    <div className="modal-back">
+      <div className="card modal" style={{ maxWidth: 420 }}>
+        <h3>Смена пароля</h3>
+        <div className="muted small">Пользователь: <b>{name}</b></div>
+        <input type="text" placeholder="Новый пароль" value={pw}
+               onChange={e => setPw(e.target.value)} autoFocus
+               style={{ width: "100%", marginTop: 10 }} />
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+          <button className="btn ghost" onClick={onClose}>Отмена</button>
+          <button className="btn primary" disabled={!pw}
+                  onClick={() => onSubmit(pw)}>Сохранить</button>
+        </div>
+      </div>
     </div>
   );
 }
