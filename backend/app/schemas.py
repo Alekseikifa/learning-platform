@@ -8,6 +8,27 @@ class LoginIn(BaseModel):
     password: str
 
 
+class RegisterIn(BaseModel):
+    name: str
+    phone: str
+    password: str
+    password_confirm: str
+
+
+class PhoneInviteIn(BaseModel):
+    phone: str
+    role: str
+    note: str = ""
+
+
+class PhoneInviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    phone: str
+    role: str
+    note: str
+    created_at: datetime
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
