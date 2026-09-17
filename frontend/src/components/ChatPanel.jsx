@@ -12,7 +12,11 @@ export default function ChatPanel({ themeId, apiBase }) {
     try {
       const list = await api(`${apiBase}/themes/${themeId}/chat`);
       setMessages(list);
-    } catch (e) { setErr(e.message); }
+      setErr("");
+    } catch (e) {
+      console.error("ChatPanel error:", e);
+      setErr(e.message || "Не удалось загрузить сообщения");
+    }
   };
 
   useEffect(() => {
