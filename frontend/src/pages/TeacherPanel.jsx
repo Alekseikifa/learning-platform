@@ -89,17 +89,21 @@ export default function TeacherPanel() {
 
 function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   const [students, setStudents] = useState([]);
-  const [chatFor, setChatFor] = useState(initialTheme || null);
+  const [chatFor, setChatFor] = useState(null);
   const [themes, setThemes] = useState([]);
 
   useEffect(() => {
     api(`/api/teacher/groups/${groupId}/students`).then(setStudents);
-    api(`/api/teacher/groups/${groupId}/progress`).then(p => {
-      setThemes(p.themes);
-      // если пришло уведомление и группу нашли — открываем чат
-      if (initialTheme) setChatFor(initialTheme);
-    });
+    api(`/api/teacher/groups/${groupId}/progress`).then(p => setThemes(p.themes));
   }, [groupId]);
+
+  // реакция на initialTheme от уведомления
+  useEffect(() => {
+    if (initialTheme) {
+      setChatFor(initialTheme);
+      if (onThemeConsumed) onThemeConsumed();
+    }
+  }, [initialTheme]);
 
   useEffect(() => {
     // когда чат открыли «извне» — сообщаем наверх, чтобы почистить URL
