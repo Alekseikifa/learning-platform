@@ -2,17 +2,21 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import SearchSelect from "../components/SearchSelect";
 import Collapsible from "../components/Collapsible";
+import AnnouncementsPanel from "../components/AnnouncementsPanel";
+import StaffChatsPanel from "../components/StaffChatsPanel";
 import { api, uploadFile } from "../api";
 
 const TABS = [
-  { id: "users",     label: "Пользователи" },
-  { id: "invites",   label: "Приглашения" },
-  { id: "courses",   label: "Курсы и темы" },
-  { id: "groups",    label: "Группы" },
-  { id: "materials", label: "Материалы" },
-  { id: "tests",     label: "Тесты" },
-  { id: "uploads",   label: "Файлы" },
-  { id: "settings",  label: "Настройки" },
+  { id: "users",         label: "Пользователи" },
+  { id: "invites",       label: "Приглашения" },
+  { id: "courses",       label: "Курсы и темы" },
+  { id: "groups",        label: "Группы" },
+  { id: "materials",     label: "Материалы" },
+  { id: "tests",         label: "Тесты" },
+  { id: "announcements", label: "Объявления" },
+  { id: "chats",         label: "Чаты" },
+  { id: "uploads",       label: "Файлы" },
+  { id: "settings",      label: "Настройки" },
 ];
 
 export default function AdminPanel() {
@@ -34,9 +38,11 @@ export default function AdminPanel() {
       {tab === "courses"   && <CoursesTab courses={courses} reload={reload} />}
       {tab === "groups"    && <GroupsTab courses={courses} users={users} reload={reload} />}
       {tab === "materials" && <MaterialsTab courses={courses} />}
-      {tab === "tests"     && <TestsTab courses={courses} />}
-      {tab === "uploads"   && <UploadsTab />}
-      {tab === "settings"  && <SettingsTab />}
+      {tab === "tests"         && <TestsTab courses={courses} />}
+      {tab === "announcements" && <AnnouncementsPanel />}
+      {tab === "chats"         && <StaffChatsPanel />}
+      {tab === "uploads"       && <UploadsTab />}
+      {tab === "settings"      && <SettingsTab />}
     </Layout>
   );
 }
