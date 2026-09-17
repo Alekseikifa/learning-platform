@@ -1,5 +1,6 @@
 import { logout, getUser } from "../api";
 import NotificationsBell from "./NotificationsBell";
+import RoleSwitcher from "./RoleSwitcher";
 
 export const SCHOOL_NAME = "МКУ — Международные Курсы Ученичества";
 
@@ -16,6 +17,7 @@ export default function Layout({ title, tabs, active, onChange, children }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <NotificationsBell />
+          <RoleSwitcher />
           <span className="user">
             <b>{user?.name}</b>
           </span>
