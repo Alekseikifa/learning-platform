@@ -11,8 +11,11 @@ export default function NotificationsBell() {
 
   const loadCount = async () => {
     try {
-      const { count } = await api("/api/notifications/unread-count");
-      setCount(count);
+      const [a, b] = await Promise.all([
+        api("/api/notifications/unread-count").catch(() => ({ count: 0 })),
+        api("/api/messages/unread-count").catch(() => ({ count: 0 })),
+      ]);
+      setCount((a.count || 0) + (b.count || 0));
     } catch {}
   };
   const loadList = async () => {
