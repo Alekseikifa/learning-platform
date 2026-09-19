@@ -19,6 +19,27 @@ with engine.connect() as conn:
     except Exception:
         pass  # колонка уже есть
 
+      # 4. Таблица direct_messages
+    try:
+        conn.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS direct_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                read_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sender_id) REFERENCES users (id),
+                FOREIGN KEY (recipient_id) REFERENCES users (id)
+            )
+        """)
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_dm_sender ON direct_messages (sender_id)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_dm_recipient ON direct_messages (recipient_id)")
+        conn.commit()
+        print("→ Таблица direct_messages готова")
+    except Exception as e:
+        print(f"→ direct_messages: {e}")
+
 db = SessionLocal()
 if not db.query(models.User).filter_by(role="admin").first():
     db.add(models.User(role="admin", username="admin",
