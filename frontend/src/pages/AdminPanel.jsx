@@ -8,6 +8,7 @@ import { api, uploadFile } from "../api";
 
 const TABS = [
   { id: "users",         label: "Пользователи" },
+  { id: "messages",      label: "Сообщения" },
   { id: "invites",       label: "Приглашения" },
   { id: "courses",       label: "Курсы и темы" },
   { id: "groups",        label: "Группы" },
@@ -34,6 +35,7 @@ export default function AdminPanel() {
   return (
     <Layout title="Панель администратора" tabs={TABS} active={tab} onChange={setTab}>
       {tab === "users"     && <UsersTab users={users} reload={reload} />}
+      {tab === "messages"      && <DirectMessages />}
       {tab === "invites"   && <InvitesTab />}
       {tab === "courses"   && <CoursesTab courses={courses} reload={reload} />}
       {tab === "groups"    && <GroupsTab courses={courses} users={users} reload={reload} />}
