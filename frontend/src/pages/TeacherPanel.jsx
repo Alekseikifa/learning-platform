@@ -1,3 +1,4 @@
+import DirectMessages from "../components/DirectMessages";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
@@ -16,6 +17,7 @@ const TABS = [
   { id: "attempts",      label: "Попытки" },
   { id: "analytics",     label: "Аналитика" },
   { id: "announcements", label: "Объявления" },
+  { id: "messages",      label: "Сообщения" },
 ];
 
 export default function TeacherPanel() {
@@ -38,10 +40,12 @@ export default function TeacherPanel() {
   // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению
   useEffect(() => {
     const urlTheme = searchParams.get("theme");
+    const urlTab = searchParams.get("tab");
     if (urlTheme) {
       setPendingTheme(+urlTheme);
       setTab("students");
     }
+    if (urlTab) setTab(urlTab);
   }, [searchParams.toString()]);
 
   // 4. Выбираем группу по теме
@@ -83,6 +87,7 @@ export default function TeacherPanel() {
       {groupId && tab === "attempts"      && <AttemptsTab groupId={+groupId} />}
       {groupId && tab === "analytics"     && <AnalyticsTab groupId={+groupId} />}
       {groupId && tab === "announcements" && <AnnouncementsTab groups={groups} />}
+      {tab === "messages"                   && <DirectMessages />}
     </Layout>
   );
 }
