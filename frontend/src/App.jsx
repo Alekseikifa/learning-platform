@@ -11,16 +11,12 @@ function Private({ role, children }) {
   if (!getToken()) return <Navigate to="/login" replace />;
   const user = getUser();
   if (!user) return <Navigate to="/login" replace />;
-
   if (role && user.role !== role) {
-    const path =
-      user.role === "admin" ? "/admin"
-      : user.role === "manager" ? "/manager"
-      : user.role === "teacher" ? "/teacher"
-      : "/student";
+    const path = user.role === "admin" ? "/admin"
+               : user.role === "manager" ? "/manager"
+               : user.role === "teacher" ? "/teacher" : "/student";
     return <Navigate to={path} replace />;
   }
-
   return children;
 }
 
