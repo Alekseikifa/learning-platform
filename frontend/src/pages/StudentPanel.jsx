@@ -5,10 +5,12 @@ import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
 import AttemptDetailsModal from "../components/AttemptDetailsModal";
 import { api } from "../api";
+import DirectMessages from "../components/DirectMessages";
 
 const TABS = [
   { id: "themes",        label: "Темы" },
   { id: "announcements", label: "Объявления" },
+  { id: "messages",      label: "Сообщения" },
   { id: "history",       label: "История" },
 ];
 
@@ -35,8 +37,10 @@ export default function StudentPanel() {
   useEffect(() => {
     const urlCourse = searchParams.get("course");
     const urlTheme = searchParams.get("theme");
+    const urlTab = searchParams.get("tab");
     if (urlCourse) setCourseId(+urlCourse);
     if (urlTheme) setPendingTheme(+urlTheme);
+    if (urlTab) setTab(urlTab);
   }, [searchParams.toString()]);
 
   return (
@@ -63,6 +67,7 @@ export default function StudentPanel() {
         </>
       )}
       {tab === "announcements" && <Announcements />}
+      {tab === "messages"      && <DirectMessages />}
       {tab === "history"       && <History />}
     </Layout>
   );
