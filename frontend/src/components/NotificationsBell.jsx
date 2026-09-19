@@ -49,7 +49,9 @@ export default function NotificationsBell() {
       loadCount();
     } catch {}
     setOpen(false);
-    if (n.link) {
+
+    // Переходим только если ссылка абсолютная (начинается с "/")
+    if (n.link && n.link.startsWith("/")) {
       nav(n.link);
     }
   };
