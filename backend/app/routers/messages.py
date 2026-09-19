@@ -117,9 +117,18 @@ def send_message(other_id: int, data: schemas.ChatIn,
     m = models.DirectMessage(sender_id=user.id, recipient_id=other_id, text=text)
     db.add(m); db.flush()
 
+    # Определяем панель получателя по его роли и формируем абсолютную ссылку
+    role_path = {
+        "admin":   "/admin",
+        "manager": "/manager",
+        "teacher": "/teacher",
+        "student": "/student",
+    }.get(other.role, "/student")
+    link = f"{role_path}?tab=messages&user={user.id}"
+
     notify(db, [other_id], "dm",
            f"Сообщение от {user.name}",
            body=text[:160],
-           link=f"?tab=messages&user={user.id}")
+           link=link)
     db.commit(); db.refresh(m)
     return {"id": m.id}
