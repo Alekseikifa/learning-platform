@@ -4,6 +4,7 @@ import SearchSelect from "../components/SearchSelect";
 import Collapsible from "../components/Collapsible";
 import AnnouncementsPanel from "../components/AnnouncementsPanel";
 import StaffChatsPanel from "../components/StaffChatsPanel";
+import DirectMessages from "../components/DirectMessages";   // ← НОВАЯ СТРОКА
 import { api, uploadFile } from "../api";
 
 const TABS = [
