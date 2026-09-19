@@ -10,16 +10,55 @@ from .routers import (auth as auth_router, admin, teacher, student,
 
 Base.metadata.create_all(bind=engine)
 
-# Простая миграция: добавить колонку extra_roles, если её нет
 with engine.connect() as conn:
+    # 1. Колонка extra_roles в users
     try:
         conn.exec_driver_sql("ALTER TABLE users ADD COLUMN extra_roles VARCHAR DEFAULT ''")
         conn.commit()
         print("→ Добавлена колонка users.extra_roles")
-    except Exception:
-        pass  # колонка уже есть
+    except Exception as e:
+        # Обычно это значит, что колонка уже есть — это нормально
+        print(f"→ users.extra_roles: {e}")
 
-      # 4. Таблица direct_messages
+    # 2. Таблица notifications
+    try:
+        conn.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                type VARCHAR NOT NULL,
+                title VARCHAR NOT NULL,
+                body TEXT DEFAULT '',
+                link VARCHAR DEFAULT '',
+                read_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications (user_id)")
+        conn.commit()
+        print("→ Таблица notifications готова")
+    except Exception as e:
+        print(f"→ notifications ОШИБКА: {e}")
+
+    # 3. phone_invites
+    try:
+        conn.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS phone_invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone VARCHAR UNIQUE NOT NULL,
+                role VARCHAR NOT NULL,
+                note VARCHAR DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_phone_invites_phone ON phone_invites (phone)")
+        conn.commit()
+        print("→ Таблица phone_invites готова")
+    except Exception as e:
+        print(f"→ phone_invites ОШИБКА: {e}")
+
+    # 4. direct_messages
     try:
         conn.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS direct_messages (
@@ -38,8 +77,7 @@ with engine.connect() as conn:
         conn.commit()
         print("→ Таблица direct_messages готова")
     except Exception as e:
-        print(f"→ direct_messages: {e}")
-
+        print(f"→ direct_messages ОШИБКА: {e}")
 db = SessionLocal()
 if not db.query(models.User).filter_by(role="admin").first():
     db.add(models.User(role="admin", username="admin",
