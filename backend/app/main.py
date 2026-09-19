@@ -6,7 +6,7 @@ from .database import Base, engine, SessionLocal
 from . import models
 from .auth import hash_password
 from .routers import (auth as auth_router, admin, teacher, student,
-                      public, manager, notifications, staff)
+                      public, manager, notifications, staff, messages)
 
 Base.metadata.create_all(bind=engine)
 
@@ -80,6 +80,7 @@ app.include_router(manager.router, prefix="/api/manager", tags=["manager"])
 app.include_router(teacher.router, prefix="/api/teacher", tags=["teacher"])
 app.include_router(student.router, prefix="/api/student", tags=["student"])
 app.include_router(staff.router, prefix="/api/staff", tags=["staff"])
+app.include_router(messages.router, prefix="/api/messages", tags=["messages"])
 
 @app.get("/api/health")
 def health():
