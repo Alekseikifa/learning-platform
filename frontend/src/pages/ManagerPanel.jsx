@@ -1,3 +1,4 @@
+import DirectMessages from "../components/DirectMessages";
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import SearchSelect from "../components/SearchSelect";
@@ -8,6 +9,7 @@ import StaffChatsPanel from "../components/StaffChatsPanel";
 const TABS = [
   { id: "students",      label: "Ученики" },
   { id: "materials",     label: "Материалы" },
+  { id: "messages",      label: "Сообщения" },
   { id: "announcements", label: "Объявления" },
   { id: "chats",         label: "Чаты" },
   { id: "uploads",       label: "Файлы" },
@@ -39,6 +41,7 @@ export default function ManagerPanel() {
     <Layout title="Панель методиста" tabs={TABS} active={tab} onChange={setTab}>
       {tab === "students"      && <StudentsTab groups={groups} users={users} reload={reload} />}
       {tab === "materials"     && <MaterialsTab courses={courses} />}
+      {tab === "messages"      && <DirectMessages />}
       {tab === "announcements" && <AnnouncementsPanel />}
       {tab === "chats"         && <StaffChatsPanel />}
       {tab === "uploads"       && <UploadsTab />}
