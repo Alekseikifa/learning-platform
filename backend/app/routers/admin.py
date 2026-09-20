@@ -141,21 +141,22 @@ def delete_invite(invite_id: int, db: Session = Depends(get_db),
 @router.get("/settings/roles")
 def get_role_names(db: Session = Depends(get_db), _=Depends(require_role("admin"))):
     defaults = {"role_admin_name": "Администратор",
-                "role_teacher_name": "Преподаватель",
-                "role_student_name": "Ученик"}
+                "role_teacher_name": "Куратор",             # ← исправили
+                "role_student_name": "Ученик",
+                "role_manager_name": "Методист"}            # ← добавили
     out = {}
     for k, default in defaults.items():
         s = db.query(models.Setting).filter_by(key=k).first()
         out[k] = s.value if s else default
     return out
 
-
 @router.put("/settings/roles")
 def set_role_names(data: schemas.RoleNamesIn, db: Session = Depends(get_db),
                    _=Depends(require_role("admin"))):
     for key, val in [("role_admin_name", data.admin),
                      ("role_teacher_name", data.teacher),
-                     ("role_student_name", data.student)]:
+                     ("role_student_name", data.student),
+                     ("role_manager_name", data.manager)]:      # ← добавили
         s = db.query(models.Setting).filter_by(key=key).first()
         if s: s.value = val
         else: db.add(models.Setting(key=key, value=val))
