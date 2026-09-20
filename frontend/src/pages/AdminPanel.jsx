@@ -8,15 +8,15 @@ import DirectMessages from "../components/DirectMessages";   // ← НОВАЯ �
 import { api, uploadFile } from "../api";
 
 const TABS = [
-  { id: "users",         label: "Пользователи" },
-  { id: "messages",      label: "Сообщения" },
   { id: "invites",       label: "Приглашения" },
-  { id: "courses",       label: "Курсы и темы" },
+  { id: "users",         label: "Пользователи" },
   { id: "groups",        label: "Группы" },
-  { id: "materials",     label: "Материалы" },
-  { id: "tests",         label: "Тесты" },
+  { id: "courses",       label: "Курсы и темы" },
+  { id: "chats",         label: "Чаты" },  
+  { id: "materials",     label: "Материалы" },  
+  { id: "tests",         label: "Тесты" },  
+  { id: "messages",      label: "Сообщения" },
   { id: "announcements", label: "Объявления" },
-  { id: "chats",         label: "Чаты" },
   { id: "uploads",       label: "Файлы" },
   { id: "settings",      label: "Настройки" },
 ];
