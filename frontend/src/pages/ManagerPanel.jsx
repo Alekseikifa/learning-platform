@@ -50,8 +50,13 @@ export default function ManagerPanel() {
 }
 
 function StudentsTab({ groups, users, reload }) {
-  const students = users.filter(u => u.role === "student");
+  const [list, setList] = useState([]);
   const [form, setForm] = useState({ name: "", username: "", password: "", group_ids: [] });
+  const [editing, setEditing] = useState(null);
+  const [resetting, setResetting] = useState(null);
+
+  const load = () => api("/api/manager/students").then(setList);
+  useEffect(() => { load(); }, []);
 
   const save = async (e) => {
     e.preventDefault();
@@ -61,6 +66,7 @@ function StudentsTab({ groups, users, reload }) {
         method: "POST", body: JSON.stringify(form),
       });
       setForm({ name: "", username: "", password: "", group_ids: [] });
+      load();
       reload();
       alert("Ученик создан");
     } catch (e) { alert(e.message); }
@@ -73,6 +79,18 @@ function StudentsTab({ groups, users, reload }) {
         ? f.group_ids.filter(x => x !== id)
         : [...f.group_ids, id],
     }));
+  };
+
+  const addToGroup = async (userId, groupId) => {
+    if (!groupId) return;
+    try {
+      await api(`/api/manager/students/${userId}/groups/${groupId}`, { method: "POST" });
+      load();
+    } catch (e) { alert(e.message); }
+  };
+  const removeFromGroup = async (userId, groupId) => {
+    await api(`/api/manager/students/${userId}/groups/${groupId}`, { method: "DELETE" });
+    load();
   };
 
   return (
@@ -109,17 +127,77 @@ function StudentsTab({ groups, users, reload }) {
       </div>
 
       <div className="card">
-        <h3>Ученики</h3>
+        <h3>Ученики ({list.length})</h3>
         <table className="table">
-          <thead><tr><th>ФИО</th><th>Логин</th></tr></thead>
+          <thead>
+            <tr>
+              <th>ФИО</th>
+              <th>Логин</th>
+              <th>Группы</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
-            {students.map(s => (
-              <tr key={s.id}><td>{s.name}</td><td>{s.username}</td></tr>
+            {list.map(s => (
+              <tr key={s.id}>
+                <td><b>{s.name}</b></td>
+                <td>{s.username}</td>
+                <td>
+                  <div className="chips" style={{ margin: 0 }}>
+                    {s.groups.map(g => (
+                      <span key={g.id} className="chip">
+                        {g.course} · {g.name}
+                        <button onClick={() => removeFromGroup(s.id, g.id)}>✕</button>
+                      </span>
+                    ))}
+                    {!s.groups.length && <span className="muted small">—</span>}
+                  </div>
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <select defaultValue=""
+                            onChange={e => { addToGroup(s.id, e.target.value); e.target.value = ""; }}>
+                      <option value="">+ в группу…</option>
+                      {groups.map(g => (
+                        <option key={g.id} value={g.id}>
+                          {g.course_title} · {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </td>
+                <td>
+                  <button className="btn small" onClick={() => setEditing(s)}>Изм.</button>{" "}
+                  <button className="btn small"
+                          onClick={() => setResetting({ id: s.id, name: s.name })}>
+                    Пароль
+                  </button>
+                </td>
+              </tr>
             ))}
-            {!students.length && <tr><td colSpan={2} className="muted">Учеников пока нет</td></tr>}
+            {!list.length && (
+              <tr><td colSpan={4} className="muted">Учеников пока нет</td></tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <UserEditModal user={editing} onClose={() => setEditing(null)}
+                       onSaved={() => { setEditing(null); load(); }} />
+      )}
+      {resetting && (
+        <PasswordModal name={resetting.name}
+                       onClose={() => setResetting(null)}
+                       onSubmit={async (pw) => {
+                         try {
+                           await api(`/api/manager/students/${resetting.id}/password`, {
+                             method: "PUT",
+                             body: JSON.stringify({ password: pw }),
+                           });
+                           alert("Пароль изменён");
+                           setResetting(null);
+                         } catch (e) { alert(e.message); }
+                       }} />
+      )}
     </div>
   );
 }
