@@ -8,11 +8,11 @@ router = APIRouter()
 
 @router.get("/roles")
 def role_names(db: Session = Depends(get_db)):
-    """Публичный эндпоинт — названия ролей для отображения."""
     defaults = {
         "role_admin_name": "Администратор",
-        "role_teacher_name": "Преподаватель",
+        "role_teacher_name": "Куратор",
         "role_student_name": "Ученик",
+        "role_manager_name": "Методист",
     }
     out = {}
     for k, default in defaults.items():
