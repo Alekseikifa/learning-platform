@@ -78,9 +78,12 @@ def register(data: schemas.RegisterIn, db: Session = Depends(get_db)):
     db.delete(invite)
     db.commit()
     db.refresh(user)
+    db.refresh(user)
+    roles = all_roles_of(user)                                # ← добавили
     return {
-        "access_token": create_token(user.id, user.role),
+        "access_token": create_token(user.id, user.role, roles),   # ← три аргумента
         "role": user.role,
+        "roles": roles,                                        # ← добавили
         "name": user.name,
     }
 
