@@ -202,17 +202,47 @@ def _attempt_details_payload(a, db, student_name=None):
 # ---------- ANNOUNCEMENTS ----------
 @router.get("/announcements")
 def my_announcements(db: Session = Depends(get_db), user=Depends(require_role("teacher"))):
+    # 1. Находим все группы, где куратор преподаёт
+    my_gids = _my_group_ids(user.id, db)
+
+    # 2. Собираем id объявлений: свои + те, что адресованы моим группам
+    my_ann_ids = {a.id for a in db.query(models.Announcement).filter_by(author_id=user.id).all()}
+    if my_gids:
+        target_ids = {at.announcement_id for at in
+                      db.query(models.AnnouncementTarget)
+                      .filter(models.AnnouncementTarget.group_id.in_(my_gids)).all()}
+        my_ann_ids |= target_ids
+
+    if not my_ann_ids:
+        return []
+
+    # 3. Отдаём с автором и списком групп
     rows = (db.query(models.Announcement)
-            .filter_by(author_id=user.id)
+            .filter(models.Announcement.id.in_(my_ann_ids))
             .order_by(models.Announcement.created_at.desc()).all())
+
     out = []
     for a in rows:
+        author = db.query(models.User).get(a.author_id)
+        groups_info = []
         targets = [t.group_id for t in db.query(models.AnnouncementTarget)
                    .filter_by(announcement_id=a.id).all()]
-        out.append({"id": a.id, "title": a.title, "body": a.body,
-                    "created_at": a.created_at.isoformat(),
-                    "updated_at": a.updated_at.isoformat(),
-                    "group_ids": targets})
+        for gid in targets:
+            g = db.query(models.Group).get(gid)
+            if g:
+                c = db.query(models.Course).get(g.course_id)
+                groups_info.append({"id": g.id, "name": g.name,
+                                    "course": c.title if c else ""})
+        out.append({
+            "id": a.id, "title": a.title, "body": a.body,
+            "author": author.name if author else "",
+            "author_id": a.author_id,
+            "is_mine": a.author_id == user.id,
+            "created_at": a.created_at.isoformat(),
+            "updated_at": a.updated_at.isoformat(),
+            "group_ids": targets,
+            "groups": groups_info,
+        })
     return out
 
 
