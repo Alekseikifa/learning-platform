@@ -380,21 +380,24 @@ function AnnouncementsTab({ groups }) {
           <div className="card" key={a.id}>
             <div className="spread">
               <b>{a.title}</b>
-              <div>
-                <button className="btn small" onClick={() => startEdit(a)}>Изм.</button>{" "}
-                <button className="btn danger small" onClick={() => del(a.id)}>Уд.</button>
-              </div>
+              {a.is_mine ? (
+                <div>
+                  <button className="btn small" onClick={() => startEdit(a)}>Изм.</button>{" "}
+                  <button className="btn danger small" onClick={() => del(a.id)}>Уд.</button>
+                </div>
+              ) : (
+                <span className="tag">от {a.author || "системы"}</span>
+              )}
             </div>
             <div className="muted small">
               {new Date(a.created_at).toLocaleString()}
-              {a.updated_at !== a.created_at && " · изменено " + new Date(a.updated_at).toLocaleString()}
+              {a.updated_at !== a.created_at && " · изменено"}
             </div>
             <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{a.body}</div>
             <div className="chips" style={{ marginTop: 6 }}>
-              {a.group_ids.map(gid => {
-                const g = groups.find(x => x.id === gid);
-                return g ? <span key={gid} className="tag">{g.course_title} — {g.name}</span> : null;
-              })}
+              {(a.groups || []).map(g => (
+                <span key={g.id} className="tag">{g.course} — {g.name}</span>
+              ))}
             </div>
           </div>
         ))}
