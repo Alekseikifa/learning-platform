@@ -37,9 +37,9 @@ export default function AdminPanel() {
     <Layout title="Панель администратора" tabs={TABS} active={tab} onChange={setTab}>
       {tab === "invites"   && <InvitesTab />}      
       {tab === "users"     && <UsersTab users={users} reload={reload} />}
-      {tab === "courses"   && <CoursesTab courses={courses} reload={reload} />}   
+      {tab === "courses"   && <CoursesTab courses={courses} reload={reload} />}
+      {tab === "groups"    && <GroupsTab courses={courses} users={users} reload={reload} />}      
       {tab === "messages"      && <DirectMessages />}
-      {tab === "groups"    && <GroupsTab courses={courses} users={users} reload={reload} />}
       {tab === "materials" && <MaterialsTab courses={courses} />}
       {tab === "tests"         && <TestsTab courses={courses} />}
       {tab === "announcements" && <AnnouncementsPanel />}
