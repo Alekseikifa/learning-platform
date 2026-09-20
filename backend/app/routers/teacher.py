@@ -260,14 +260,20 @@ def create_announcement(data: schemas.AnnouncementIn,
     for gid in data.group_ids:
         db.add(models.AnnouncementTarget(announcement_id=a.id, group_id=gid))
 
-    # уведомляем учеников целевых групп
     student_ids = []
+    teacher_ids = []
     for gid in data.group_ids:
         student_ids += [gs.user_id for gs in
                         db.query(models.GroupStudent).filter_by(group_id=gid).all()]
+        teacher_ids += [gt.teacher_id for gt in
+                        db.query(models.GroupTeacher).filter_by(group_id=gid).all()]
+
     notify(db, student_ids, "announcement",
            f"Объявление: {data.title}", body=data.body[:160],
            link="/student?tab=announcements")
+    notify(db, [tid for tid in teacher_ids if tid != user.id], "announcement",
+           f"Объявление от {user.name}: {data.title}", body=data.body[:160],
+           link="/teacher?tab=announcements")
     db.commit()
     return {"id": a.id}
 
