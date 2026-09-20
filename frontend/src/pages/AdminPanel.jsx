@@ -10,8 +10,8 @@ import { api, uploadFile } from "../api";
 const TABS = [
   { id: "invites",       label: "Приглашения" },
   { id: "users",         label: "Пользователи" },
-  { id: "groups",        label: "Группы" },
-  { id: "courses",       label: "Курсы и темы" },
+  { id: "courses",       label: "Курсы и темы" },  
+  { id: "groups",        label: "Группы" },  
   { id: "chats",         label: "Чаты" },  
   { id: "materials",     label: "Материалы" },  
   { id: "tests",         label: "Тесты" },  
@@ -36,7 +36,7 @@ export default function AdminPanel() {
   return (
     <Layout title="Панель администратора" tabs={TABS} active={tab} onChange={setTab}>
       {tab === "invites"   && <InvitesTab />}      
-      {tab === "users"     && <UsersTab users={users} reload={reload} />}
+      {tab === "users"     && <UsersTab users={users} reload={reload} />}   
       {tab === "courses"   && <CoursesTab courses={courses} reload={reload} />}
       {tab === "groups"    && <GroupsTab courses={courses} users={users} reload={reload} />}      
       {tab === "messages"      && <DirectMessages />}
