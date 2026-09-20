@@ -75,6 +75,7 @@ class RoleNamesIn(BaseModel):
     admin: str
     teacher: str
     student: str
+    manager: str = "Методист"       # ← добавили
 
 
 class CourseIn(BaseModel):
