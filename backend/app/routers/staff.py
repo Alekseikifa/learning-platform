@@ -21,31 +21,35 @@ def list_all_groups(db: Session = Depends(get_db),
 
 
 # ---------- ANNOUNCEMENTS ----------
-@router.get("/announcements")
-def list_announcements(db: Session = Depends(get_db),
-                       _=Depends(require_role("admin", "manager"))):
-    rows = db.query(models.Announcement).order_by(models.Announcement.created_at.desc()).all()
-    out = []
-    for a in rows:
-        author = db.query(models.User).get(a.author_id)
-        targets = [at.group_id for at in
-                   db.query(models.AnnouncementTarget).filter_by(announcement_id=a.id).all()]
-        groups_info = []
-        for gid in targets:
-            g = db.query(models.Group).get(gid)
-            if g:
-                c = db.query(models.Course).get(g.course_id)
-                groups_info.append({"id": g.id, "name": g.name,
-                                    "course": c.title if c else ""})
-        out.append({
-            "id": a.id, "title": a.title, "body": a.body,
-            "author": author.name if author else "",
-            "created_at": a.created_at.isoformat(),
-            "updated_at": a.updated_at.isoformat(),
-            "group_ids": targets,
-            "groups": groups_info,
-        })
-    return out
+@router.post("/announcements")
+def create_announcement(data: schemas.AnnouncementIn,
+                        db: Session = Depends(get_db),
+                        user=Depends(require_role("admin", "manager"))):
+    from .notifications import notify
+    if not data.group_ids:
+        raise HTTPException(400, "Выберите хотя бы одну группу")
+    a = models.Announcement(author_id=user.id, title=data.title, body=data.body)
+    db.add(a); db.flush()
+    for gid in data.group_ids:
+        if db.query(models.Group).get(gid):
+            db.add(models.AnnouncementTarget(announcement_id=a.id, group_id=gid))
+
+    student_ids = []
+    teacher_ids = []
+    for gid in data.group_ids:
+        student_ids += [gs.user_id for gs in
+                        db.query(models.GroupStudent).filter_by(group_id=gid).all()]
+        teacher_ids += [gt.teacher_id for gt in
+                        db.query(models.GroupTeacher).filter_by(group_id=gid).all()]
+
+    notify(db, student_ids, "announcement",
+           f"Объявление: {data.title}", body=data.body[:160],
+           link="/student?tab=announcements")
+    notify(db, teacher_ids, "announcement",
+           f"Объявление для вашей группы: {data.title}", body=data.body[:160],
+           link="/teacher?tab=announcements")
+    db.commit()
+    return {"id": a.id}
 
 
 @router.post("/announcements")
