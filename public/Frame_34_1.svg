@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 360" width="100%" height="100%">
+  <defs>
+    <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0f172a" flood-opacity="0.18" />
+    </filter>
+    <linearGradient id="blue-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#28469c" />
+      <stop offset="50%" stop-color="#233e8d" />
+      <stop offset="100%" stop-color="#1d3478" />
+    </linearGradient>
+  </defs>
+
+  <!-- Blue card container -->
+  <rect x="20" y="20" width="1360" height="320" rx="36" fill="url(#blue-bg)" filter="url(#card-shadow)" />
+
+  <!-- Title -->
+  <text x="700" y="85" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" letter-spacing="0.5">
+    Уважаемые студенты!
+  </text>
+
+  <!-- Main Warning Paragraph -->
+  <text x="700" y="152" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+    <tspan fill="#ffffff" font-size="21" font-weight="600">Обращаем ваше внимание, что </tspan>
+    <tspan fill="#ff4d4f" font-size="21" font-weight="800">копирование и распространение материалов обучения</tspan>
+  </text>
+  
+  <text x="700" y="190" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+    <tspan fill="#ffffff" font-size="21" font-weight="600">(конспекты, видео и аудио-уроки) </tspan>
+    <tspan fill="#ff4d4f" font-size="21" font-weight="800">запрещено.</tspan>
+  </text>
+
+  <!-- Explanation Paragraph -->
+  <text x="700" y="250" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" opacity="0.95">
+    Вы можете использовать материалы в целях собственного обучения, а также сохранять на личные устройства,
+  </text>
+  
+  <text x="700" y="282" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" opacity="0.95">
+    без передачи третьим лицам. Надеемся на ваше понимание и благословляем на плодотворную учебу!
+  </text>
+</svg>

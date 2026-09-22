@@ -1,0 +1,6 @@
+{
+  "name": "МКУ — Международные Курсы Ученичества",
+  "description": "Платформа для обучения и управления курсами ученичества (МКУ)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

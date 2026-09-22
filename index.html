@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          var origFetch = (typeof window.fetch === "function") ? window.fetch.bind(window) : window.fetch;
+          var currentFetch = origFetch;
+          Object.defineProperty(window, "fetch", {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(fn) {
+              currentFetch = fn;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          try {
+            var proto = Object.getPrototypeOf(window) || (window.Window && window.Window.prototype);
+            if (proto) {
+              var protoFetch = proto.fetch ? proto.fetch.bind(window) : window.fetch;
+              Object.defineProperty(proto, "fetch", {
+                get: function() { return protoFetch; },
+                set: function(v) { protoFetch = v; },
+                configurable: true,
+                enumerable: true
+              });
+            }
+          } catch (err) {}
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <title>МКУ — Международные Курсы Ученичества</title>
+  <meta name="description" content="Платформа для обучения и управления курсами ученичества (МКУ)" />
+  <meta property="og:title" content="МКУ — Международные Курсы Ученичества" />
+  <meta property="og:description" content="Платформа для обучения и управления курсами ученичества (МКУ)" />
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

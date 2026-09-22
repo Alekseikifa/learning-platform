@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 380" width="100%" height="100%">
+  <defs>
+    <filter id="frame-shadow" x="-3%" y="-5%" width="106%" height="116%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10" />
+    </filter>
+    <clipPath id="card-clip">
+      <rect x="15" y="15" width="1410" height="350" rx="30" />
+    </clipPath>
+  </defs>
+
+  <!-- Main Card Container -->
+  <rect x="15" y="15" width="1410" height="350" rx="30" fill="#ffffff" stroke="#e2e8f0" stroke-width="2" filter="url(#frame-shadow)" />
+
+  <g clip-path="url(#card-clip)">
+    <!-- Horizontal Dark Blue Stripe on the right side -->
+    <rect x="410" y="55" width="1030" height="195" fill="#244192" />
+
+    <!-- "МКУ" in heavy white font -->
+    <text
+      x="465"
+      y="188"
+      fill="#ffffff"
+      font-size="88"
+      font-weight="900"
+      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Arial Black', sans-serif"
+      letter-spacing="1"
+    >
+      МКУ
+    </text>
+
+    <!-- Slogan Text on the Blue Stripe -->
+    <g fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="20.5" text-anchor="middle" letter-spacing="0.2">
+      <text x="1090" y="125">Укрепите ваше библейское основание</text>
+      <text x="1090" y="158">для близких отношений со Христом</text>
+      <text x="1090" y="191">и победоносной жизни</text>
+    </g>
+
+    <!-- Official Emblem on the Left -->
+    <g transform="translate(55, 80) scale(0.96)">
+      <!-- Ichthys Fish Symbol -->
+      <g stroke="#244192" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M 16 60 C 36 22, 75 22, 106 88" />
+        <path d="M 16 60 C 36 98, 75 98, 106 32" />
+      </g>
+
+      <!-- Line 1: МЕЖДУНАРОДНЫЕ -->
+      <text
+        x="126"
+        y="32"
+        fill="#111827"
+        font-size="19.5"
+        font-weight="700"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        letter-spacing="1.8"
+      >
+        МЕЖДУНАРОДНЫЕ
+      </text>
+
+      <!-- Line 2: КУРСЫ -->
+      <text
+        x="125"
+        y="76"
+        fill="#000000"
+        font-size="47"
+        font-weight="900"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Arial Black', sans-serif"
+        letter-spacing="0.5"
+      >
+        КУРСЫ
+      </text>
+
+      <!-- Line 3: УЧЕНИЧЕСТВА badge -->
+      <rect x="125" y="85" width="206" height="31" fill="#244192" />
+      <text
+        x="228"
+        y="107"
+        text-anchor="middle"
+        fill="#ffffff"
+        font-size="18.5"
+        font-weight="800"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        letter-spacing="1.4"
+      >
+        УЧЕНИЧЕСТВА
+      </text>
+    </g>
+
+    <!-- Teal Card on the Bottom-Left -->
+    <rect x="52" y="250" width="460" height="82" rx="14" fill="#3c7774" filter="url(#frame-shadow)" />
+    
+    <text x="76" y="283" fill="#ffffff" font-size="15.5" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+      • офлайн и онлайн программы по всему миру
+    </text>
+    <text x="76" y="311" fill="#ffffff" font-size="15.5" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+      • кураторы и постоянная поддержка
+    </text>
+  </g>
+</svg>
