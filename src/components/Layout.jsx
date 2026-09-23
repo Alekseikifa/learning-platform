@@ -186,16 +186,17 @@ export default function Layout({ title, tabs, active, onChange, children }) {
 
   useEffect(() => {
     // Show welcome modal ONLY for students if not dismissed yet
-    if (isStudent && user?.id) {
-      const never = localStorage.getItem("mku_welcome_never_" + user.id);
-      const sessionClosed = sessionStorage.getItem("mku_welcome_session_closed_" + user.id);
+    if (isStudent && user) {
+      const userId = user.id || user.email || user.name || "guest";
+      const never = localStorage.getItem("mku_welcome_never_" + userId);
+      const sessionClosed = sessionStorage.getItem("mku_welcome_session_closed_" + userId);
       if (!never && !sessionClosed) {
         setShowWelcome(true);
       }
     } else {
       setShowWelcome(false);
     }
-  }, [isStudent, user?.id]);
+  }, [isStudent, user]);
 
   return (
     <div className="app">
@@ -242,13 +243,13 @@ export default function Layout({ title, tabs, active, onChange, children }) {
       {isStudent && (
         <WelcomeModal
           user={user}
+          userId={user?.id || user?.email || user?.name || "guest"}
           isOpen={showWelcome}
           settings={publicSettings}
           onClose={() => {
             setShowWelcome(false);
-            if (user?.id) {
-            sessionStorage.setItem("mku_welcome_session_closed", "true");
-            }
+            const userId = user?.id || user?.email || user?.name || "guest";
+            sessionStorage.setItem("mku_welcome_session_closed_" + userId, "true");
           }}
         />
       )}

@@ -118,7 +118,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       }
       setForm(prev => ({
         ...prev,
-        url: res.url,
+        url: "/uploads/" + res.filename,
         type: detectedType,
         title: prev.title || file.name.replace(/\.[^/.]+$/, ""),
       }));

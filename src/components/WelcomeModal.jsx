@@ -1,12 +1,12 @@
 import { useState } from "react";
 import WarningCard from "./WarningCard";
 
-export default function WelcomeModal({ isOpen, onClose, settings = {}, user }) {
+export default function WelcomeModal({ isOpen, onClose, settings = {}, userId }) {
   const [dontShowAgain, setDontShowAgain] = useState(false);
   if (!isOpen) return null;
 
   const handleConfirm = () => {
-    if (dontShowAgain) localStorage.setItem("mku_welcome_never_show", "true");
+    if (dontShowAgain) localStorage.setItem("mku_welcome_never_" + userId, "true");
     onClose();
   };
 

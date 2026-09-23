@@ -1230,6 +1230,7 @@ function MaterialsTab({ courses, groups = [] }) {
 
   const add = async (e) => {
     e.preventDefault();
+    if (!form.url.trim()) return alert("Пожалуйста, введите URL или загрузите файл.");
     await api("/api/admin/materials", {
       method: "POST",
       body: JSON.stringify({ ...form, theme_id: +themeId, order_index: +form.order_index }),
@@ -1243,7 +1244,10 @@ function MaterialsTab({ courses, groups = [] }) {
     try {
       const rec = await uploadFile(file);
       const t = file.type.startsWith("audio") ? "audio"
-              : file.type.startsWith("image") ? "image" : "video";
+              : file.type.startsWith("image") ? "image"
+              : (file.type.includes("pdf") || file.name.endsWith(".doc") || file.name.endsWith(".docx")) ? "document"
+              : file.type.startsWith("video") ? "video"
+              : "document";
       setForm(f => ({ ...f, url: "/uploads/" + rec.filename, type: t }));
     } catch (e) { alert(e.message); }
     finally { setUploading(false); e.target.value = ""; }
@@ -1317,7 +1321,7 @@ function MaterialsTab({ courses, groups = [] }) {
                 ) : (
                   <div className="row">
                     <input placeholder="URL или загрузите файл →" value={form.url}
-                           onChange={e => setForm({ ...form, url: e.target.value })} required style={{ flex: 1 }} />
+                           onChange={e => setForm({ ...form, url: e.target.value })} style={{ flex: 1 }} />
                     <label className="btn">
                       {uploading ? "Загрузка..." : "Загрузить файл"}
                       <input type="file" hidden onChange={onUpload} />

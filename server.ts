@@ -1213,7 +1213,7 @@ app.delete("/api/admin/questions/:question_id", authMiddleware, requireRole("adm
   res.json({ ok: true });
 });
 
-app.post("/api/admin/uploads", authMiddleware, requireRole("admin"), (upload.single("file") as any), (req, res) => {
+app.post("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (upload.single("file") as any), (req, res) => {
   if (!req.file) return res.status(400).json({ detail: "Файл не загружен" });
   const rec: UploadedFile = {
     id: db.getId("uploadedFile"),
@@ -1227,11 +1227,11 @@ app.post("/api/admin/uploads", authMiddleware, requireRole("admin"), (upload.sin
   res.json(rec);
 });
 
-app.get("/api/admin/uploads", authMiddleware, requireRole("admin"), (_req, res) => {
+app.get("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (_req, res) => {
   res.json([...db.uploadedFiles].reverse());
 });
 
-app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const fileId = parseInt(req.params.file_id, 10);
   const recIdx = db.uploadedFiles.findIndex((f) => f.id === fileId);
   if (recIdx === -1) return res.status(404).json({ detail: "Файл не найден" });
@@ -2953,7 +2953,8 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
 
   // Автоматическая синхронизация с уроками учеников
   db.materials.forEach((m: any) => {
-    if (m.storage_id === id || m.title === oldTitle || m.title === item.title) {
+    if (m.repository_material_id === id || m.storage_id === id || m.title === oldTitle || m.title === item.title) {
+      m.repository_material_id = id;
       m.storage_id = id;
       m.title = item.title;
       m.type = item.type;
@@ -2968,8 +2969,39 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
 
 app.delete(["/api/staff/repository/materials/:id", "/api/admin/repository/materials/:id", "/api/manager/repository/materials/:id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const id = parseInt(req.params.id, 10);
+
+  // 1. Находим материал ДО удаления, чтобы знать url/имя файла
+  const repoItem = db.storageMaterials.find((x) => x.id === id);
+
+  // 2. Удаляем из накопителя
   db.storageMaterials = db.storageMaterials.filter((x) => x.id !== id);
-  res.json({ ok: true });
+
+  // 3. Автосинхронизация: удаляем все привязанные копии из уроков учеников
+  const before = db.materials.length;
+  db.materials = db.materials.filter((m) => m.repository_material_id !== id && m.storage_id !== id);
+  const removed = before - db.materials.length;
+
+  // 4. Удаляем физический файл с диска (если он есть)
+  if (repoItem && repoItem.url) {
+    const urlPath = String(repoItem.url).trim();
+    if (urlPath.startsWith("/uploads/")) {
+      const fileName = urlPath.replace("/uploads/", "");
+      const filePath = path.join(UPLOAD_DIR, fileName);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log("[Repository] Файл удалён с диска: " + filePath);
+        } catch (err: any) {
+          console.log("[Repository] Не удалось удалить файл " + filePath + ": " + err.message);
+        }
+      }
+    }
+  }
+
+  console.log("[Repository] Удалён материал ID " + id + ". Удалено копий у учеников: " + removed);
+
+  if (typeof (db as any).save === "function") (db as any).save();
+  res.json({ ok: true, removed_copies: removed });
 });
 
 // Import entire theme from repository into course themes
@@ -3005,6 +3037,8 @@ app.post(["/api/staff/courses/:course_id/import-theme", "/api/admin/courses/:cou
     db.materials.push({
       id: db.getId("material"),
       theme_id: themeId,
+      repository_material_id: item.id,
+      storage_id: item.id,
       title: item.title,
       type: item.type,
       url: item.url,
@@ -3029,15 +3063,19 @@ app.post(["/api/staff/courses/:course_id/themes/:theme_id/attach-material", "/ap
   const repoItem = db.storageMaterials.find((x) => x.id === repoMatId);
   if (!repoItem) return res.status(404).json({ detail: "Материал не найден в накопителе" });
 
+  if (db.materials.find((m) => m.repository_material_id === repoMatId && m.theme_id === themeId)) {
+    return res.status(400).json({ detail: "Материал уже привязан к этой теме" });
+  }
+
   const existing = db.materials.filter((m) => m.theme_id === themeId);
   const nextOrder = req.body.order_index !== undefined && req.body.order_index !== ""
     ? Number(req.body.order_index)
     : (existing.length + 1);
 
-  const newMat = {
+  const newMat: Material = {
     id: db.getId("material"),
     theme_id: themeId,
-    storage_id: repoItem.id,
+    repository_material_id: repoItem.id,
     title: repoItem.title,
     type: repoItem.type,
     url: repoItem.url,

@@ -48,6 +48,8 @@ export interface Material {
   type: string;
   url: string;
   order_index: number;
+  repository_material_id?: number | null;
+  storage_id?: number | null;
 }
 
 export interface Test {
