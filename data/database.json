@@ -270,6 +270,11 @@
       "id": 5,
       "test_id": 2,
       "text": "Сколько основных библейских заветов выделяют богословы в последовательной истории отношений Бога с человеком?"
+    },
+    {
+      "id": 6,
+      "test_id": 2,
+      "text": "В чем заключается принципиальное отличие безусловного завета от условного?"
     }
   ],
   "answers": [
@@ -343,6 +348,30 @@
       "id": 20,
       "question_id": 5,
       "text": "D.12",
+      "is_correct": false
+    },
+    {
+      "id": 25,
+      "question_id": 6,
+      "text": "A.Он действует только в пределах Эдемского сада",
+      "is_correct": false
+    },
+    {
+      "id": 26,
+      "question_id": 6,
+      "text": "B.Исполнение зависит исключительно от верности Бога",
+      "is_correct": true
+    },
+    {
+      "id": 27,
+      "question_id": 6,
+      "text": "C.Он автоматически отменяет все предыдущие договоры",
+      "is_correct": false
+    },
+    {
+      "id": 28,
+      "question_id": 6,
+      "text": "D.Он требует принесения жертв ежедневно",
       "is_correct": false
     }
   ],
@@ -459,8 +488,8 @@
     "extraMaterial": 2,
     "storageMaterial": 26,
     "test": 3,
-    "question": 6,
-    "answer": 21,
+    "question": 7,
+    "answer": 29,
     "attempt": 1,
     "attemptAnswer": 1,
     "announcement": 2,

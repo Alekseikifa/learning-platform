@@ -1104,7 +1104,7 @@ app.delete("/api/admin/extra-materials/:id", authMiddleware, requireRole("admin"
   res.json({ ok: true });
 });
 
-app.get("/api/admin/themes/:theme_id/test", authMiddleware, requireRole("admin"), (req, res) => {
+app.get(["/api/admin/themes/:theme_id/test", "/api/manager/themes/:theme_id/test"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const t = db.tests.find((x) => x.theme_id === themeId);
   if (!t) return res.json(null);
@@ -1126,7 +1126,7 @@ app.get("/api/admin/themes/:theme_id/test", authMiddleware, requireRole("admin")
   });
 });
 
-app.post("/api/admin/tests", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/tests", "/api/manager/tests"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { theme_id, title, passing_score, max_attempts } = req.body;
   if (db.tests.find((t) => t.theme_id === theme_id)) {
     return res.status(400).json({ detail: "У темы уже есть тест" });
@@ -1142,7 +1142,7 @@ app.post("/api/admin/tests", authMiddleware, requireRole("admin"), (req, res) =>
   res.json({ id });
 });
 
-app.put("/api/admin/tests/:test_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const testId = parseInt(req.params.test_id, 10);
   const t = db.tests.find((x) => x.id === testId);
   if (!t) return res.status(404).json({ detail: "Тест не найден" });
@@ -1150,7 +1150,7 @@ app.put("/api/admin/tests/:test_id", authMiddleware, requireRole("admin"), (req,
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/tests/:test_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const testId = parseInt(req.params.test_id, 10);
   const qIds = db.questions.filter((q) => q.test_id === testId).map((q) => q.id);
   const attIds = db.attempts.filter((a) => a.test_id === testId).map((a) => a.id);
@@ -1163,7 +1163,7 @@ app.delete("/api/admin/tests/:test_id", authMiddleware, requireRole("admin"), (r
   res.json({ ok: true });
 });
 
-app.post("/api/admin/questions", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/questions", "/api/manager/questions"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { test_id, text, answers } = req.body;
   if (!Array.isArray(answers) || answers.length < 2) {
     return res.status(400).json({ detail: "Должно быть минимум 2 ответа" });
@@ -1184,7 +1184,7 @@ app.post("/api/admin/questions", authMiddleware, requireRole("admin"), (req, res
   res.json({ id: qId });
 });
 
-app.put("/api/admin/questions/:question_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/questions/:question_id", "/api/manager/questions/:question_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const questionId = parseInt(req.params.question_id, 10);
   const q = db.questions.find((x) => x.id === questionId);
   if (!q) return res.status(404).json({ detail: "Вопрос не найден" });
@@ -1207,7 +1207,7 @@ app.put("/api/admin/questions/:question_id", authMiddleware, requireRole("admin"
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/questions/:question_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/questions/:question_id", "/api/manager/questions/:question_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const questionId = parseInt(req.params.question_id, 10);
   db.answers = db.answers.filter((a) => a.question_id !== questionId);
   db.questions = db.questions.filter((q) => q.id !== questionId);

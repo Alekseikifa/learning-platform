@@ -10,11 +10,13 @@ import ChatPanel from "../components/ChatPanel";
 import ExtraMaterialsTabContent from "../components/ExtraMaterialsTabContent";
 import UnifiedMaterialsRepository from "../components/UnifiedMaterialsRepository";
 import CoursesTab from "../components/CoursesTab";
+import TestsTab from "../components/TestsTab";
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
   { id: "students",      label: "Ученики" },
   { id: "courses",       label: "Курсы и темы" },
+  { id: "tests",         label: "Тесты" },
   { id: "materials",     label: "Материалы" },
   { id: "messages",      label: "Сообщения" },
   { id: "announcements", label: "Объявления" },
@@ -49,6 +51,7 @@ export default function ManagerPanel() {
       {tab === "students"      && <StudentsTab groups={groups} users={users} reload={reload} />}
         {tab === "invites"       && <InvitesTab />}
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/manager" />}
+      {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/manager" />}
       {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
       {tab === "messages"      && <DirectMessages />}
       {tab === "announcements" && <AnnouncementsPanel initialGroups={groups} />}
