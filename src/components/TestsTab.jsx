@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { parseTestDocx } from "../lib/parseTestDocx";
 
 /* ---------- TESTS ---------- */
 export default function TestsTab({ courses = [], apiPrefix = "/api/admin" }) {
@@ -77,6 +78,68 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
     title: test.title, passing_score: test.passing_score, max_attempts: test.max_attempts,
   });
 
+  const fileRef = useRef(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [parsed, setParsed] = useState(null);
+
+  const pickDocx = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!/\.docx$/i.test(file.name)) {
+      alert("Поддерживается только формат .docx.\nОткройте документ в Word и сохраните его как «Документ Word (.docx)».");
+      return;
+    }
+    try {
+      const res = await parseTestDocx(await file.arrayBuffer());
+      if (!res.questions.length) {
+        alert(res.warnings.join("\n") || "В документе не найдено ни одного вопроса.");
+        return;
+      }
+      setParsed(res);
+      setImportOpen(true);
+    } catch (err) {
+      alert(err && err.message ? err.message : "Не удалось прочитать документ");
+    }
+  };
+
+  const toggleImportQ = (idx) => setParsed((p) => ({
+    ...p,
+    questions: p.questions.map((q, i) => (i === idx && q.valid ? { ...q, include: !q.include } : q)),
+  }));
+
+  const runImport = async () => {
+    const list = parsed.questions.filter((q) => q.include && q.valid);
+    if (!list.length) return;
+    setImporting(true);
+    let ok = 0;
+    const fails = [];
+    for (const q of list) {
+      try {
+        await api(`${apiPrefix}/questions`, {
+          method: "POST",
+          body: JSON.stringify({
+            test_id: test.id,
+            text: q.text,
+            answers: q.answers.map((a) => ({ text: a.text, is_correct: a.is_correct })),
+          }),
+        });
+        ok += 1;
+      } catch (e) {
+        fails.push(`«${q.text.slice(0, 50)}» — ${e.message}`);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    setImporting(false);
+    setImportOpen(false);
+    setParsed(null);
+    reload();
+    alert(fails.length
+      ? `Импортировано ${ok} из ${list.length}.\nОшибки:\n${fails.join("\n")}`
+      : `Импортировано вопросов: ${ok}`);
+  };
+
   const saveEdit = async () => {
     await api(`${apiPrefix}/tests/${test.id}`, { method: "PUT", body: JSON.stringify(form) });
     setEdit(false); reload();
@@ -136,6 +199,69 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
                                                     onDelete={() => delQ(q.id)} onUpdate={updQ} />)}
       </div>
       <NewQuestionForm testId={test.id} onSubmit={addQ} />
+
+      <div className="spread" style={{ marginTop: 14, alignItems: "center" }}>
+        <button type="button" className="btn" onClick={() => fileRef.current && fileRef.current.click()}>
+          📥 Импортировать вопросы из Word (.docx)
+        </button>
+        <span className="small muted">Вопрос, затем варианты A. B. C. D. — правильный ответ выделен жирным</span>
+      </div>
+      <input ref={fileRef} type="file" accept=".docx" style={{ display: "none" }} onChange={pickDocx} />
+
+      {importOpen && parsed && (
+        <div className="modal-back" onClick={() => !importing && setImportOpen(false)}>
+          <div className="card modal" onClick={(e) => e.stopPropagation()}>
+            <div className="spread">
+              <b>Импорт вопросов из Word</b>
+              <span className="small muted">
+                выбрано: {parsed.questions.filter((q) => q.include && q.valid).length} / {parsed.questions.length}
+              </span>
+            </div>
+            {parsed.warnings.map((w, i) => (
+              <div key={i} className="small" style={{ color: "#b45309", marginTop: 6 }}>⚠ {w}</div>
+            ))}
+            <div className="list" style={{ marginTop: 10, maxHeight: "50vh", overflow: "auto" }}>
+              {parsed.questions.map((q, i) => (
+                <div className="q" key={i} style={{ padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
+                  <label className="row" style={{ gap: 8, alignItems: "flex-start", cursor: q.valid ? "pointer" : "default" }}>
+                    <input
+                      type="checkbox"
+                      checked={q.include && q.valid}
+                      disabled={!q.valid || importing}
+                      onChange={() => toggleImportQ(i)}
+                      style={{ marginTop: 4 }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <b>{i + 1}. {q.text || "(пустой вопрос)"}</b>
+                      {!q.valid && <div className="small" style={{ color: "#b91c1c" }}>⚠ {q.issue}</div>}
+                      <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                        {q.answers.map((a, j) => (
+                          <li key={j} style={{ color: a.is_correct ? "#15803d" : "inherit", fontWeight: a.is_correct ? 600 : 400 }}>
+                            {a.is_correct ? "✅" : "▫️"} {String.fromCharCode(65 + j)}. {a.text}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="spread" style={{ marginTop: 12, justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn ghost" disabled={importing} onClick={() => setImportOpen(false)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={importing || !parsed.questions.some((q) => q.include && q.valid)}
+                onClick={runImport}
+              >
+                {importing ? "Импорт..." : `Импортировать ${parsed.questions.filter((q) => q.include && q.valid).length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -18,10 +18,10 @@
     },
     {
       "id": 3,
-      "role": "manager",
+      "role": "teacher",
       "extra_roles": "",
       "username": "manager",
-      "password_hash": "$2a$10$PWLiaMVznPi1vAHJZp3KJeXFuHMuFChtKk3dc2wTKF2smyglWPsIm",
+      "password_hash": "$2a$10$Jt8LaMJXwyEa6gidR/aHzeEVEPq7l6NxueXsMkfPqtXuekSgnhyZ6",
       "name": "Мария Смирнова (Методист)"
     },
     {
@@ -87,26 +87,14 @@
   ],
   "groupTeachers": [
     {
-      "group_id": 2,
-      "teacher_id": 2
+      "group_id": 3,
+      "teacher_id": 3
     }
   ],
   "groupStudents": [
     {
-      "group_id": 2,
-      "user_id": 4
-    },
-    {
-      "group_id": 2,
-      "user_id": 2
-    },
-    {
       "group_id": 3,
       "user_id": 2
-    },
-    {
-      "group_id": 3,
-      "user_id": 5
     }
   ],
   "themes": [
@@ -257,128 +245,1205 @@
   ],
   "questions": [
     {
-      "id": 3,
+      "id": 7,
       "test_id": 2,
-      "text": "Какое греческое слово используется в Новом Завете для обозначения понятия «Завет»?"
+      "text": "1 / 27 Какое греческое слово используется в Новом Завете для обозначения понятия «Завет»?"
     },
     {
-      "id": 4,
+      "id": 8,
       "test_id": 2,
-      "text": "Кто всегда выступает инициатором библейских заветов согласно материалу уроков?"
+      "text": "2 / 27 Кто всегда выступает инициатором библейских заветов согласно материалу уроков?"
     },
     {
-      "id": 5,
+      "id": 9,
       "test_id": 2,
-      "text": "Сколько основных библейских заветов выделяют богословы в последовательной истории отношений Бога с человеком?"
+      "text": "3 / 27 Сколько основных библейских заветов выделяют богословы в последовательной истории отношений Бога с человеком?"
     },
     {
-      "id": 6,
+      "id": 10,
       "test_id": 2,
-      "text": "В чем заключается принципиальное отличие безусловного завета от условного?"
+      "text": "4 / 27 В чем заключается принципиальное отличие безусловного завета от условного?"
+    },
+    {
+      "id": 11,
+      "test_id": 2,
+      "text": "5 / 27 Какой завет был заключен с Адамом до грехопадения?"
+    },
+    {
+      "id": 12,
+      "test_id": 2,
+      "text": "6 / 27 Что является знамением (символом) вечного завета Бога с землей после потопа?"
+    },
+    {
+      "id": 13,
+      "test_id": 2,
+      "text": "7 / 27 В чем заключается уникальность завета с Авраамом по сравнению с Моисеевым законом?"
+    },
+    {
+      "id": 14,
+      "test_id": 2,
+      "text": "8 / 27 Сколько заповедей к исполнению выделяют исследователи в Ветхом Завете (Законе Моисея)?"
+    },
+    {
+      "id": 15,
+      "test_id": 2,
+      "text": "9 / 27 Какую роль выполняет Закон Моисея согласно посланиям апостола Павла?"
+    },
+    {
+      "id": 16,
+      "test_id": 2,
+      "text": "10 / 27 Что Иисус назвал двумя наибольшими заповедями, резюмирующими весь Закон?"
+    },
+    {
+      "id": 17,
+      "test_id": 2,
+      "text": "11 / 27 Какой персонаж Ветхого Завета является прообразом Христа как «Искупителя» (Goel) в истории о Руфи?"
+    },
+    {
+      "id": 18,
+      "test_id": 2,
+      "text": "12 / 27 Какое ключевое утверждение о крови содержится в книге Левит 17:11?"
+    },
+    {
+      "id": 19,
+      "test_id": 2,
+      "text": "13 / 27 Что находилось внутри Ковчега Завета в Святом Святых?"
+    },
+    {
+      "id": 20,
+      "test_id": 2,
+      "text": "14 / 27 Какой царь возобновил завет с Богом после того, как в Храме была найдена Книга Закона?"
+    },
+    {
+      "id": 21,
+      "test_id": 2,
+      "text": "15 / 27 Согласно урокам, в чем заключается главная опасность для «избранных» в последнее время?"
+    },
+    {
+      "id": 22,
+      "test_id": 2,
+      "text": "16 / 27 Какую функцию выполняет Святой Дух в отношении слов Иисуса Христа?"
+    },
+    {
+      "id": 23,
+      "test_id": 2,
+      "text": "17 / 27 Что символизировали 12 и 7 корзин, оставшихся после насыщения толпы хлебом?"
+    },
+    {
+      "id": 24,
+      "test_id": 2,
+      "text": "18 / 27 Какое утверждение об Иисусе Христе содержится во 2 Коринфянам 4:6?"
+    },
+    {
+      "id": 25,
+      "test_id": 2,
+      "text": "19 / 27 Как апостол Павел называет Закон в отношении верующего (Галатам 3:24)?"
+    },
+    {
+      "id": 26,
+      "test_id": 2,
+      "text": "20 / 27 Что Иисус ответил иудеям в Иоанна 5:46 по поводу их веры Моисею?"
+    },
+    {
+      "id": 27,
+      "test_id": 2,
+      "text": "21 / 27 Какое библейское пророчество сравнивает верность Бога с водами Ноя (Исаия 54)?"
+    },
+    {
+      "id": 28,
+      "test_id": 2,
+      "text": "22 / 27 На какой важный аспект указывает Давид в своей песне (2 Царств 23:5), говоря о «вечном завете»?"
+    },
+    {
+      "id": 29,
+      "test_id": 2,
+      "text": "23 / 27 Какую «деталь» Ветхого Завета часто ошибочно пытаются вставить в «космический корабль» Нового Завета (согласно примеру из урока)?"
+    },
+    {
+      "id": 30,
+      "test_id": 2,
+      "text": "Веру в единого Бога 24 / 27 Какой завет считается «Седьмым» в детальной классификации из 8 заветов?"
+    },
+    {
+      "id": 31,
+      "test_id": 2,
+      "text": "25 / 27 В чем заключается служение Духа Святого по отношению к «миру» (неверующим), согласно Иоанна 16:8?"
+    },
+    {
+      "id": 32,
+      "test_id": 2,
+      "text": "26 / 27 Почему Новый Завет называется «лучшим» в послании к Евреям?"
+    },
+    {
+      "id": 33,
+      "test_id": 2,
+      "text": "27 / 27 Что произошло с завесой в Храме в момент смерти Иисуса, символизируя новый этап Завета?"
     }
   ],
   "answers": [
     {
+      "id": 29,
+      "question_id": 7,
+      "text": "Nomos",
+      "is_correct": false
+    },
+    {
+      "id": 30,
+      "question_id": 7,
+      "text": "Koinonia",
+      "is_correct": false
+    },
+    {
+      "id": 31,
+      "question_id": 7,
+      "text": "Diatheke",
+      "is_correct": true
+    },
+    {
+      "id": 32,
+      "question_id": 7,
+      "text": "Logos",
+      "is_correct": false
+    },
+    {
+      "id": 33,
+      "question_id": 8,
+      "text": "Пророки",
+      "is_correct": false
+    },
+    {
+      "id": 34,
+      "question_id": 8,
+      "text": "Бог",
+      "is_correct": true
+    },
+    {
+      "id": 35,
+      "question_id": 8,
+      "text": "Человек",
+      "is_correct": false
+    },
+    {
+      "id": 36,
+      "question_id": 8,
+      "text": "Ангелы",
+      "is_correct": false
+    },
+    {
+      "id": 37,
+      "question_id": 9,
+      "text": "2",
+      "is_correct": false
+    },
+    {
+      "id": 38,
+      "question_id": 9,
+      "text": "10",
+      "is_correct": false
+    },
+    {
+      "id": 39,
+      "question_id": 9,
+      "text": "8",
+      "is_correct": true
+    },
+    {
+      "id": 40,
+      "question_id": 9,
+      "text": "12",
+      "is_correct": false
+    },
+    {
+      "id": 41,
+      "question_id": 10,
+      "text": "Он действует только в пределах Эдемского сада",
+      "is_correct": false
+    },
+    {
+      "id": 42,
+      "question_id": 10,
+      "text": "Исполнение зависит исключительно от верности Бога",
+      "is_correct": true
+    },
+    {
+      "id": 43,
+      "question_id": 10,
+      "text": "Он автоматически отменяет все предыдущие договоры",
+      "is_correct": false
+    },
+    {
+      "id": 44,
+      "question_id": 10,
+      "text": "Он требует принесения жертв ежедневно",
+      "is_correct": false
+    },
+    {
+      "id": 45,
+      "question_id": 11,
+      "text": "Ноев завет",
+      "is_correct": false
+    },
+    {
+      "id": 46,
+      "question_id": 11,
+      "text": "Завет с падшим человечеством",
+      "is_correct": false
+    },
+    {
+      "id": 47,
+      "question_id": 11,
+      "text": "Эдемский завет",
+      "is_correct": true
+    },
+    {
+      "id": 48,
+      "question_id": 11,
+      "text": "Авраамов завет",
+      "is_correct": false
+    },
+    {
+      "id": 49,
+      "question_id": 12,
+      "text": "Чаша с вином",
+      "is_correct": false
+    },
+    {
+      "id": 50,
+      "question_id": 12,
+      "text": "Обрезание",
+      "is_correct": false
+    },
+    {
+      "id": 51,
+      "question_id": 12,
+      "text": "Радуга",
+      "is_correct": true
+    },
+    {
+      "id": 52,
+      "question_id": 12,
+      "text": "Скрижали",
+      "is_correct": false
+    },
+    {
+      "id": 53,
+      "question_id": 13,
+      "text": "Он требует ежегодного посещения Иерусалимского храма",
+      "is_correct": false
+    },
+    {
+      "id": 54,
+      "question_id": 13,
+      "text": "Он является временным до прихода Моисея",
+      "is_correct": false
+    },
+    {
+      "id": 55,
+      "question_id": 13,
+      "text": "Он запрещает употребление определенной пищи",
+      "is_correct": false
+    },
+    {
+      "id": 56,
+      "question_id": 13,
+      "text": "Он основан на праведности по вере, а не на делах закона",
+      "is_correct": true
+    },
+    {
+      "id": 57,
+      "question_id": 14,
+      "text": "613",
+      "is_correct": true
+    },
+    {
+      "id": 58,
+      "question_id": 14,
+      "text": "10",
+      "is_correct": false
+    },
+    {
+      "id": 59,
+      "question_id": 14,
+      "text": "7",
+      "is_correct": false
+    },
+    {
+      "id": 60,
+      "question_id": 14,
+      "text": "365",
+      "is_correct": false
+    },
+    {
+      "id": 61,
+      "question_id": 15,
+      "text": "Детоводитель ко Христу",
+      "is_correct": true
+    },
+    {
+      "id": 62,
+      "question_id": 15,
+      "text": "Инструкция по достижению физического бессмертия",
+      "is_correct": false
+    },
+    {
+      "id": 63,
+      "question_id": 15,
+      "text": "Средство окончательного искупления грехов",
+      "is_correct": false
+    },
+    {
+      "id": 64,
+      "question_id": 15,
+      "text": "Вечный договор, который невозможно заменить",
+      "is_correct": false
+    },
+    {
+      "id": 65,
+      "question_id": 16,
+      "text": "Приноси жертвы и плати десятину",
+      "is_correct": false
+    },
+    {
+      "id": 66,
+      "question_id": 16,
+      "text": "Почитай отца и не убивай",
+      "is_correct": false
+    },
+    {
+      "id": 67,
+      "question_id": 16,
+      "text": "Не делай кумира и помни субботу",
+      "is_correct": false
+    },
+    {
+      "id": 68,
+      "question_id": 16,
+      "text": "Возлюби Бога и возлюби ближнего",
+      "is_correct": true
+    },
+    {
+      "id": 69,
+      "question_id": 17,
+      "text": "Давид",
+      "is_correct": false
+    },
+    {
+      "id": 70,
+      "question_id": 17,
+      "text": "Вооз",
+      "is_correct": true
+    },
+    {
+      "id": 71,
+      "question_id": 17,
+      "text": "Осия",
+      "is_correct": false
+    },
+    {
+      "id": 72,
+      "question_id": 17,
+      "text": "Ионафан",
+      "is_correct": false
+    },
+    {
+      "id": 73,
+      "question_id": 18,
+      "text": "Кровь животных смывает грех навсегда",
+      "is_correct": false
+    },
+    {
+      "id": 74,
+      "question_id": 18,
+      "text": "Кровь нельзя проливать на землю",
+      "is_correct": false
+    },
+    {
+      "id": 75,
+      "question_id": 18,
+      "text": "Питие крови дает вечную жизнь",
+      "is_correct": false
+    },
+    {
+      "id": 76,
+      "question_id": 18,
+      "text": "Душа тела в крови",
+      "is_correct": true
+    },
+    {
+      "id": 77,
+      "question_id": 19,
+      "text": "Меч Голиафа",
+      "is_correct": false
+    },
+    {
+      "id": 78,
+      "question_id": 19,
+      "text": "Золотой венец Давида",
+      "is_correct": false
+    },
+    {
+      "id": 79,
+      "question_id": 19,
+      "text": "Книга пророка Исаии",
+      "is_correct": false
+    },
+    {
+      "id": 80,
+      "question_id": 19,
+      "text": "Скрижали Завета",
+      "is_correct": true
+    },
+    {
+      "id": 81,
+      "question_id": 20,
+      "text": "Иосия",
+      "is_correct": true
+    },
+    {
+      "id": 82,
+      "question_id": 20,
+      "text": "Соломон",
+      "is_correct": false
+    },
+    {
+      "id": 83,
+      "question_id": 20,
+      "text": "Иорам",
+      "is_correct": false
+    },
+    {
+      "id": 84,
+      "question_id": 20,
+      "text": "Саул",
+      "is_correct": false
+    },
+    {
+      "id": 85,
+      "question_id": 21,
+      "text": "Забвение греческого языка",
+      "is_correct": false
+    },
+    {
+      "id": 86,
+      "question_id": 21,
+      "text": "Физическое преследование и тюрьмы",
+      "is_correct": false
+    },
+    {
+      "id": 87,
+      "question_id": 21,
+      "text": "Обольщение ложными знамениями и чудесами",
+      "is_correct": true
+    },
+    {
+      "id": 88,
+      "question_id": 21,
+      "text": "Недостаток финансовых ресурсов",
+      "is_correct": false
+    },
+    {
+      "id": 89,
+      "question_id": 22,
+      "text": "Напоминает и открывает их значение",
+      "is_correct": true
+    },
+    {
+      "id": 90,
+      "question_id": 22,
+      "text": "Записывает их в новые физические книги",
+      "is_correct": false
+    },
+    {
+      "id": 91,
+      "question_id": 22,
+      "text": "Отменяет их за ненадобностью в новом веке",
+      "is_correct": false
+    },
+    {
+      "id": 92,
+      "question_id": 22,
+      "text": "Переводит их на все языки мира автоматически",
+      "is_correct": false
+    },
+    {
+      "id": 93,
+      "question_id": 23,
+      "text": "Количество учеников, которые не верили",
+      "is_correct": false
+    },
+    {
+      "id": 94,
+      "question_id": 23,
+      "text": "Полноту Божьего обеспечения (месяцы и дни)",
+      "is_correct": true
+    },
+    {
+      "id": 95,
+      "question_id": 23,
+      "text": "Налог, который нужно было заплатить кесарю",
+      "is_correct": false
+    },
+    {
+      "id": 96,
+      "question_id": 23,
+      "text": "Количество колен Израилевых и планет",
+      "is_correct": false
+    },
+    {
+      "id": 97,
+      "question_id": 24,
+      "text": "Он является вторым Моисеем",
+      "is_correct": false
+    },
+    {
+      "id": 98,
+      "question_id": 24,
+      "text": "Он пришел только для иудеев",
+      "is_correct": false
+    },
+    {
+      "id": 99,
+      "question_id": 24,
+      "text": "Он есть познание славы Божьей",
+      "is_correct": true
+    },
+    {
+      "id": 100,
+      "question_id": 24,
+      "text": "Он есть строгий судья закона",
+      "is_correct": false
+    },
+    {
+      "id": 101,
+      "question_id": 25,
+      "text": "Педагог (детоводитель)",
+      "is_correct": true
+    },
+    {
+      "id": 102,
+      "question_id": 25,
+      "text": "Царь",
+      "is_correct": false
+    },
+    {
+      "id": 103,
+      "question_id": 25,
+      "text": "Тюремщик",
+      "is_correct": false
+    },
+    {
+      "id": 104,
+      "question_id": 25,
+      "text": "Враг",
+      "is_correct": false
+    },
+    {
+      "id": 105,
+      "question_id": 26,
+      "text": "Вы слишком строго соблюдаете субботу",
+      "is_correct": false
+    },
+    {
+      "id": 106,
+      "question_id": 26,
+      "text": "Если бы вы верили Моисею, то поверили бы и Мне",
+      "is_correct": true
+    },
+    {
+      "id": 107,
+      "question_id": 26,
+      "text": "Моисей ошибался во многих вопросах",
+      "is_correct": false
+    },
+    {
+      "id": 108,
+      "question_id": 26,
+      "text": "Забудьте Моисея и слушайте только Меня",
+      "is_correct": false
+    },
+    {
+      "id": 109,
+      "question_id": 27,
+      "text": "Бог клянется не гневаться и не укорять верующего",
+      "is_correct": true
+    },
+    {
+      "id": 110,
+      "question_id": 27,
+      "text": "Все грешники погибнут во второй раз",
+      "is_correct": false
+    },
+    {
+      "id": 111,
+      "question_id": 27,
+      "text": "Животные заговорят человеческим голосом",
+      "is_correct": false
+    },
+    {
+      "id": 112,
+      "question_id": 27,
+      "text": "Бог обещает построить новый ковчег для Израиля",
+      "is_correct": false
+    },
+    {
+      "id": 113,
+      "question_id": 28,
+      "text": "Завет прекратится после смерти Соломона",
+      "is_correct": false
+    },
+    {
+      "id": 114,
+      "question_id": 28,
+      "text": "Завет тверд и непреложен, от него все спасение",
+      "is_correct": true
+    },
+    {
+      "id": 115,
+      "question_id": 28,
+      "text": "Нужно построить семь жертвенников из гранита",
+      "is_correct": false
+    },
+    {
+      "id": 116,
+      "question_id": 28,
+      "text": "Завет зависит от количества золота в казне",
+      "is_correct": false
+    },
+    {
+      "id": 117,
+      "question_id": 29,
+      "text": "Любовь к ближнему",
+      "is_correct": false
+    },
+    {
+      "id": 118,
+      "question_id": 29,
+      "text": "Чтение псалмов",
+      "is_correct": false
+    },
+    {
+      "id": 119,
+      "question_id": 29,
+      "text": "Усилия плоти по исполнению заповедей",
+      "is_correct": true
+    },
+    {
+      "id": 120,
+      "question_id": 29,
+      "text": "",
+      "is_correct": false
+    },
+    {
+      "id": 121,
+      "question_id": 30,
+      "text": "Моисеев завет",
+      "is_correct": false
+    },
+    {
+      "id": 122,
+      "question_id": 30,
+      "text": "Новый Завет со Христом",
+      "is_correct": false
+    },
+    {
+      "id": 123,
+      "question_id": 30,
+      "text": "Завет о земле Израиля",
+      "is_correct": true
+    },
+    {
+      "id": 124,
+      "question_id": 30,
+      "text": "Завет с Давидом",
+      "is_correct": false
+    },
+    {
+      "id": 125,
+      "question_id": 31,
+      "text": "Мгновенное обогащение всех нуждающихся",
+      "is_correct": false
+    },
+    {
+      "id": 126,
+      "question_id": 31,
+      "text": "Утешение во всех скорбях",
+      "is_correct": false
+    },
+    {
+      "id": 127,
+      "question_id": 31,
+      "text": "Раскрытие тайн будущего через гороскопы",
+      "is_correct": false
+    },
+    {
+      "id": 128,
+      "question_id": 31,
+      "text": "Обличение о грехе, правде и суде",
+      "is_correct": true
+    },
+    {
+      "id": 129,
+      "question_id": 32,
+      "text": "Он написан на более качественном пергаменте",
+      "is_correct": false
+    },
+    {
+      "id": 130,
+      "question_id": 32,
+      "text": "Утвержден на лучших обетованиях и лучшем Посреднике",
+      "is_correct": true
+    },
+    {
+      "id": 131,
+      "question_id": 32,
+      "text": "Он позволяет не соблюдать вообще никаких правил",
+      "is_correct": false
+    },
+    {
+      "id": 132,
+      "question_id": 32,
+      "text": "Его легче запомнить, так как он короче",
+      "is_correct": false
+    },
+    {
+      "id": 133,
+      "question_id": 33,
+      "text": "Почернела от дыма",
+      "is_correct": false
+    },
+    {
+      "id": 134,
+      "question_id": 33,
+      "text": "Исчезла бесследно",
+      "is_correct": false
+    },
+    {
+      "id": 135,
+      "question_id": 33,
+      "text": "Стала непрозрачной навсегда",
+      "is_correct": false
+    },
+    {
+      "id": 136,
+      "question_id": 33,
+      "text": "Разодралась сверху донизу",
+      "is_correct": true
+    }
+  ],
+  "attempts": [
+    {
+      "id": 1,
+      "user_id": 2,
+      "test_id": 2,
+      "score": 26,
+      "passed": false,
+      "created_at": "2026-09-24T20:28:34.791Z"
+    },
+    {
+      "id": 2,
+      "user_id": 2,
+      "test_id": 2,
+      "score": 22,
+      "passed": false,
+      "created_at": "2026-09-24T20:29:50.607Z"
+    }
+  ],
+  "attemptAnswers": [
+    {
+      "id": 1,
+      "attempt_id": 1,
+      "question_id": 7,
+      "answer_id": 30,
+      "is_correct": false
+    },
+    {
+      "id": 2,
+      "attempt_id": 1,
+      "question_id": 8,
+      "answer_id": 34,
+      "is_correct": true
+    },
+    {
+      "id": 3,
+      "attempt_id": 1,
+      "question_id": 9,
+      "answer_id": 38,
+      "is_correct": false
+    },
+    {
+      "id": 4,
+      "attempt_id": 1,
+      "question_id": 10,
+      "answer_id": 42,
+      "is_correct": true
+    },
+    {
+      "id": 5,
+      "attempt_id": 1,
+      "question_id": 11,
+      "answer_id": 46,
+      "is_correct": false
+    },
+    {
+      "id": 6,
+      "attempt_id": 1,
+      "question_id": 12,
+      "answer_id": 51,
+      "is_correct": true
+    },
+    {
+      "id": 7,
+      "attempt_id": 1,
+      "question_id": 13,
+      "answer_id": 55,
+      "is_correct": false
+    },
+    {
+      "id": 8,
+      "attempt_id": 1,
+      "question_id": 14,
+      "answer_id": 57,
+      "is_correct": true
+    },
+    {
       "id": 9,
-      "question_id": 3,
-      "text": "A.Nomos",
+      "attempt_id": 1,
+      "question_id": 15,
+      "answer_id": 62,
       "is_correct": false
     },
     {
       "id": 10,
-      "question_id": 3,
-      "text": "B.Koinonia",
+      "attempt_id": 1,
+      "question_id": 16,
+      "answer_id": 66,
       "is_correct": false
     },
     {
       "id": 11,
-      "question_id": 3,
-      "text": "C.Diatheke",
+      "attempt_id": 1,
+      "question_id": 17,
+      "answer_id": 70,
       "is_correct": true
     },
     {
       "id": 12,
-      "question_id": 3,
-      "text": "D.Logos",
+      "attempt_id": 1,
+      "question_id": 18,
+      "answer_id": 74,
       "is_correct": false
     },
     {
       "id": 13,
-      "question_id": 4,
-      "text": "A.Пророки",
-      "is_correct": true
+      "attempt_id": 1,
+      "question_id": 19,
+      "answer_id": 79,
+      "is_correct": false
     },
     {
       "id": 14,
-      "question_id": 4,
-      "text": "B.Бог",
+      "attempt_id": 1,
+      "question_id": 20,
+      "answer_id": 83,
       "is_correct": false
     },
     {
       "id": 15,
-      "question_id": 4,
-      "text": "C.Человек",
-      "is_correct": false
+      "attempt_id": 1,
+      "question_id": 21,
+      "answer_id": 87,
+      "is_correct": true
     },
     {
       "id": 16,
-      "question_id": 4,
-      "text": "D.Ангелы",
+      "attempt_id": 1,
+      "question_id": 22,
+      "answer_id": 91,
       "is_correct": false
     },
     {
       "id": 17,
-      "question_id": 5,
-      "text": "A.2",
+      "attempt_id": 1,
+      "question_id": 23,
+      "answer_id": 96,
       "is_correct": false
     },
     {
       "id": 18,
-      "question_id": 5,
-      "text": "B.10",
+      "attempt_id": 1,
+      "question_id": 24,
+      "answer_id": 100,
       "is_correct": false
     },
     {
       "id": 19,
-      "question_id": 5,
-      "text": "C.8",
-      "is_correct": true
+      "attempt_id": 1,
+      "question_id": 25,
+      "answer_id": 103,
+      "is_correct": false
     },
     {
       "id": 20,
-      "question_id": 5,
-      "text": "D.12",
+      "attempt_id": 1,
+      "question_id": 26,
+      "answer_id": 107,
+      "is_correct": false
+    },
+    {
+      "id": 21,
+      "attempt_id": 1,
+      "question_id": 27,
+      "answer_id": 110,
+      "is_correct": false
+    },
+    {
+      "id": 22,
+      "attempt_id": 1,
+      "question_id": 28,
+      "answer_id": 114,
+      "is_correct": true
+    },
+    {
+      "id": 23,
+      "attempt_id": 1,
+      "question_id": 29,
+      "answer_id": 118,
+      "is_correct": false
+    },
+    {
+      "id": 24,
+      "attempt_id": 1,
+      "question_id": 30,
+      "answer_id": 122,
       "is_correct": false
     },
     {
       "id": 25,
-      "question_id": 6,
-      "text": "A.Он действует только в пределах Эдемского сада",
+      "attempt_id": 1,
+      "question_id": 31,
+      "answer_id": 127,
       "is_correct": false
     },
     {
       "id": 26,
-      "question_id": 6,
-      "text": "B.Исполнение зависит исключительно от верности Бога",
-      "is_correct": true
+      "attempt_id": 1,
+      "question_id": 32,
+      "answer_id": 131,
+      "is_correct": false
     },
     {
       "id": 27,
-      "question_id": 6,
-      "text": "C.Он автоматически отменяет все предыдущие договоры",
+      "attempt_id": 1,
+      "question_id": 33,
+      "answer_id": 135,
       "is_correct": false
     },
     {
       "id": 28,
-      "question_id": 6,
-      "text": "D.Он требует принесения жертв ежедневно",
+      "attempt_id": 2,
+      "question_id": 7,
+      "answer_id": 30,
+      "is_correct": false
+    },
+    {
+      "id": 29,
+      "attempt_id": 2,
+      "question_id": 8,
+      "answer_id": 34,
+      "is_correct": true
+    },
+    {
+      "id": 30,
+      "attempt_id": 2,
+      "question_id": 9,
+      "answer_id": 38,
+      "is_correct": false
+    },
+    {
+      "id": 31,
+      "attempt_id": 2,
+      "question_id": 10,
+      "answer_id": 42,
+      "is_correct": true
+    },
+    {
+      "id": 32,
+      "attempt_id": 2,
+      "question_id": 11,
+      "answer_id": 46,
+      "is_correct": false
+    },
+    {
+      "id": 33,
+      "attempt_id": 2,
+      "question_id": 12,
+      "answer_id": 50,
+      "is_correct": false
+    },
+    {
+      "id": 34,
+      "attempt_id": 2,
+      "question_id": 13,
+      "answer_id": 54,
+      "is_correct": false
+    },
+    {
+      "id": 35,
+      "attempt_id": 2,
+      "question_id": 14,
+      "answer_id": 58,
+      "is_correct": false
+    },
+    {
+      "id": 36,
+      "attempt_id": 2,
+      "question_id": 15,
+      "answer_id": 62,
+      "is_correct": false
+    },
+    {
+      "id": 37,
+      "attempt_id": 2,
+      "question_id": 16,
+      "answer_id": 65,
+      "is_correct": false
+    },
+    {
+      "id": 38,
+      "attempt_id": 2,
+      "question_id": 17,
+      "answer_id": 70,
+      "is_correct": true
+    },
+    {
+      "id": 39,
+      "attempt_id": 2,
+      "question_id": 18,
+      "answer_id": 74,
+      "is_correct": false
+    },
+    {
+      "id": 40,
+      "attempt_id": 2,
+      "question_id": 19,
+      "answer_id": 78,
+      "is_correct": false
+    },
+    {
+      "id": 41,
+      "attempt_id": 2,
+      "question_id": 20,
+      "answer_id": 82,
+      "is_correct": false
+    },
+    {
+      "id": 42,
+      "attempt_id": 2,
+      "question_id": 21,
+      "answer_id": 86,
+      "is_correct": false
+    },
+    {
+      "id": 43,
+      "attempt_id": 2,
+      "question_id": 22,
+      "answer_id": 90,
+      "is_correct": false
+    },
+    {
+      "id": 44,
+      "attempt_id": 2,
+      "question_id": 23,
+      "answer_id": 94,
+      "is_correct": true
+    },
+    {
+      "id": 45,
+      "attempt_id": 2,
+      "question_id": 24,
+      "answer_id": 98,
+      "is_correct": false
+    },
+    {
+      "id": 46,
+      "attempt_id": 2,
+      "question_id": 25,
+      "answer_id": 102,
+      "is_correct": false
+    },
+    {
+      "id": 47,
+      "attempt_id": 2,
+      "question_id": 26,
+      "answer_id": 107,
+      "is_correct": false
+    },
+    {
+      "id": 48,
+      "attempt_id": 2,
+      "question_id": 27,
+      "answer_id": 110,
+      "is_correct": false
+    },
+    {
+      "id": 49,
+      "attempt_id": 2,
+      "question_id": 28,
+      "answer_id": 114,
+      "is_correct": true
+    },
+    {
+      "id": 50,
+      "attempt_id": 2,
+      "question_id": 29,
+      "answer_id": 118,
+      "is_correct": false
+    },
+    {
+      "id": 51,
+      "attempt_id": 2,
+      "question_id": 30,
+      "answer_id": 122,
+      "is_correct": false
+    },
+    {
+      "id": 52,
+      "attempt_id": 2,
+      "question_id": 31,
+      "answer_id": 126,
+      "is_correct": false
+    },
+    {
+      "id": 53,
+      "attempt_id": 2,
+      "question_id": 32,
+      "answer_id": 130,
+      "is_correct": true
+    },
+    {
+      "id": 54,
+      "attempt_id": 2,
+      "question_id": 33,
+      "answer_id": 134,
       "is_correct": false
     }
   ],
-  "attempts": [],
-  "attemptAnswers": [],
-  "announcements": [],
-  "announcementTargets": [],
+  "announcements": [
+    {
+      "id": 2,
+      "author_id": 3,
+      "title": "объявление",
+      "body": "всем встретится",
+      "created_at": "2026-09-24T20:50:43.672Z",
+      "updated_at": "2026-09-24T20:50:43.672Z"
+    }
+  ],
+  "announcementTargets": [
+    {
+      "announcement_id": 2,
+      "group_id": 3
+    }
+  ],
   "chatMessages": [
     {
       "id": 3,
@@ -393,6 +1458,20 @@
       "user_id": 2,
       "text": "Отличный список литературы. Рекомендую начать с первой книги Бонхёффера.",
       "created_at": "2026-09-21T12:28:00.403Z"
+    },
+    {
+      "id": 5,
+      "theme_id": 16,
+      "user_id": 3,
+      "text": "как обстоят дела",
+      "created_at": "2026-09-24T20:51:14.970Z"
+    },
+    {
+      "id": 6,
+      "theme_id": 16,
+      "user_id": 2,
+      "text": "Нормально",
+      "created_at": "2026-09-24T20:54:58.533Z"
     }
   ],
   "settings": {
@@ -459,6 +1538,76 @@
       "link": "/student?tab=messages&user=2",
       "read_at": null,
       "created_at": "2026-09-24T08:09:46.551Z"
+    },
+    {
+      "id": 3,
+      "user_id": 2,
+      "type": "attempt",
+      "title": "Волков Алексей: тест «Тест Библейские заветы. Дмитрий Бобков» — 26%",
+      "body": "не сдан",
+      "link": "/teacher?tab=attempts",
+      "read_at": "2026-09-24T20:51:36.118Z",
+      "created_at": "2026-09-24T20:28:34.792Z"
+    },
+    {
+      "id": 4,
+      "user_id": 2,
+      "type": "attempt",
+      "title": "Волков Алексей: тест «Тест Библейские заветы. Дмитрий Бобков» — 22%",
+      "body": "не сдан",
+      "link": "/teacher?tab=attempts",
+      "read_at": "2026-09-24T20:51:42.313Z",
+      "created_at": "2026-09-24T20:29:50.608Z"
+    },
+    {
+      "id": 5,
+      "user_id": 2,
+      "type": "dm",
+      "title": "Сообщение от Мария Смирнова (Методист)",
+      "body": "привет",
+      "link": "/student?tab=messages&user=3",
+      "read_at": "2026-09-24T20:51:44.682Z",
+      "created_at": "2026-09-24T20:50:07.499Z"
+    },
+    {
+      "id": 6,
+      "user_id": 2,
+      "type": "announcement",
+      "title": "Объявление: объявление",
+      "body": "всем встретится",
+      "link": "/student?tab=announcements",
+      "read_at": "2026-09-24T20:52:04.380Z",
+      "created_at": "2026-09-24T20:50:43.672Z"
+    },
+    {
+      "id": 7,
+      "user_id": 2,
+      "type": "chat",
+      "title": "Новое сообщение в теме «Библейские Заветы. Дмитрий Бобков»",
+      "body": "как обстоят дела",
+      "link": "/student?course=3&theme=16",
+      "read_at": "2026-09-24T20:54:39.702Z",
+      "created_at": "2026-09-24T20:51:14.971Z"
+    },
+    {
+      "id": 8,
+      "user_id": 3,
+      "type": "dm",
+      "title": "Сообщение от Волков Алексей",
+      "body": "привет",
+      "link": "/teacher?tab=messages&user=2",
+      "read_at": null,
+      "created_at": "2026-09-24T20:51:59.657Z"
+    },
+    {
+      "id": 9,
+      "user_id": 3,
+      "type": "chat",
+      "title": "Новое сообщение от Волков Алексей в «Библейские Заветы. Дмитрий Бобков»",
+      "body": "Нормально",
+      "link": "/teacher?theme=16",
+      "read_at": null,
+      "created_at": "2026-09-24T20:54:58.534Z"
     }
   ],
   "directMessages": [
@@ -477,6 +1626,22 @@
       "text": "пивет",
       "read_at": null,
       "created_at": "2026-09-24T08:09:46.551Z"
+    },
+    {
+      "id": 3,
+      "sender_id": 3,
+      "recipient_id": 2,
+      "text": "привет",
+      "read_at": "2026-09-24T20:51:44.760Z",
+      "created_at": "2026-09-24T20:50:07.499Z"
+    },
+    {
+      "id": 4,
+      "sender_id": 2,
+      "recipient_id": 3,
+      "text": "привет",
+      "read_at": null,
+      "created_at": "2026-09-24T20:51:59.657Z"
     }
   ],
   "nextId": {
@@ -488,15 +1653,15 @@
     "extraMaterial": 2,
     "storageMaterial": 26,
     "test": 3,
-    "question": 7,
-    "answer": 29,
-    "attempt": 1,
-    "attemptAnswer": 1,
-    "announcement": 2,
-    "chatMessage": 5,
+    "question": 34,
+    "answer": 137,
+    "attempt": 3,
+    "attemptAnswer": 55,
+    "announcement": 3,
+    "chatMessage": 7,
     "uploadedFile": 29,
     "phoneInvite": 3,
-    "notification": 3,
-    "directMessage": 3
+    "notification": 10,
+    "directMessage": 5
   }
 }
