@@ -3,13 +3,13 @@ import { api } from "../api";
 import { getFormatInfo } from "./UnifiedMaterialsRepository";
 
 /**
- * Modal to pick either an entire theme or individual material(s) from the repository
+ * Modal to pick either an entire playlist or individual material(s) from the repository
  * and attach them to a course or theme.
  */
 export default function RepositoryPickerModal({
   open,
   onClose,
-  mode = "theme", // "theme" (pick theme to import) | "material" (pick material to attach)
+  mode = "playlist", // "playlist" (pick playlist to import) | "material" (pick material to attach)
   courseId,
   courseTitle = "",
   themeId,
@@ -17,11 +17,11 @@ export default function RepositoryPickerModal({
   apiPrefix = "/api/admin",
   onSuccess,
 }) {
-  const [themes, setThemes] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedThemeName, setSelectedThemeName] = useState("");
+  const [selectedPlaylistName, setSelectedPlaylistName] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,13 +29,13 @@ export default function RepositoryPickerModal({
     if (!open) return;
     setLoading(true);
     Promise.all([
-      api(`${apiPrefix}/repository/themes`),
+      api(`${apiPrefix}/repository/playlists`),
       api(`${apiPrefix}/repository/materials`),
     ])
-      .then(([thms, mats]) => {
-        setThemes(thms || []);
+      .then(([pl, mats]) => {
+        setPlaylists(pl || []);
         setMaterials(mats || []);
-        if (thms?.[0]) setSelectedThemeName(thms[0].theme_name);
+        if (pl?.[0]) setSelectedPlaylistName(pl[0].playlist_name);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -43,15 +43,15 @@ export default function RepositoryPickerModal({
 
   if (!open) return null;
 
-  const handleImportTheme = async (themeName) => {
+  const handleImportPlaylist = async (playlistName) => {
     if (!courseId) return alert("Курс не выбран");
     setSubmitting(true);
     try {
-      const res = await api(`${apiPrefix}/courses/${courseId}/import-theme`, {
+      const res = await api(`${apiPrefix}/courses/${courseId}/import-playlist`, {
         method: "POST",
-        body: JSON.stringify({ theme_name: themeName }),
+        body: JSON.stringify({ playlist_name: playlistName }),
       });
-      alert(`Тема «${themeName}» (${res.imported_count} уроков) успешно добавлена в курс!`);
+      alert(`Плейлист «${playlistName}» (${res.imported_count} уроков) импортирован в курс как тема!`);
       if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
@@ -90,13 +90,13 @@ export default function RepositoryPickerModal({
   };
 
   const filteredMaterials = materials.filter((m) => {
-    if (selectedThemeName && m.theme_name !== selectedThemeName) return false;
+    if (selectedPlaylistName && m.playlist_name !== selectedPlaylistName) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       return (
         m.title.toLowerCase().includes(q) ||
         (m.description || "").toLowerCase().includes(q) ||
-        (m.theme_name || "").toLowerCase().includes(q)
+        (m.playlist_name || "").toLowerCase().includes(q)
       );
     }
     return true;
@@ -113,8 +113,8 @@ export default function RepositoryPickerModal({
               {themeTitle ? ` → Тема: ${themeTitle}` : ""}
             </span>
             <h3 style={{ margin: 0 }}>
-              {mode === "theme"
-                ? "📥 Импорт готовой темы из накопителя материалов"
+              {mode === "playlist"
+                ? "📥 Импорт готового плейлиста из накопителя материалов"
                 : "📎 Выбор урока/материала из накопителя"}
             </h3>
           </div>
@@ -127,22 +127,22 @@ export default function RepositoryPickerModal({
           <div className="muted" style={{ padding: 24, textAlign: "center" }}>
             Загрузка накопителя материалов...
           </div>
-        ) : mode === "theme" ? (
-          /* Mode: Pick Theme to import */
+        ) : mode === "playlist" ? (
+          /* Mode: Pick Playlist to import */
           <div>
             <div className="small muted" style={{ marginBottom: 12 }}>
-              Выберите тему, подготовленную в накопителе материалов. Все входящие в неё уроки (видео, тексты, документы, аудио, рисунки) будут автоматически скопированы в этот курс:
+              Выберите плейлист, подготовленный в накопителе материалов. Все входящие в него уроки (видео, тексты, документы, аудио, рисунки) будут автоматически скопированы в этот курс:
             </div>
 
-            {themes.length === 0 ? (
+            {playlists.length === 0 ? (
               <div className="muted" style={{ padding: 20, textAlign: "center" }}>
-                В накопителе пока нет созданных тем. Перейдите во вкладку «Материалы» для их создания.
+                В накопителе пока нет созданных плейлистов. Перейдите во вкладку «Материалы» для их создания.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
-                {themes.map((th) => (
+                {playlists.map((pl) => (
                   <div
-                    key={th.theme_name}
+                    key={pl.playlist_name}
                     className="spread"
                     style={{
                       padding: "12px 14px",
@@ -154,16 +154,16 @@ export default function RepositoryPickerModal({
                   >
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 15, color: "var(--navy)" }}>
-                        📚 {th.theme_name}
+                        📚 {pl.playlist_name}
                       </div>
                       <div className="small muted" style={{ marginTop: 2 }}>
-                        Содержит <b>{th.count}</b> уроков / материалов
+                        Содержит <b>{pl.count}</b> уроков / материалов
                       </div>
                     </div>
                     <button
                       type="button"
                       className="btn primary small"
-                      onClick={() => handleImportTheme(th.theme_name)}
+                      onClick={() => handleImportPlaylist(pl.playlist_name)}
                       disabled={submitting}
                       style={{ fontWeight: 600 }}
                     >
@@ -179,14 +179,14 @@ export default function RepositoryPickerModal({
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
               <select
-                value={selectedThemeName}
-                onChange={(e) => setSelectedThemeName(e.target.value)}
+                value={selectedPlaylistName}
+                onChange={(e) => setSelectedPlaylistName(e.target.value)}
                 style={{ flex: 1 }}
               >
-                <option value="">Все темы ({themes.length})</option>
-                {themes.map((t) => (
-                  <option key={t.theme_name} value={t.theme_name}>
-                    {t.theme_name} ({t.count})
+                <option value="">Все плейлисты ({playlists.length})</option>
+                {playlists.map((t) => (
+                  <option key={t.playlist_name} value={t.playlist_name}>
+                    {t.playlist_name} ({t.count})
                   </option>
                 ))}
               </select>
@@ -235,7 +235,7 @@ export default function RepositoryPickerModal({
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{mat.title}</div>
                           <div className="small muted">
-                            {mat.theme_name} · #{mat.order_index}
+                            {mat.playlist_name} · #{mat.order_index}
                           </div>
                         </div>
                       </div>

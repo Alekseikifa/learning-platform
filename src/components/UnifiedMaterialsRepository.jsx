@@ -16,13 +16,13 @@ export function getFormatInfo(type) {
 
 export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "/api/admin" }) {
   const [materials, setMaterials] = useState([]);
-  const [themesList, setThemesList] = useState([]);
+  const [playlistsList, setThemesList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activeView, setActiveView] = useState("themes"); // "themes" | "flat"
+  const [activeView, setActiveView] = useState("playlists"); // "playlists" | "flat"
 
   // Filter & Search
   const [search, setSearch] = useState("");
-  const [selectedThemeFilter, setSelectedThemeFilter] = useState("");
+  const [selectedPlaylistFilter, setSelectedThemeFilter] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
 
   // Add/Edit Material Modal / Form State
@@ -33,8 +33,8 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   // New Material Form
   const [form, setForm] = useState({
     title: "",
-    theme_name: "",
-    new_theme_name: "",
+    playlist_name: "",
+    new_playlist_name: "",
     type: "video",
     url: "",
     description: "",
@@ -44,16 +44,16 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   // Attach to Course Modal State
   const [attachModal, setAttachModal] = useState({
     open: false,
-    mode: "theme", // "theme" or "material"
-    themeName: "",
+    mode: "playlist", // "playlist" or "material"
+    playlistName: "",
     material: null,
     courseId: courses[0]?.id || "",
     targetType: "theme", // "theme" (add as course theme) | "extra" (add as course extra material)
     courseThemeId: "",
   });
 
-  // Rename theme modal
-  const [renameThemeModal, setRenameThemeModal] = useState({
+  // Rename playlist modal
+  const [renamePlaylistModal, setRenameThemeModal] = useState({
     open: false,
     oldName: "",
     newName: "",
@@ -67,7 +67,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     try {
       const [mats, thms] = await Promise.all([
         api(`${apiPrefix}/repository/materials`),
-        api(`${apiPrefix}/repository/themes`),
+        api(`${apiPrefix}/repository/playlists`),
       ]);
       setMaterials(mats || []);
       setThemesList(thms || []);
@@ -82,18 +82,18 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     loadData();
   }, [apiPrefix]);
 
-  // Derived existing theme names
-  const existingThemeNames = useMemo(() => {
-    return themesList.map(t => t.theme_name);
-  }, [themesList]);
+  // Derived existing playlist names
+  const existingPlaylistNames = useMemo(() => {
+    return playlistsList.map(t => t.playlist_name);
+  }, [playlistsList]);
 
   // Handle open add modal
-  const openAddForTheme = (themeName = "") => {
-    const existingInTheme = materials.filter(m => m.theme_name === themeName);
+  const openAddForPlaylist = (playlistName = "") => {
+    const existingInTheme = materials.filter(m => m.playlist_name === playlistName);
     setForm({
       title: "",
-      theme_name: themeName || (existingThemeNames[0] || ""),
-      new_theme_name: "",
+      playlist_name: playlistName || (existingPlaylistNames[0] || ""),
+      new_playlist_name: "",
       type: "video",
       url: "",
       description: "",
@@ -132,9 +132,9 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
 
   const handleSaveMaterial = async (e) => {
     e.preventDefault();
-    const finalTheme = (form.theme_name === "__new__" || !form.theme_name)
-      ? (form.new_theme_name.trim() || "Общие материалы")
-      : form.theme_name.trim();
+    const finalTheme = (form.playlist_name === "__new__" || !form.playlist_name)
+      ? (form.new_playlist_name.trim() || "Общие материалы")
+      : form.playlist_name.trim();
 
     if (!form.title.trim()) {
       alert("Пожалуйста, введите название урока или материала");
@@ -143,7 +143,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
 
     const payload = {
       title: form.title.trim(),
-      theme_name: finalTheme,
+      playlist_name: finalTheme,
       type: form.type,
       url: form.url.trim(),
       description: form.description.trim(),
@@ -184,8 +184,8 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     setEditingMaterial(mat);
     setForm({
       title: mat.title,
-      theme_name: mat.theme_name,
-      new_theme_name: "",
+      playlist_name: mat.playlist_name,
+      new_playlist_name: "",
       type: mat.type,
       url: mat.url,
       description: mat.description || "",
@@ -194,7 +194,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     setShowAddModal(true);
   };
 
-  // Reorder material inside theme
+  // Reorder material inside playlist
   const handleChangeOrder = async (mat, newOrder) => {
     if (newOrder < 1 || newOrder === mat.order_index) return;
     try {
@@ -208,34 +208,34 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     }
   };
 
-  // Rename theme across all items
-  const handleRenameThemeSubmit = async (e) => {
+  // Rename playlist across all items
+  const handleRenamePlaylistSubmit = async (e) => {
     e.preventDefault();
-    const { oldName, newName } = renameThemeModal;
+    const { oldName, newName } = renamePlaylistModal;
     if (!newName.trim() || newName.trim() === oldName) {
       setRenameThemeModal({ open: false, oldName: "", newName: "" });
       return;
     }
 
-    const itemsToUpdate = materials.filter(m => m.theme_name === oldName);
+    const itemsToUpdate = materials.filter(m => m.playlist_name === oldName);
     try {
       for (const item of itemsToUpdate) {
         await api(`${apiPrefix}/repository/materials/${item.id}`, {
           method: "PUT",
-          body: JSON.stringify({ theme_name: newName.trim() }),
+          body: JSON.stringify({ playlist_name: newName.trim() }),
         });
       }
       setRenameThemeModal({ open: false, oldName: "", newName: "" });
       await loadData();
     } catch (err) {
-      alert("Ошибка при переименовании темы: " + (err.message || err));
+      alert("Ошибка при переименовании плейлиста: " + (err.message || err));
     }
   };
 
   // Execute Attachment to Course
   const handleAttachSubmit = async (e) => {
     e.preventDefault();
-    const { mode, themeName, material, courseId, targetType, courseThemeId } = attachModal;
+    const { mode, playlistName, material, courseId, targetType, courseThemeId } = attachModal;
     if (!courseId) {
       alert("Выберите курс для привязки");
       return;
@@ -245,21 +245,21 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     const courseTitle = selectedCourse?.title || `Курс #${courseId}`;
 
     try {
-      if (mode === "theme") {
+      if (mode === "playlist") {
         if (targetType === "theme") {
-          // Import entire theme as course theme with lessons
-          const res = await api(`${apiPrefix}/courses/${courseId}/import-theme`, {
+          // Import entire playlist as course theme with lessons
+          const res = await api(`${apiPrefix}/courses/${courseId}/import-playlist`, {
             method: "POST",
-            body: JSON.stringify({ theme_name: themeName }),
+            body: JSON.stringify({ playlist_name: playlistName }),
           });
-          alert(`Успешно! Тема «${themeName}» (${res.imported_count} уроков) добавлена в курс «${courseTitle}».`);
+          alert(`Успешно! Плейлист «${playlistName}» (${res.imported_count} уроков) импортирован в курс «${courseTitle}» как тема.`);
         } else {
           // Import as extra materials
-          const res = await api(`${apiPrefix}/courses/${courseId}/import-extra-theme`, {
+          const res = await api(`${apiPrefix}/courses/${courseId}/import-extra-playlist`, {
             method: "POST",
-            body: JSON.stringify({ theme_name: themeName }),
+            body: JSON.stringify({ playlist_name: playlistName }),
           });
-          alert(`Успешно! ${res.count} материалов темы «${themeName}» добавлены в доп. материалы курса «${courseTitle}».`);
+          alert(`Успешно! ${res.count} материалов плейлиста «${playlistName}» добавлены в доп. материалы курса «${courseTitle}».`);
         }
       } else if (mode === "material" && material) {
         if (targetType === "theme") {
@@ -290,31 +290,31 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   // Filtered materials
   const filteredMaterials = useMemo(() => {
     return materials.filter(m => {
-      if (selectedThemeFilter && m.theme_name !== selectedThemeFilter) return false;
+      if (selectedPlaylistFilter && m.playlist_name !== selectedPlaylistFilter) return false;
       if (selectedTypeFilter !== "all" && m.type !== selectedTypeFilter) return false;
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         const matchTitle = (m.title || "").toLowerCase().includes(q);
-        const matchTheme = (m.theme_name || "").toLowerCase().includes(q);
+        const matchPlaylist = (m.playlist_name || "").toLowerCase().includes(q);
         const matchDesc = (m.description || "").toLowerCase().includes(q);
         const matchUrl = (m.url || "").toLowerCase().includes(q);
-        if (!matchTitle && !matchTheme && !matchDesc && !matchUrl) return false;
+        if (!matchTitle && !matchPlaylist && !matchDesc && !matchUrl) return false;
       }
       return true;
     });
-  }, [materials, selectedThemeFilter, selectedTypeFilter, search]);
+  }, [materials, selectedPlaylistFilter, selectedTypeFilter, search]);
 
-  // Group filtered materials by theme
-  const groupedThemes = useMemo(() => {
+  // Group filtered materials by playlist
+  const groupedPlaylists = useMemo(() => {
     const map = new Map();
     for (const m of filteredMaterials) {
-      const key = m.theme_name || "Без темы";
+      const key = m.playlist_name || "Без плейлиста";
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(m);
     }
     return Array.from(map.entries()).map(([name, items]) => {
       items.sort((a, b) => (a.order_index || 0) - (b.order_index || 0) || a.id - b.id);
-      return { theme_name: name, materials: items };
+      return { playlist_name: name, materials: items };
     });
   }, [filteredMaterials]);
 
@@ -326,10 +326,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     }
     return {
       total: materials.length,
-      themesCount: existingThemeNames.length,
+      playlistsCount: existingPlaylistNames.length,
       byType,
     };
-  }, [materials, existingThemeNames]);
+  }, [materials, existingPlaylistNames]);
 
   const targetCourseThemes = useMemo(() => {
     const cid = Number(attachModal.courseId);
@@ -345,11 +345,11 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: 22 }}>📁</span>
-              <h3 style={{ margin: 0 }}>Файловый накопитель материалов и тем уроков</h3>
+              <h3 style={{ margin: 0 }}>Файловый накопитель материалов и плейлистов</h3>
             </div>
             <p className="muted" style={{ margin: 0, maxWidth: 820, fontSize: 14 }}>
               Центральное хранилище для всех форматов обучающих материалов: <b>видео</b>, <b>конспекты/тексты</b>, <b>документы</b>, <b>аудио</b>, <b>рисунки и схемы</b>.
-              Объединяйте файлы в темы (уроки темы), а затем во вкладке <b>«Курсы и темы»</b> привязывайте готовую тему целиком или отдельные материалы к курсам.
+              Объединяйте файлы в плейлисты (материалы плейлиста), а затем во вкладке <b>«Курсы и темы»</b> привязывайте готовый плейлист целиком или отдельные материалы к курсам.
             </p>
           </div>
 
@@ -357,7 +357,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
             <button
               type="button"
               className="btn primary"
-              onClick={() => openAddForTheme("")}
+              onClick={() => openAddForPlaylist("")}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}
             >
               <span>➕</span> Загрузить / добавить урок
@@ -366,12 +366,12 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
               type="button"
               className="btn ghost"
               onClick={() => {
-                const name = prompt("Введите название новой темы уроков:");
-                if (name && name.trim()) openAddForTheme(name.trim());
+                const name = prompt("Введите название нового плейлиста:");
+                if (name && name.trim()) openAddForPlaylist(name.trim());
               }}
               style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
-              <span>📑</span> Создать тему
+              <span>📑</span> Создать плейлист
             </button>
           </div>
         </div>
@@ -379,7 +379,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
         {/* Stats strip */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
           <div className="tag" style={{ background: "#FFFFFF", border: "1px solid var(--border)", padding: "4px 10px", borderRadius: 6 }}>
-            📚 <b>{stats.themesCount}</b> тем
+            📚 <b>{stats.playlistsCount}</b> плейлистов
           </div>
           <div className="tag" style={{ background: "#FFFFFF", border: "1px solid var(--border)", padding: "4px 10px", borderRadius: 6 }}>
             📄 <b>{stats.total}</b> материалов/уроков
@@ -404,7 +404,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       <div className="card row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ flex: 2, minWidth: 220, position: "relative" }}>
           <input
-            placeholder="🔍 Поиск по названию урока, теме, конспекту или файлу..."
+            placeholder="🔍 Поиск по названию урока, плейлисту, конспекту или файлу..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ width: "100%", paddingLeft: 12 }}
@@ -421,14 +421,14 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 180 }}>
-          <span className="small muted">Тема:</span>
+          <span className="small muted">Плейлист:</span>
           <select
-            value={selectedThemeFilter}
+            value={selectedPlaylistFilter}
             onChange={e => setSelectedThemeFilter(e.target.value)}
             style={{ flex: 1 }}
           >
-            <option value="">Все темы ({existingThemeNames.length})</option>
-            {existingThemeNames.map(t => (
+            <option value="">Все плейлисты ({existingPlaylistNames.length})</option>
+            {existingPlaylistNames.map(t => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
@@ -450,11 +450,11 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
         <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
           <button
             type="button"
-            className={"btn small " + (activeView === "themes" ? "primary" : "ghost")}
-            onClick={() => setActiveView("themes")}
-            title="Группировать по темам уроков"
+            className={"btn small " + (activeView === "playlists" ? "primary" : "ghost")}
+            onClick={() => setActiveView("playlists")}
+            title="Группировать по плейлистам"
           >
-            🗂 По темам
+            🗂 По плейлистам
           </button>
           <button
             type="button"
@@ -472,10 +472,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
         <div className="card muted" style={{ textAlign: "center", padding: 30 }}>
           Загрузка накопителя материалов...
         </div>
-      ) : activeView === "themes" ? (
+      ) : activeView === "playlists" ? (
         /* Grouped by Themes View */
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {groupedThemes.length === 0 ? (
+          {groupedPlaylists.length === 0 ? (
             <div className="card muted" style={{ textAlign: "center", padding: 40 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
               <div>В накопителе нет материалов, соответствующих фильтрам.</div>
@@ -483,27 +483,27 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 type="button"
                 className="btn primary small"
                 style={{ marginTop: 12 }}
-                onClick={() => openAddForTheme("")}
+                onClick={() => openAddForPlaylist("")}
               >
                 ➕ Добавить первый материал в накопитель
               </button>
             </div>
           ) : (
-            groupedThemes.map(({ theme_name, materials: items }) => (
-              <ThemeStorageCard
-                key={theme_name}
-                themeName={theme_name}
+            groupedPlaylists.map(({ playlist_name, materials: items }) => (
+              <PlaylistStorageCard
+                key={playlist_name}
+                playlistName={playlist_name}
                 items={items}
                 courses={courses}
-                onAddLesson={() => openAddForTheme(theme_name)}
+                onAddLesson={() => openAddForPlaylist(playlist_name)}
                 onEditLesson={handleEditClick}
                 onDeleteLesson={handleDeleteMaterial}
                 onChangeOrder={handleChangeOrder}
-                onRenameTheme={() => setRenameThemeModal({ open: true, oldName: theme_name, newName: theme_name })}
-                onAttachTheme={() => setAttachModal({
+                onRenamePlaylist={() => setRenameThemeModal({ open: true, oldName: playlist_name, newName: playlist_name })}
+                onAttachPlaylist={() => setAttachModal({
                   open: true,
-                  mode: "theme",
-                  themeName: theme_name,
+                  mode: "playlist",
+                  playlistName: playlist_name,
                   material: null,
                   courseId: courses[0]?.id || "",
                   targetType: "theme",
@@ -512,7 +512,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 onAttachMaterial={(mat) => setAttachModal({
                   open: true,
                   mode: "material",
-                  themeName: theme_name,
+                  playlistName: playlist_name,
                   material: mat,
                   courseId: courses[0]?.id || "",
                   targetType: "theme",
@@ -528,7 +528,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", background: "var(--bg-soft)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <b>Все материалы ({filteredMaterials.length})</b>
-            <span className="small muted">Сортировка: Тема → Порядковый номер</span>
+            <span className="small muted">Сортировка: Плейлист → Порядковый номер</span>
           </div>
 
           <div className="list" style={{ margin: 0 }}>
@@ -541,7 +541,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 onAttach={() => setAttachModal({
                   open: true,
                   mode: "material",
-                  themeName: mat.theme_name,
+                  playlistName: mat.playlist_name,
                   material: mat,
                   courseId: courses[0]?.id || "",
                   targetType: "theme",
@@ -575,25 +575,25 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
               {/* Theme selection */}
               <div>
                 <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: 13 }}>
-                  Тема уроков (раздел, объединяющий уроки): <span style={{ color: "var(--danger)" }}>*</span>
+                  Плейлист (раздел, объединяющий материалы): <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <select
-                    value={form.theme_name}
-                    onChange={e => setForm(f => ({ ...f, theme_name: e.target.value }))}
+                    value={form.playlist_name}
+                    onChange={e => setForm(f => ({ ...f, playlist_name: e.target.value }))}
                     style={{ flex: 1 }}
                   >
-                    <option value="__new__">✨ Создать новую тему...</option>
-                    {existingThemeNames.map(t => (
+                    <option value="__new__">✨ Создать новый плейлист...</option>
+                    {existingPlaylistNames.map(t => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
                 </div>
-                {(form.theme_name === "__new__" || !form.theme_name) && (
+                {(form.playlist_name === "__new__" || !form.playlist_name) && (
                   <input
-                    placeholder="Введите название новой темы (например: 1. Призвание ученика)"
-                    value={form.new_theme_name}
-                    onChange={e => setForm(f => ({ ...f, new_theme_name: e.target.value }))}
+                    placeholder="Введите название нового плейлиста (например: 1. Призвание ученика)"
+                    value={form.new_playlist_name}
+                    onChange={e => setForm(f => ({ ...f, new_playlist_name: e.target.value }))}
                     required
                     style={{ marginTop: 6, width: "100%" }}
                   />
@@ -762,8 +762,8 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
           <div className="card modal-content" style={modalContentStyle} onClick={e => e.stopPropagation()}>
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
               <h3 style={{ margin: 0 }}>
-                {attachModal.mode === "theme"
-                  ? `📥 Привязать тему «${attachModal.themeName}» к курсу`
+                {attachModal.mode === "playlist"
+                  ? `📥 Привязать плейлист «${attachModal.playlistName}» к курсу`
                   : `📎 Привязать урок «${attachModal.material?.title}» к курсу`}
               </h3>
               <button
@@ -871,11 +871,11 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       )}
 
       {/* MODAL: RENAME THEME */}
-      {renameThemeModal.open && (
+      {renamePlaylistModal.open && (
         <div className="modal-overlay" style={overlayStyle} onClick={() => setRenameThemeModal({ open: false, oldName: "", newName: "" })}>
           <div className="card modal-content" style={modalContentStyle} onClick={e => e.stopPropagation()}>
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>✏️ Переименовать тему</h3>
+              <h3 style={{ margin: 0 }}>✏️ Переименовать плейлист</h3>
               <button
                 type="button"
                 className="btn ghost small"
@@ -885,16 +885,16 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
               </button>
             </div>
 
-            <form onSubmit={handleRenameThemeSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <form onSubmit={handleRenamePlaylistSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label className="small muted" style={{ display: "block", marginBottom: 4 }}>Текущее название:</label>
-                <input value={renameThemeModal.oldName} disabled style={{ width: "100%", opacity: 0.7 }} />
+                <input value={renamePlaylistModal.oldName} disabled style={{ width: "100%", opacity: 0.7 }} />
               </div>
 
               <div>
-                <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>Новое название темы:</label>
+                <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>Новое название плейлиста:</label>
                 <input
-                  value={renameThemeModal.newName}
+                  value={renamePlaylistModal.newName}
                   onChange={e => setRenameThemeModal(prev => ({ ...prev, newName: e.target.value }))}
                   required
                   style={{ width: "100%" }}
@@ -925,7 +925,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
           <div className="card modal-content" style={{ ...modalContentStyle, maxWidth: 650 }} onClick={e => e.stopPropagation()}>
             <div className="spread" style={{ marginBottom: 12, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
               <div>
-                <span className="small muted">{previewNote.theme_name}</span>
+                <span className="small muted">{previewNote.playlist_name}</span>
                 <h3 style={{ margin: 0 }}>📝 {previewNote.title}</h3>
               </div>
               <button type="button" className="btn ghost small" onClick={() => setPreviewNote(null)}>✕</button>
@@ -945,17 +945,17 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   );
 }
 
-// Subcomponent: Card for a single theme grouping materials
-function ThemeStorageCard({
-  themeName,
+// Subcomponent: Card for a single playlist grouping materials
+function PlaylistStorageCard({
+  playlistName,
   items,
   courses,
   onAddLesson,
   onEditLesson,
   onDeleteLesson,
   onChangeOrder,
-  onRenameTheme,
-  onAttachTheme,
+  onRenamePlaylist,
+  onAttachPlaylist,
   onAttachMaterial,
   onPreviewNote,
 }) {
@@ -991,7 +991,7 @@ function ThemeStorageCard({
             className="btn ghost small"
             onClick={() => setCollapsed(!collapsed)}
             style={{ padding: "4px 8px", fontSize: 13 }}
-            title={collapsed ? "Развернуть тему" : "Свернуть тему"}
+            title={collapsed ? "Развернуть плейлист" : "Свернуть плейлист"}
           >
             {collapsed ? "▶" : "▼"}
           </button>
@@ -999,12 +999,12 @@ function ThemeStorageCard({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 18 }}>📚</span>
-              <b style={{ fontSize: 16, color: "var(--navy)" }}>{themeName}</b>
+              <b style={{ fontSize: 16, color: "var(--navy)" }}>{playlistName}</b>
               <button
                 type="button"
                 className="btn ghost small"
-                onClick={onRenameTheme}
-                title="Переименовать тему"
+                onClick={onRenamePlaylist}
+                title="Переименовать плейлист"
                 style={{ padding: "2px 6px", fontSize: 12, opacity: 0.7 }}
               >
                 ✏️
@@ -1025,15 +1025,15 @@ function ThemeStorageCard({
           </div>
         </div>
 
-        {/* Action buttons on theme */}
+        {/* Action buttons on playlist */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"
             className="btn primary small"
-            onClick={onAttachTheme}
+            onClick={onAttachPlaylist}
             style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}
           >
-            <span>📥</span> Привязать всю тему к курсу →
+            <span>📥</span> Привязать весь плейлист к курсу →
           </button>
           <button
             type="button"
@@ -1041,7 +1041,7 @@ function ThemeStorageCard({
             onClick={onAddLesson}
             style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           >
-            <span>➕</span> Урок в тему
+            <span>➕</span> Материал в плейлист
           </button>
         </div>
       </div>
@@ -1229,7 +1229,7 @@ function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote }
             {material.title}
           </div>
           <div className="small muted">
-            Тема: <b>{material.theme_name}</b> · Порядок: #{material.order_index}
+            Плейлист: <b>{material.playlist_name}</b> · Порядок: #{material.order_index}
             {material.description && ` · ${material.description}`}
           </div>
         </div>

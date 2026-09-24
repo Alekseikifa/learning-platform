@@ -31,6 +31,14 @@
       "username": "student",
       "password_hash": "$2a$10$PWLiaMVznPi1vAHJZp3KJeUwZuCZJZyS0sVir9znrqbMJJmHBVBIa",
       "name": "Даниил Петров (Ученик)"
+    },
+    {
+      "id": 5,
+      "role": "student",
+      "extra_roles": "",
+      "username": "1",
+      "password_hash": "$2a$10$/HMQA8Abtjy7szrqVVErbuWihNm/r2Cgk8.JApuWTveFwKA9VwWx.",
+      "name": "Петров Денис"
     }
   ],
   "courses": [
@@ -95,10 +103,72 @@
     {
       "group_id": 3,
       "user_id": 2
+    },
+    {
+      "group_id": 3,
+      "user_id": 5
     }
   ],
-  "themes": [],
-  "materials": [],
+  "themes": [
+    {
+      "id": 16,
+      "course_id": 3,
+      "title": "Библейские Заветы. Дмитрий Бобков",
+      "order_index": 1
+    }
+  ],
+  "materials": [
+    {
+      "id": 59,
+      "theme_id": 16,
+      "repository_material_id": 21,
+      "storage_id": 21,
+      "title": "Библейские Заветы  - 1 урок. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/3PpuucT_BeQ",
+      "order_index": 1
+    },
+    {
+      "id": 60,
+      "theme_id": 16,
+      "repository_material_id": 22,
+      "storage_id": 22,
+      "title": "Библейские Заветы  - 2 урок. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/3lIqltnBuoc",
+      "order_index": 2
+    },
+    {
+      "id": 61,
+      "theme_id": 16,
+      "repository_material_id": 23,
+      "storage_id": 23,
+      "title": "Библейские Заветы  - 3 урок. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/DkjvFramVsI",
+      "order_index": 3
+    },
+    {
+      "id": 62,
+      "theme_id": 16,
+      "repository_material_id": 24,
+      "storage_id": 24,
+      "title": "Библейские Заветы  - 4 урок. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/4M4h8xJvyBM",
+      "order_index": 4
+    },
+    {
+      "id": 63,
+      "theme_id": 16,
+      "repository_material_id": 25,
+      "storage_id": 25,
+      "title": "Конспект Библейские заветы Дмитрий Бобков",
+      "type": "document",
+      "url": "/uploads/1790276834919-qmcjrel.docx",
+      "order_index": 5
+    }
+  ],
   "extraMaterials": [
     {
       "id": 1,
@@ -114,10 +184,168 @@
       "created_at": "2026-09-21T13:28:00.403Z"
     }
   ],
-  "storageMaterials": [],
-  "tests": [],
-  "questions": [],
-  "answers": [],
+  "storageMaterials": [
+    {
+      "id": 21,
+      "title": "Библейские Заветы  - 1 урок. Дмитрий Бобков",
+      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/3PpuucT_BeQ",
+      "description": "",
+      "order_index": 1,
+      "file_name": "",
+      "file_size": 0,
+      "created_at": "2026-09-24T19:05:03.322Z"
+    },
+    {
+      "id": 22,
+      "title": "Библейские Заветы  - 2 урок. Дмитрий Бобков",
+      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/3lIqltnBuoc",
+      "description": "",
+      "order_index": 2,
+      "file_name": "",
+      "file_size": 0,
+      "created_at": "2026-09-24T19:05:39.503Z"
+    },
+    {
+      "id": 23,
+      "title": "Библейские Заветы  - 3 урок. Дмитрий Бобков",
+      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/DkjvFramVsI",
+      "description": "",
+      "order_index": 3,
+      "file_name": "",
+      "file_size": 0,
+      "created_at": "2026-09-24T19:06:04.930Z"
+    },
+    {
+      "id": 24,
+      "title": "Библейские Заветы  - 4 урок. Дмитрий Бобков",
+      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
+      "type": "video",
+      "url": "https://youtu.be/4M4h8xJvyBM",
+      "description": "",
+      "order_index": 4,
+      "file_name": "",
+      "file_size": 0,
+      "created_at": "2026-09-24T19:06:27.579Z"
+    },
+    {
+      "id": 25,
+      "title": "Конспект Библейские заветы Дмитрий Бобков",
+      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
+      "type": "document",
+      "url": "/uploads/1790276834919-qmcjrel.docx",
+      "description": "",
+      "order_index": 5,
+      "file_name": "",
+      "file_size": 0,
+      "created_at": "2026-09-24T19:07:21.189Z"
+    }
+  ],
+  "tests": [
+    {
+      "id": 2,
+      "theme_id": 16,
+      "title": "Тест Библейские заветы. Дмитрий Бобков",
+      "passing_score": 100,
+      "max_attempts": 0
+    }
+  ],
+  "questions": [
+    {
+      "id": 3,
+      "test_id": 2,
+      "text": "Какое греческое слово используется в Новом Завете для обозначения понятия «Завет»?"
+    },
+    {
+      "id": 4,
+      "test_id": 2,
+      "text": "Кто всегда выступает инициатором библейских заветов согласно материалу уроков?"
+    },
+    {
+      "id": 5,
+      "test_id": 2,
+      "text": "Сколько основных библейских заветов выделяют богословы в последовательной истории отношений Бога с человеком?"
+    }
+  ],
+  "answers": [
+    {
+      "id": 9,
+      "question_id": 3,
+      "text": "A.Nomos",
+      "is_correct": false
+    },
+    {
+      "id": 10,
+      "question_id": 3,
+      "text": "B.Koinonia",
+      "is_correct": false
+    },
+    {
+      "id": 11,
+      "question_id": 3,
+      "text": "C.Diatheke",
+      "is_correct": true
+    },
+    {
+      "id": 12,
+      "question_id": 3,
+      "text": "D.Logos",
+      "is_correct": false
+    },
+    {
+      "id": 13,
+      "question_id": 4,
+      "text": "A.Пророки",
+      "is_correct": true
+    },
+    {
+      "id": 14,
+      "question_id": 4,
+      "text": "B.Бог",
+      "is_correct": false
+    },
+    {
+      "id": 15,
+      "question_id": 4,
+      "text": "C.Человек",
+      "is_correct": false
+    },
+    {
+      "id": 16,
+      "question_id": 4,
+      "text": "D.Ангелы",
+      "is_correct": false
+    },
+    {
+      "id": 17,
+      "question_id": 5,
+      "text": "A.2",
+      "is_correct": false
+    },
+    {
+      "id": 18,
+      "question_id": 5,
+      "text": "B.10",
+      "is_correct": false
+    },
+    {
+      "id": 19,
+      "question_id": 5,
+      "text": "C.8",
+      "is_correct": true
+    },
+    {
+      "id": 20,
+      "question_id": 5,
+      "text": "D.12",
+      "is_correct": false
+    }
+  ],
   "attempts": [],
   "attemptAnswers": [],
   "announcements": [],
@@ -158,204 +386,12 @@
   },
   "uploadedFiles": [
     {
-      "id": 1,
-      "filename": "1790146452330-e0mm6oh.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
+      "id": 28,
+      "filename": "1790276834919-qmcjrel.docx",
+      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð±Ð»ÐµÐ¹ÑÐºÐ¸Ðµ Ð·Ð°Ð²ÐµÑÑ ÐÐ¼Ð¸ÑÑÐ¸Ð¹ ÐÐ¾Ð±ÐºÐ¾Ð².docx",
       "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:54:12.338Z"
-    },
-    {
-      "id": 2,
-      "filename": "1790146469477-uakxvqh.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:54:29.479Z"
-    },
-    {
-      "id": 3,
-      "filename": "1790146474641-kcyz179.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:54:34.643Z"
-    },
-    {
-      "id": 4,
-      "filename": "1790146479309-vh1gx0h.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:54:39.311Z"
-    },
-    {
-      "id": 5,
-      "filename": "1790146499176-sgt3w97.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:54:59.178Z"
-    },
-    {
-      "id": 6,
-      "filename": "1790146511141-tsgmsx1.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T06:55:11.145Z"
-    },
-    {
-      "id": 7,
-      "filename": "1790147253446-4shbd7k.m4a",
-      "original_name": "ÐÑÐ´Ð¸Ð¾_ÐÐ¸Ð·Ð½Ñ_Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ,_Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð°_ÐÑÐ½Ð¸Ð½Ð°.m4a",
-      "mimetype": "audio/x-m4a",
-      "size": 26934531,
-      "uploaded_at": "2026-09-23T07:07:34.842Z"
-    },
-    {
-      "id": 8,
-      "filename": "1790147264751-3qy0u4r.m4a",
-      "original_name": "ÐÑÐ´Ð¸Ð¾_ÐÐ¸Ð·Ð½Ñ_Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ,_Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð°_ÐÑÐ½Ð¸Ð½Ð°.m4a",
-      "mimetype": "audio/x-m4a",
-      "size": 26934531,
-      "uploaded_at": "2026-09-23T07:07:45.746Z"
-    },
-    {
-      "id": 9,
-      "filename": "1790147280490-6ajby8s.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:08:00.496Z"
-    },
-    {
-      "id": 10,
-      "filename": "1790150312336-d0klmqj.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:58:32.350Z"
-    },
-    {
-      "id": 11,
-      "filename": "1790150323661-q56zz1t.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:58:43.664Z"
-    },
-    {
-      "id": 12,
-      "filename": "1790150347140-mee60ut.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:59:07.143Z"
-    },
-    {
-      "id": 13,
-      "filename": "1790150351283-fcua5uu.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:59:11.286Z"
-    },
-    {
-      "id": 14,
-      "filename": "1790150362793-zeq8pqq.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T07:59:22.798Z"
-    },
-    {
-      "id": 15,
-      "filename": "1790150404212-dre34ca.png",
-      "original_name": "ÐÐ½ÑÐ¾Ð³ÑÐ°ÑÐ¸ÐºÐ° ÐÐ°Ðº ÑÐ»ÑÑÐ°ÑÑ Ð³Ð¾Ð»Ð¾Ñ ÐÐ¾Ð¶Ð¸Ð¹, ÐÐ¶ÐµÐ¹Ð¼Ñ ÐÐ¸ÑÑÐ¸.png",
-      "mimetype": "image/png",
-      "size": 7126181,
-      "uploaded_at": "2026-09-23T08:00:04.637Z"
-    },
-    {
-      "id": 16,
-      "filename": "1790150421007-s558t38.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð·Ð½Ñ Ð¡Ð»ÑÐ¶ÐµÐ½Ð¸Ñ ÑÑÐ¾Ðº 1-2, Ð¡Ð²ÐµÑÐ»Ð°Ð½Ð° ÐÑÐ½Ð¸Ð½Ð°.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 16638,
-      "uploaded_at": "2026-09-23T08:00:21.012Z"
-    },
-    {
-      "id": 17,
-      "filename": "1790158371569-kz316bl.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T10:12:51.574Z"
-    },
-    {
-      "id": 18,
-      "filename": "1790160296061-d6ur8zq.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T10:44:56.071Z"
-    },
-    {
-      "id": 19,
-      "filename": "1790160312964-0n9b373.mp3",
-      "original_name": "ÐÑÑÑÐ¸ ÐÐµÐ½Ð½ÐµÑ â ÐÐ¡Ð¦ÐÐÐÐÐÐ 9.mp3",
-      "mimetype": "audio/mpeg",
-      "size": 15038962,
-      "uploaded_at": "2026-09-23T10:45:13.749Z"
-    },
-    {
-      "id": 20,
-      "filename": "1790160329904-snt6xwj.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T10:45:29.906Z"
-    },
-    {
-      "id": 21,
-      "filename": "1790160336580-c5zwr4k.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T10:45:36.584Z"
-    },
-    {
-      "id": 22,
-      "filename": "1790161418526-73k25sf.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T11:03:38.538Z"
-    },
-    {
-      "id": 23,
-      "filename": "1790162098356-pbaj9fe.docx",
-      "original_name": "44444444444.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T11:14:58.366Z"
-    },
-    {
-      "id": 24,
-      "filename": "1790166337006-mftsrn2.docx",
-      "original_name": "381c2e83-5756-4fd3-aef5-f5ac7f970e02.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T12:25:37.016Z"
-    },
-    {
-      "id": 25,
-      "filename": "1790166701742-xbanjmk.docx",
-      "original_name": "44444444444.docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 37038,
-      "uploaded_at": "2026-09-23T12:31:41.753Z"
+      "size": 13353,
+      "uploaded_at": "2026-09-24T19:07:14.926Z"
     }
   ],
   "phoneInvites": [
@@ -384,6 +420,16 @@
       "link": "/student?tab=announcements",
       "read_at": null,
       "created_at": "2026-09-21T13:28:00.402Z"
+    },
+    {
+      "id": 2,
+      "user_id": 4,
+      "type": "dm",
+      "title": "Сообщение от Волков Алексей",
+      "body": "пивет",
+      "link": "/student?tab=messages&user=2",
+      "read_at": null,
+      "created_at": "2026-09-24T08:09:46.551Z"
     }
   ],
   "directMessages": [
@@ -394,26 +440,34 @@
       "text": "Привет, Даниил! Если возникнут вопросы по курсу, смело пиши мне напрямую.",
       "read_at": null,
       "created_at": "2026-09-21T13:28:00.402Z"
+    },
+    {
+      "id": 2,
+      "sender_id": 2,
+      "recipient_id": 4,
+      "text": "пивет",
+      "read_at": null,
+      "created_at": "2026-09-24T08:09:46.551Z"
     }
   ],
   "nextId": {
-    "user": 5,
+    "user": 6,
     "course": 6,
     "group": 4,
-    "theme": 13,
-    "material": 49,
+    "theme": 17,
+    "material": 64,
     "extraMaterial": 2,
-    "storageMaterial": 21,
-    "test": 2,
-    "question": 3,
-    "answer": 9,
+    "storageMaterial": 26,
+    "test": 3,
+    "question": 6,
+    "answer": 21,
     "attempt": 1,
     "attemptAnswer": 1,
     "announcement": 2,
     "chatMessage": 5,
-    "uploadedFile": 26,
+    "uploadedFile": 29,
     "phoneInvite": 3,
-    "notification": 2,
-    "directMessage": 2
+    "notification": 3,
+    "directMessage": 3
   }
 }

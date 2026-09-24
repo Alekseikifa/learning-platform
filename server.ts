@@ -12,6 +12,7 @@ import {
   PhoneInvite,
   UploadedFile,
   ExtraMaterial,
+  Material,
   StorageMaterial,
   getAllRolesOf,
   normalizePhone,
@@ -599,11 +600,11 @@ app.put(["/api/admin/credentials", "/api/admin/admin/credentials"], authMiddlewa
   res.json({ ok: true });
 });
 
-app.get("/api/admin/invites", authMiddleware, requireRole("admin"), (_req, res) => {
+app.get(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
   res.json([...db.phoneInvites].reverse());
 });
 
-app.post("/api/admin/invites", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { phone: rawPhone, role, note } = req.body;
   if (!["teacher", "student", "manager"].includes(role)) {
     return res.status(400).json({ detail: "role must be teacher, student or manager" });
@@ -628,7 +629,7 @@ app.post("/api/admin/invites", authMiddleware, requireRole("admin"), (req, res) 
   res.json(inv);
 });
 
-app.delete("/api/admin/invites/:invite_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/invites/:invite_id", "/api/manager/invites/:invite_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const inviteId = parseInt(req.params.invite_id, 10);
   db.phoneInvites = db.phoneInvites.filter((i) => i.id !== inviteId);
   if (typeof (db as any).save === "function") (db as any).save();
@@ -744,7 +745,7 @@ app.put("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (req,
   res.json({ ok: true });
 });
 
-app.get("/api/admin/courses", authMiddleware, requireRole("admin"), (_req, res) => {
+app.get(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
   const out = [...db.courses]
     .sort((a, b) => (a.order_index ?? a.id) - (b.order_index ?? b.id))
     .map((c) => {
@@ -776,7 +777,7 @@ app.get("/api/admin/courses", authMiddleware, requireRole("admin"), (_req, res) 
   res.json(out);
 });
 
-app.post("/api/admin/courses", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { title, description, order_index } = req.body;
   const id = db.getId("course");
   const nextOrder = order_index !== undefined && order_index !== "" ? Number(order_index) : db.courses.length + 1;
@@ -784,7 +785,7 @@ app.post("/api/admin/courses", authMiddleware, requireRole("admin"), (req, res) 
   res.json({ id });
 });
 
-app.put("/api/admin/courses/:course_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const courseId = parseInt(req.params.course_id, 10);
   const c = db.courses.find((x) => x.id === courseId);
   if (!c) return res.status(404).json({ detail: "Курс не найден" });
@@ -794,7 +795,7 @@ app.put("/api/admin/courses/:course_id", authMiddleware, requireRole("admin"), (
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/courses/:course_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const courseId = parseInt(req.params.course_id, 10);
   const themeIds = db.themes.filter((t) => t.course_id === courseId).map((t) => t.id);
   const testIds = db.tests.filter((t) => themeIds.includes(t.theme_id)).map((t) => t.id);
@@ -826,14 +827,14 @@ app.delete("/api/admin/courses/:course_id", authMiddleware, requireRole("admin")
   res.json({ ok: true });
 });
 
-app.post("/api/admin/themes", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/themes", "/api/manager/themes"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { course_id, title, order_index } = req.body;
   const id = db.getId("theme");
   db.themes.push({ id, course_id, title, order_index: order_index || 0 });
   res.json({ id });
 });
 
-app.put("/api/admin/themes/:theme_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const t = db.themes.find((x) => x.id === themeId);
   if (!t) return res.status(404).json({ detail: "Тема не найдена" });
@@ -842,7 +843,7 @@ app.put("/api/admin/themes/:theme_id", authMiddleware, requireRole("admin"), (re
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/themes/:theme_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const testIds = db.tests.filter((t) => t.theme_id === themeId).map((t) => t.id);
   const qIds = db.questions.filter((q) => testIds.includes(q.test_id)).map((q) => q.id);
@@ -940,7 +941,7 @@ app.delete("/api/admin/groups/:group_id/students/:user_id", authMiddleware, requ
   res.json({ ok: true });
 });
 
-app.get("/api/admin/themes/:theme_id/materials", authMiddleware, requireRole("admin"), (req, res) => {
+app.get(["/api/admin/themes/:theme_id/materials", "/api/manager/themes/:theme_id/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const mats = db.materials
     .filter((m) => m.theme_id === themeId)
@@ -948,14 +949,14 @@ app.get("/api/admin/themes/:theme_id/materials", authMiddleware, requireRole("ad
   res.json(mats);
 });
 
-app.post("/api/admin/materials", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { theme_id, title, type, url, order_index } = req.body;
   const id = db.getId("material");
   db.materials.push({ id, theme_id, title, type, url, order_index: order_index || 0 });
   res.json({ id });
 });
 
-app.put("/api/admin/materials/:material_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const matId = parseInt(req.params.material_id, 10);
   const m = db.materials.find((x) => x.id === matId);
   if (!m) return res.status(404).json({ detail: "Материал не найден" });
@@ -963,7 +964,7 @@ app.put("/api/admin/materials/:material_id", authMiddleware, requireRole("admin"
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/materials/:material_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const matId = parseInt(req.params.material_id, 10);
   db.materials = db.materials.filter((m) => m.id !== matId);
   res.json({ ok: true });
@@ -2852,12 +2853,12 @@ app.post("/api/admin/extra-materials/:id/chat", authMiddleware, requireRole("adm
 // -------------------------------------------------------------
 app.get(["/api/staff/repository/materials", "/api/admin/repository/materials", "/api/manager/repository/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   let list = [...db.storageMaterials];
-  const theme = (req.query.theme as string || "").trim().toLowerCase();
+  const playlist = (req.query.playlist as string || req.query.theme as string || "").trim().toLowerCase();
   const search = (req.query.search as string || "").trim().toLowerCase();
   const type = (req.query.type as string || "").trim().toLowerCase();
 
-  if (theme) {
-    list = list.filter((m) => (m.theme_name || "").trim().toLowerCase() === theme);
+  if (playlist) {
+    list = list.filter((m) => (m.playlist_name || "").trim().toLowerCase() === playlist);
   }
   if (type && type !== "all") {
     list = list.filter((m) => m.type === type);
@@ -2866,14 +2867,14 @@ app.get(["/api/staff/repository/materials", "/api/admin/repository/materials", "
     list = list.filter(
       (m) =>
         m.title.toLowerCase().includes(search) ||
-        (m.theme_name || "").toLowerCase().includes(search) ||
+        (m.playlist_name || "").toLowerCase().includes(search) ||
         (m.description || "").toLowerCase().includes(search) ||
         (m.url || "").toLowerCase().includes(search)
     );
   }
 
   list.sort((a, b) => {
-    const tComp = (a.theme_name || "").localeCompare(b.theme_name || "", "ru");
+    const tComp = (a.playlist_name || "").localeCompare(b.playlist_name || "", "ru");
     if (tComp !== 0) return tComp;
     return (a.order_index || 0) - (b.order_index || 0) || a.id - b.id;
   });
@@ -2881,30 +2882,51 @@ app.get(["/api/staff/repository/materials", "/api/admin/repository/materials", "
   res.json(list);
 });
 
-app.get(["/api/staff/repository/themes", "/api/admin/repository/themes", "/api/manager/repository/themes"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
+app.get(["/api/staff/repository/playlists", "/api/admin/repository/playlists", "/api/manager/repository/playlists"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
   const map = new Map<string, StorageMaterial[]>();
   for (const m of db.storageMaterials) {
-    const key = (m.theme_name || "Общие материалы").trim();
+    const key = (m.playlist_name || "Общие материалы").trim();
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(m);
   }
 
-  const themes = Array.from(map.entries()).map(([theme_name, items]) => {
+  const playlists = Array.from(map.entries()).map(([playlist_name, items]) => {
     items.sort((a, b) => (a.order_index || 0) - (b.order_index || 0) || a.id - b.id);
     return {
-      theme_name,
+      playlist_name,
       count: items.length,
       materials: items,
     };
-  }).sort((a, b) => a.theme_name.localeCompare(b.theme_name, "ru"));
+  }).sort((a, b) => a.playlist_name.localeCompare(b.playlist_name, "ru"));
 
-  res.json(themes);
+  res.json(playlists);
+});
+
+// Legacy alias: repository/themes → repository/playlists
+app.get(["/api/staff/repository/themes", "/api/admin/repository/themes", "/api/manager/repository/themes"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
+  const map = new Map<string, StorageMaterial[]>();
+  for (const m of db.storageMaterials) {
+    const key = (m.playlist_name || "Общие материалы").trim();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(m);
+  }
+
+  const playlists = Array.from(map.entries()).map(([playlist_name, items]) => {
+    items.sort((a, b) => (a.order_index || 0) - (b.order_index || 0) || a.id - b.id);
+    return {
+      playlist_name,
+      count: items.length,
+      materials: items,
+    };
+  }).sort((a, b) => a.playlist_name.localeCompare(b.playlist_name, "ru"));
+
+  res.json(playlists);
 });
 
 app.post(["/api/staff/repository/materials", "/api/admin/repository/materials", "/api/manager/repository/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
-  const { title, theme_name, type, url, description, order_index, file_name, file_size } = req.body;
+  const { title, playlist_name, type, url, description, order_index, file_name, file_size } = req.body;
   const cleanTitle = (title || "").trim();
-  const cleanTheme = (theme_name || "").trim() || "Общие материалы";
+  const cleanPlaylist = (playlist_name || "").trim() || "Общие материалы";
   const cleanType = (type || "video").trim();
   const cleanUrl = (url || "").trim();
 
@@ -2912,18 +2934,18 @@ app.post(["/api/staff/repository/materials", "/api/admin/repository/materials", 
     return res.status(400).json({ detail: "Введите название материала / урока" });
   }
 
-  const existingInTheme = db.storageMaterials.filter(
-    (m) => m.theme_name.trim().toLowerCase() === cleanTheme.toLowerCase()
+  const existingInPlaylist = db.storageMaterials.filter(
+    (m) => m.playlist_name.trim().toLowerCase() === cleanPlaylist.toLowerCase()
   );
   const nextOrder = order_index !== undefined && order_index !== "" 
     ? Number(order_index) 
-    : (existingInTheme.length + 1);
+    : (existingInPlaylist.length + 1);
 
   const id = db.getId("storageMaterial");
   const newMat: StorageMaterial = {
     id,
     title: cleanTitle,
-    theme_name: cleanTheme,
+    playlist_name: cleanPlaylist,
     type: cleanType,
     url: cleanUrl,
     description: (description || "").trim(),
@@ -2944,7 +2966,7 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
 
   const oldTitle = item.title;
   if (req.body.title !== undefined) item.title = (req.body.title || "").trim();
-  if (req.body.theme_name !== undefined) item.theme_name = (req.body.theme_name || "").trim() || "Общие материалы";
+  if (req.body.playlist_name !== undefined) item.playlist_name = (req.body.playlist_name || "").trim() || "Общие материалы";
   if (req.body.type !== undefined) item.type = req.body.type;
   if (req.body.url !== undefined) item.url = req.body.url;
   if (req.body.description !== undefined) item.description = req.body.description;
@@ -3004,16 +3026,16 @@ app.delete(["/api/staff/repository/materials/:id", "/api/admin/repository/materi
   res.json({ ok: true, removed_copies: removed });
 });
 
-// Import entire theme from repository into course themes
-app.post(["/api/staff/courses/:course_id/import-theme", "/api/admin/courses/:course_id/import-theme", "/api/manager/courses/:course_id/import-theme"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+// Import entire playlist from repository into course themes
+const importPlaylistHandler = (req: Request, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   const course = db.courses.find((c) => c.id === courseId);
   if (!course) return res.status(404).json({ detail: "Курс не найден" });
 
-  const themeName = (req.body.theme_name || "").trim();
-  if (!themeName) return res.status(400).json({ detail: "Выберите тему из накопителя" });
+  const playlistName = (req.body.playlist_name || "").trim();
+  if (!playlistName) return res.status(400).json({ detail: "Выберите плейлист из накопителя" });
 
-  const customTitle = (req.body.title || "").trim() || themeName;
+  const customTitle = (req.body.title || "").trim() || playlistName;
   const existingThemes = db.themes.filter((t) => t.course_id === courseId);
   const nextThemeOrder = req.body.order_index !== undefined && req.body.order_index !== ""
     ? Number(req.body.order_index)
@@ -3028,9 +3050,9 @@ app.post(["/api/staff/courses/:course_id/import-theme", "/api/admin/courses/:cou
   };
   db.themes.push(newTheme);
 
-  // Find all materials in repository for this theme
+  // Find all materials in repository for this playlist
   const repoItems = db.storageMaterials
-    .filter((m) => m.theme_name.trim().toLowerCase() === themeName.toLowerCase())
+    .filter((m) => m.playlist_name.trim().toLowerCase() === playlistName.toLowerCase())
     .sort((a, b) => a.order_index - b.order_index || a.id - b.id);
 
   for (const item of repoItems) {
@@ -3051,7 +3073,17 @@ app.post(["/api/staff/courses/:course_id/import-theme", "/api/admin/courses/:cou
     theme: newTheme,
     imported_count: repoItems.length,
   });
-});
+};
+
+// Register import-playlist routes (legacy import-theme kept as alias)
+for (const base of ["/api/staff", "/api/admin", "/api/manager"]) {
+  app.post(
+    [`${base}/courses/:course_id/import-playlist`, `${base}/courses/:course_id/import-theme`],
+    authMiddleware,
+    requireRole("admin", "manager"),
+    importPlaylistHandler
+  );
+}
 
 // Attach single material from repository to course theme
 app.post(["/api/staff/courses/:course_id/themes/:theme_id/attach-material", "/api/admin/courses/:course_id/themes/:theme_id/attach-material", "/api/manager/courses/:course_id/themes/:theme_id/attach-material"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
@@ -3086,17 +3118,17 @@ app.post(["/api/staff/courses/:course_id/themes/:theme_id/attach-material", "/ap
   res.json({ ok: true, material: newMat });
 });
 
-// Import theme from repository into course extra-materials
-app.post(["/api/staff/courses/:course_id/import-extra-theme", "/api/admin/courses/:course_id/import-extra-theme", "/api/manager/courses/:course_id/import-extra-theme"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+// Import playlist from repository into course extra-materials
+const importExtraPlaylistHandler = (req: Request, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   const course = db.courses.find((c) => c.id === courseId);
   if (!course) return res.status(404).json({ detail: "Курс не найден" });
 
-  const themeName = (req.body.theme_name || "").trim();
-  if (!themeName) return res.status(400).json({ detail: "Выберите тему из накопителя" });
+  const playlistName = (req.body.playlist_name || "").trim();
+  if (!playlistName) return res.status(400).json({ detail: "Выберите плейлист из накопителя" });
 
   const repoItems = db.storageMaterials
-    .filter((m) => m.theme_name.trim().toLowerCase() === themeName.toLowerCase())
+    .filter((m) => m.playlist_name.trim().toLowerCase() === playlistName.toLowerCase())
     .sort((a, b) => a.order_index - b.order_index || a.id - b.id);
 
   const existing = db.extraMaterials.filter((em) => {
@@ -3125,7 +3157,17 @@ app.post(["/api/staff/courses/:course_id/import-extra-theme", "/api/admin/course
   }
 
   res.json({ ok: true, count: created.length });
-});
+};
+
+// Register import-extra-playlist routes (legacy import-extra-theme kept as alias)
+for (const base of ["/api/staff", "/api/admin", "/api/manager"]) {
+  app.post(
+    [`${base}/courses/:course_id/import-extra-playlist`, `${base}/courses/:course_id/import-extra-theme`],
+    authMiddleware,
+    requireRole("admin", "manager"),
+    importExtraPlaylistHandler
+  );
+}
 
 // Attach single material from repository into course extra-materials
 app.post(["/api/staff/courses/:course_id/attach-extra-material", "/api/admin/courses/:course_id/attach-extra-material", "/api/manager/courses/:course_id/attach-extra-material"], authMiddleware, requireRole("admin", "manager"), (req, res) => {

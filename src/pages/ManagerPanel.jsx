@@ -9,10 +9,12 @@ import StaffChatsPanel from "../components/StaffChatsPanel";
 import ChatPanel from "../components/ChatPanel";
 import ExtraMaterialsTabContent from "../components/ExtraMaterialsTabContent";
 import UnifiedMaterialsRepository from "../components/UnifiedMaterialsRepository";
+import CoursesTab from "../components/CoursesTab";
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
   { id: "students",      label: "Ученики" },
+  { id: "courses",       label: "Курсы и темы" },
   { id: "materials",     label: "Материалы" },
   { id: "messages",      label: "Сообщения" },
   { id: "announcements", label: "Объявления" },
@@ -46,6 +48,7 @@ export default function ManagerPanel() {
     <Layout title="Панель методиста" tabs={TABS} active={tab} onChange={setTab}>
       {tab === "students"      && <StudentsTab groups={groups} users={users} reload={reload} />}
         {tab === "invites"       && <InvitesTab />}
+      {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/manager" />}
       {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
       {tab === "messages"      && <DirectMessages />}
       {tab === "announcements" && <AnnouncementsPanel initialGroups={groups} />}
@@ -264,7 +267,7 @@ function MaterialsTab({ courses, groups = [] }) {
             onClick={() => setMode("repository")}
             style={{ fontWeight: mode === "repository" ? 600 : 400 }}
           >
-            📁 Накопитель материалов и тем (Видео, Конспекты, Документы, Аудио, Рисунки)
+            📁 Накопитель материалов и плейлистов (Видео, Конспекты, Документы, Аудио, Рисунки)
           </button>
           <button
             type="button"

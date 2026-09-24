@@ -120,7 +120,7 @@ export interface ExtraMaterial {
 export interface StorageMaterial {
   id: number;
   title: string;
-  theme_name: string; // Тема / раздел, объединяющий материалы (уроки)
+  playlist_name: string; // Плейлист / раздел, объединяющий материалы (уроки)
   type: string;       // "video" | "audio" | "image" | "document" | "note" | "link"
   url: string;        // Ссылка, путь /uploads/... или текст заметки
   description?: string;
@@ -550,7 +550,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Вводный видеоурок: Путь и призвание ученика",
-        theme_name: "1. Призвание и следование за Христом",
+        playlist_name: "1. Призвание и следование за Христом",
         type: "video",
         url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         description: "Основы следования за Христом, библейские примеры и практические шаги.",
@@ -560,7 +560,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Конспект лекции: Призвание ученика",
-        theme_name: "1. Призвание и следование за Христом",
+        playlist_name: "1. Призвание и следование за Христом",
         type: "note",
         url: "Основные положения темы:\n1. Отречение от себя и следование за Христом (Мк. 8:34).\n2. Послушание Слову и пребывание в Нем (Ин. 8:31).\n3. Взаимная любовь как свидетельство ученичества (Ин. 13:35).\n4. Принесение плода и прославление Отца (Ин. 15:8).",
         description: "Краткий конспект для повторения ключевых мест Писания.",
@@ -570,7 +570,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Практическое руководство и разбор мест Писания",
-        theme_name: "1. Призвание и следование за Христом",
+        playlist_name: "1. Призвание и следование за Христом",
         type: "document",
         url: "https://example.com/materials/practical-guide.pdf",
         description: "Вопросы для самопроверки и размышления над библейскими текстами.",
@@ -580,7 +580,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Аудиозапись лекции: Личная молитвенная жизнь",
-        theme_name: "2. Молитва и духовная дисциплина",
+        playlist_name: "2. Молитва и духовная дисциплина",
         type: "audio",
         url: "https://example.com/audio/prayer-life.mp3",
         description: "О важности ежедневного молитвенного правила и ходатайственной молитвы.",
@@ -590,7 +590,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "План ежедневного чтения Библии на год",
-        theme_name: "2. Молитва и духовная дисциплина",
+        playlist_name: "2. Молитва и духовная дисциплина",
         type: "document",
         url: "https://example.com/materials/bible-plan.pdf",
         description: "Календарный план последовательного чтения Ветхого и Нового Завета.",
@@ -600,7 +600,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Инфографика: Структура молитвы Господней",
-        theme_name: "2. Молитва и духовная дисциплина",
+        playlist_name: "2. Молитва и духовная дисциплина",
         type: "image",
         url: "https://images.unsplash.com/photo-1507692049790-de58290a4334?w=800&auto=format&fit=crop&q=60",
         description: "Наглядная схема прошений в молитве «Отче наш».",
@@ -610,7 +610,7 @@ class DatabaseStore {
       {
         id: this.getId("storageMaterial"),
         title: "Список рекомендуемой классической литературы",
-        theme_name: "Дополнительная литература и книги",
+        playlist_name: "Дополнительная литература и книги",
         type: "note",
         url: "Рекомендуемые книги:\n1. «Цена ученичества» — Дитрих Бонхёффер\n2. «Духовное ученичество» — Дж. Освальд Сандерс\n3. «Подражание Христу» — Фома Кемпийский\n4. «Крест и крест христианина» — свт. Игнатий Брянчанинов",
         description: "Список классических трудов для углубленного чтения.",
