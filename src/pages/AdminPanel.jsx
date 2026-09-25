@@ -13,6 +13,7 @@ import TestsTab from "../components/TestsTab";
 import RepositoryPickerModal from "../components/RepositoryPickerModal";
 import WarningCard from "../components/WarningCard";
 import WelcomeModal from "../components/WelcomeModal";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabs";
 import { api, uploadFile } from "../api";
 
 const TABS = [
@@ -29,11 +30,19 @@ const TABS = [
   { id: "settings",      label: "Настройки" },
 ];
 
+const MONITORING_ITEMS = [
+  { id: "mon_students",  label: "Ученики" },
+  { id: "mon_progress",  label: "Таблица прогресса" },
+  { id: "mon_attempts",  label: "Попытки" },
+  { id: "mon_analytics", label: "Аналитика" },
+];
+
 export default function AdminPanel() {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState("");
   const [key, setKey] = useState(0);
   const reload = () => setKey(k => k + 1);
 
@@ -43,8 +52,36 @@ export default function AdminPanel() {
     api("/api/staff/groups").then(setGroups).catch(() => {});
   }, [key]);
 
+  useEffect(() => {
+    if (!groupId && groups[0]) setGroupId(String(groups[0].id));
+  }, [groups, groupId]);
+
+  const isMonitoring = MONITORING_ITEMS.some((i) => i.id === tab);
+
   return (
-    <Layout title="Панель администратора" tabs={TABS} active={tab} onChange={setTab}>
+    <Layout
+      title="Панель администратора"
+      tabs={TABS}
+      active={tab}
+      onChange={setTab}
+      dropdown={{ label: "Мониторинг", items: MONITORING_ITEMS, onChange: setTab }}
+    >
+      {isMonitoring && (
+        <div className="card row">
+          <label>Группа:</label>
+          <select value={groupId} onChange={e => setGroupId(e.target.value)}>
+            {groups.map(g => (
+              <option key={g.id} value={g.id}>{g.course_title} — {g.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {isMonitoring && !groups.length && <div className="card muted">Группы не найдены</div>}
+      {isMonitoring && groupId && tab === "mon_students"  && <StudentsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "mon_progress"  && <ProgressTable groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "mon_attempts"  && <AttemptsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "mon_analytics" && <AnalyticsTab groupId={+groupId} />}
+
       {tab === "invites"       && <InvitesTab />}      
       {tab === "users"         && <UsersTab users={users} reload={reload} />}   
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/admin" />}

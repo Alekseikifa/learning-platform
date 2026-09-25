@@ -1531,6 +1531,8 @@ function teacherGroupIds(teacherId: number): number[] {
 }
 
 function ownTeacherGroup(teacherId: number, groupId: number): boolean {
+  const u = db.users.find((x) => x.id === teacherId);
+  if (u && u.role === "admin") return true;
   return db.groupTeachers.some((gt) => gt.teacher_id === teacherId && gt.group_id === groupId);
 }
 
@@ -1560,7 +1562,7 @@ app.get("/api/teacher/groups", authMiddleware, requireRole("teacher"), (req: Aut
   res.json(out);
 });
 
-app.get("/api/teacher/groups/:group_id/students", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/teacher/groups/:group_id/students", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -1598,7 +1600,7 @@ app.get("/api/teacher/groups/:group_id/students", authMiddleware, requireRole("t
   res.json(out);
 });
 
-app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -1650,7 +1652,7 @@ app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("t
   res.json({ themes: themesOut, students: studentsOut });
 });
 
-app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -1665,10 +1667,14 @@ app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("t
     .map((a) => {
       const student = db.users.find((u) => u.id === a.user_id);
       const test = db.tests.find((t) => t.id === a.test_id);
+      const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
       return {
         id: a.id,
         student: student ? student.name : "",
         test: test ? test.title : "",
+        theme_id: theme ? theme.id : null,
+        theme_title: theme ? theme.title : "",
+        theme_order_index: theme ? theme.order_index : null,
         score: a.score,
         passed: a.passed,
         created_at: a.created_at,
@@ -1677,7 +1683,7 @@ app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("t
   res.json(attempts);
 });
 
-app.get("/api/teacher/attempts/:attempt_id/details", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/teacher/attempts/:attempt_id/details", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
   const attemptId = parseInt(req.params.attempt_id, 10);
   const a = db.attempts.find((x) => x.id === attemptId);
   if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
@@ -1688,7 +1694,7 @@ app.get("/api/teacher/attempts/:attempt_id/details", authMiddleware, requireRole
 
   const gids = teacherGroupIds(req.user!.id);
   const myCourseIds = db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id);
-  if (!course || !myCourseIds.includes(course.id)) {
+  if (req.user!.role !== "admin" && (!course || !myCourseIds.includes(course.id))) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
@@ -1724,6 +1730,7 @@ app.get("/api/teacher/attempts/:attempt_id/details", authMiddleware, requireRole
     passed: a.passed,
     created_at: a.created_at,
     test_title: test ? test.title : "",
+    theme_title: theme ? theme.title : "",
     student_name: student ? student.name : "",
     questions: out,
   });
@@ -1834,7 +1841,7 @@ app.delete("/api/teacher/announcements/:ann_id", authMiddleware, requireRole("te
   res.json({ ok: true });
 });
 
-app.get("/api/teacher/groups/:group_id/analytics", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/teacher/groups/:group_id/analytics", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -2224,6 +2231,7 @@ app.get("/api/student/attempts/:attempt_id/details", authMiddleware, requireRole
   if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
 
   const test = db.tests.find((t) => t.id === a.test_id);
+  const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
   const questions = db.questions.filter((q) => q.test_id === a.test_id);
   const aaMap = new Map(
     db.attemptAnswers.filter((aa) => aa.attempt_id === a.id).map((aa) => [aa.question_id, aa])
@@ -2255,6 +2263,7 @@ app.get("/api/student/attempts/:attempt_id/details", authMiddleware, requireRole
     passed: a.passed,
     created_at: a.created_at,
     test_title: test ? test.title : "",
+    theme_title: theme ? theme.title : "",
     questions: out,
   });
 });

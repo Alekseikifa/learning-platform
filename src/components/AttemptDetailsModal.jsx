@@ -9,6 +9,7 @@ export default function AttemptDetailsModal({ data, onClose }) {
             <h3>Детали попытки</h3>
             <div className="muted small">
               {data.student_name && `Ученик: ${data.student_name} · `}
+              {data.theme_title && `Тема: ${data.theme_title} · `}
               Результат: <b>{data.score}%</b> ({data.passed ? "сдан" : "не сдан"})
             </div>
           </div>
@@ -18,8 +19,8 @@ export default function AttemptDetailsModal({ data, onClose }) {
         </div>
 
         <div className="list">
-          {data.details &&
-            data.details.map((q, idx) => (
+          {data.questions &&
+            data.questions.map((q, idx) => (
               <div key={idx} className={"q " + (q.is_correct ? "" : "q-wrong")}>
                 <div style={{ fontWeight: 500, marginBottom: 8 }}>
                   {idx + 1}. {q.question}

@@ -382,6 +382,8 @@ function Announcements() {
 function History() {
   const [list, setList] = useState([]);
   const [details, setDetails] = useState(null);
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
 
   useEffect(() => { api("/api/student/history").then(setList); }, []);
 
@@ -389,13 +391,46 @@ function History() {
     setDetails(await api(`/api/student/attempts/${id}/details`));
   };
 
+  const cmp = (a, b) => {
+    switch (sortKey) {
+      case "test": return a.test.localeCompare(b.test, "ru");
+      case "score": return a.score - b.score;
+      case "result": return (a.passed ? 1 : 0) - (b.passed ? 1 : 0) || a.score - b.score;
+      default: return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+  };
+  const rows = [...list].sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
+
+  const th = (key, label) => (
+    <th
+      style={{ cursor: "pointer", userSelect: "none" }}
+      onClick={() => {
+        if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        else {
+          setSortKey(key);
+          setSortDir(key === "date" || key === "score" || key === "result" ? "desc" : "asc");
+        }
+      }}
+    >
+      {label}{sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+    </th>
+  );
+
   return (
     <div className="card">
       <h3>История попыток</h3>
       <table className="table">
-        <thead><tr><th>Дата</th><th>Тест</th><th>%</th><th>Результат</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            {th("date", "Дата")}
+            {th("test", "Тест")}
+            {th("score", "%")}
+            {th("result", "Результат")}
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
-          {list.map(a => (
+          {rows.map(a => (
             <tr key={a.id}>
               <td className="muted small">{new Date(a.created_at).toLocaleString()}</td>
               <td>{a.test}</td><td>{a.score}%</td>

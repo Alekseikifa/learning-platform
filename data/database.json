@@ -240,7 +240,7 @@
       "theme_id": 16,
       "title": "Тест Библейские заветы. Дмитрий Бобков",
       "passing_score": 100,
-      "max_attempts": 0
+      "max_attempts": 1
     }
   ],
   "questions": [
@@ -1596,7 +1596,7 @@
       "title": "Сообщение от Волков Алексей",
       "body": "привет",
       "link": "/teacher?tab=messages&user=2",
-      "read_at": null,
+      "read_at": "2026-09-25T07:21:06.424Z",
       "created_at": "2026-09-24T20:51:59.657Z"
     },
     {
@@ -1606,7 +1606,7 @@
       "title": "Новое сообщение от Волков Алексей в «Библейские Заветы. Дмитрий Бобков»",
       "body": "Нормально",
       "link": "/teacher?theme=16",
-      "read_at": null,
+      "read_at": "2026-09-25T07:21:04.186Z",
       "created_at": "2026-09-24T20:54:58.534Z"
     }
   ],
@@ -1640,7 +1640,7 @@
       "sender_id": 2,
       "recipient_id": 3,
       "text": "привет",
-      "read_at": null,
+      "read_at": "2026-09-25T07:21:06.527Z",
       "created_at": "2026-09-24T20:51:59.657Z"
     }
   ],

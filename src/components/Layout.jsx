@@ -175,8 +175,9 @@ function RoleSwitcher() {
   );
 }
 
-export default function Layout({ title, tabs, active, onChange, children }) {
+export default function Layout({ title, tabs, active, onChange, children, dropdown }) {
   const [publicSettings, setPublicSettings] = useState({});
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   useEffect(() => {
     api("/api/settings/public").then(setPublicSettings).catch(() => {});
   }, []);
@@ -265,6 +266,48 @@ export default function Layout({ title, tabs, active, onChange, children }) {
               {tab.label}
             </button>
           ))}
+          {dropdown && (
+            <div style={{ position: "relative" }}>
+              <button
+                className={"tab " + (dropdown.items.some((i) => i.id === active) ? "active" : "")}
+                onClick={() => setDropdownOpen((o) => !o)}
+              >
+                {dropdown.label} ▾
+              </button>
+              {dropdownOpen && (
+                <>
+                  <div
+                    style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 40 }}
+                    onClick={() => setDropdownOpen(false)}
+                  />
+                  <div
+                    style={{
+                      position: "absolute", top: "100%", left: 0, zIndex: 50,
+                      background: "#fff", border: "1px solid var(--border)", borderRadius: 8,
+                      minWidth: 210, padding: 4, boxShadow: "0 8px 24px rgba(15,23,42,.12)",
+                    }}
+                  >
+                    {dropdown.items.map((item) => (
+                      <button
+                        key={item.id}
+                        className={"tab " + (active === item.id ? "active" : "")}
+                        style={{
+                          display: "block", width: "100%", textAlign: "left",
+                          borderBottom: "none", borderRadius: 6,
+                        }}
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          dropdown.onChange(item.id);
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </nav>
       )}
 
