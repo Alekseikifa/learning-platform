@@ -119,9 +119,18 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
   const [chatFor, setChatFor] = useState(null);
 
   // загрузка тем
+  const load = () => api(`/api/student/course/${courseId}/themes`).then(setThemes);
   useEffect(() => {
     if (!courseId) return;
-    api(`/api/student/course/${courseId}/themes`).then(setThemes);
+    load();
+  }, [courseId]);
+
+  // обновляем список при возврате на вкладку (например, после открытия темы методистом)
+  useEffect(() => {
+    if (!courseId) return;
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [courseId]);
 
   // открываем чат при получении initialTheme
@@ -149,6 +158,11 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
                 ? <span className="tag ok">Тест сдан</span>
                 : <span className="tag no">Тест не сдан</span>)}
               {!th.unlocked && <span className="muted small"> 🔒 заблокировано</span>}
+              {th.unlock_granted && (
+                <span className="tag ok" title="Тема открыта куратором/администратором">
+                  🔓 открыто вручную
+                </span>
+              )}
             </span>
           }
         >
@@ -187,14 +201,14 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
               </div>
             </>
           ) : (
-            <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы.</div>
+            <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы или обратитесь к куратору.</div>
           )}
         </Collapsible>
       ))}
 
       {chatFor?.test && (
         <TestModal testId={chatFor.test.id} onClose={() => setChatFor(null)}
-                   onDone={() => { setChatFor(null); }} />
+                   onDone={() => { setChatFor(null); load(); }} />
       )}
       {chatFor?.chatThemeId && (
         <div className="modal-back">

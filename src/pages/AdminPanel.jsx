@@ -14,7 +14,7 @@ import RepositoryPickerModal from "../components/RepositoryPickerModal";
 import WarningCard from "../components/WarningCard";
 import WelcomeModal from "../components/WelcomeModal";
 import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabs";
-import { api, uploadFile } from "../api";
+import { api, uploadFile, getToken } from "../api";
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
@@ -261,9 +261,12 @@ function PasswordModal({ name, onClose, onSubmit }) {
 }
 
 /* ---------- GROUPS ---------- */
+const userHasRole = (u, r) =>
+  u.role === r || (u.extra_roles || "").split(",").map(s => s.trim()).includes(r);
+
 function GroupsTab({ courses, users, reload }) {
-  const teachers = users.filter(u => u.role === "teacher");
-  const students = users.filter(u => u.role === "student");
+  const teachers = users.filter(u => userHasRole(u, "teacher"));
+  const students = users.filter(u => userHasRole(u, "student"));
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
   const [groups, setGroups] = useState([]);
   const [newName, setNewName] = useState("");
@@ -321,10 +324,12 @@ function GroupCard({ group, teachers, students, reload }) {
   };
   const addTeacher = async () => {
     if (!teacherId) return;
-    await api(`/api/admin/groups/${group.id}/teachers`, {
-      method: "POST", body: JSON.stringify({ teacher_id: +teacherId }),
-    });
-    setTeacherId(""); reload();
+    try {
+      await api(`/api/admin/groups/${group.id}/teachers`, {
+        method: "POST", body: JSON.stringify({ teacher_id: +teacherId }),
+      });
+      setTeacherId(""); reload();
+    } catch (e) { alert(e.message); }
   };
   const removeTeacher = async (tid) => {
     await api(`/api/admin/groups/${group.id}/teachers/${tid}`, { method: "DELETE" });
@@ -332,10 +337,12 @@ function GroupCard({ group, teachers, students, reload }) {
   };
   const addStudent = async () => {
     if (!studentId) return;
-    await api(`/api/admin/groups/${group.id}/students`, {
-      method: "POST", body: JSON.stringify({ user_id: +studentId }),
-    });
-    setStudentId(""); reload();
+    try {
+      await api(`/api/admin/groups/${group.id}/students`, {
+        method: "POST", body: JSON.stringify({ user_id: +studentId }),
+      });
+      setStudentId(""); reload();
+    } catch (e) { alert(e.message); }
   };
   const removeStudent = async (uid) => {
     await api(`/api/admin/groups/${group.id}/students/${uid}`, { method: "DELETE" });
@@ -704,6 +711,8 @@ function SettingsTab() {
   const [saving, setSaving] = useState(false);
   const [previewWelcome, setPreviewWelcome] = useState(false);
   const [previewWarning, setPreviewWarning] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [restoreFile, setRestoreFile] = useState(null);
 
   const loadSettings = async () => {
     try {
@@ -725,6 +734,76 @@ function SettingsTab() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const downloadBackup = async () => {
+    setBackupBusy(true);
+    try {
+      const res = await fetch("/api/admin/backup", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        let detail = "Ошибка запроса";
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mku-backup-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Не удалось скачать резервную копию: ${e.message}`);
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const restoreBackup = async () => {
+    if (!restoreFile) return;
+    let text;
+    try {
+      text = await restoreFile.text();
+    } catch {
+      return alert("Не удалось прочитать файл");
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return alert("Это не JSON-файл");
+    }
+    const exported = parsed && parsed.exported_at
+      ? new Date(parsed.exported_at).toLocaleString()
+      : "дата неизвестна";
+    const usersCount = parsed && Array.isArray(parsed.users) ? parsed.users.length : "?";
+    const ok = confirm(
+      `Заменить текущую базу данных содержимым файла «${restoreFile.name}»?\n` +
+      `Выгружен: ${exported}; пользователей в файле: ${usersCount}.\n` +
+      `Все изменения после выгрузки будут потеряны. Перед восстановлением сервер сохранит текущую базу в data/database.before-restore.json.\n\nПродолжить?`
+    );
+    if (!ok) return;
+    try {
+      const result = await uploadFile(restoreFile, "/api/admin/restore");
+      const lines = [];
+      if (result.restored) {
+        lines.push("Восстановлено: " + Object.entries(result.restored).map(([k, v]) => `${k}=${v}`).join(", "));
+      }
+      if (result.skipped && result.skipped.length) {
+        lines.push("Не было в файле (текущие данные не тронуты): " + result.skipped.join(", "));
+      }
+      if (result.warnings && result.warnings.length) {
+        lines.push("Предупреждения:\n• " + result.warnings.join("\n• "));
+      }
+      alert(lines.join("\n\n") || "База данных восстановлена");
+      location.reload();
+    } catch (e) {
+      alert(`Ошибка восстановления: ${e.message}`);
+    }
+  };
 
   const saveAllSettings = async () => {
     setSaving(true);
@@ -1013,9 +1092,9 @@ function SettingsTab() {
             <h3 style={{ margin: 0 }}>💾 Резервное копирование и сводка данных</h3>
             <div className="muted small">Экспорт полной базы данных платформы в формате JSON</div>
           </div>
-          <a
-            href="/api/admin/backup"
-            download
+          <button
+            onClick={downloadBackup}
+            disabled={backupBusy}
             className="btn"
             style={{
               display: "inline-flex",
@@ -1027,10 +1106,40 @@ function SettingsTab() {
               textDecoration: "none",
               padding: "9px 18px",
               borderRadius: 8,
+              opacity: backupBusy ? 0.6 : 1,
+              cursor: backupBusy ? "wait" : "pointer",
             }}
           >
-            📥 Скачать резервную копию (JSON)
-          </a>
+            {backupBusy ? "⏳ Формируем…" : "📥 Скачать резервную копию (JSON)"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 14, borderTop: "1px solid #cbd5e1", paddingTop: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>♻️ Восстановить из резервной копии</div>
+          <div className="muted small" style={{ marginBottom: 8 }}>
+            Выберите ранее выгруженный JSON-файл. Текущая база будет заменена его содержимым;
+            перед восстановлением сервер сохранит копию текущей базы в data/database.before-restore.json.
+          </div>
+          <div className="row">
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+            />
+            <button
+              className="btn"
+              disabled={!restoreFile}
+              onClick={restoreBackup}
+              style={{
+                background: restoreFile ? "#b91c1c" : "#94a3b8",
+                color: "#fff",
+                fontWeight: 600,
+                cursor: restoreFile ? "pointer" : "not-allowed",
+              }}
+            >
+              ♻️ Восстановить
+            </button>
+          </div>
         </div>
 
         {stats && (

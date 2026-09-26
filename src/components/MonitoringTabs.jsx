@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import ChatPanel from "./ChatPanel";
 import AttemptDetailsModal from "./AttemptDetailsModal";
-import { api } from "../api";
+import UnlockThemeModal from "./UnlockThemeModal";
+import { api, getUser } from "../api";
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -10,7 +11,11 @@ import {
 export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   const [students, setStudents] = useState([]);
   const [chatFor, setChatFor] = useState(null);
+  const [unlocking, setUnlocking] = useState(null);
   const [themes, setThemes] = useState([]);
+  const activeRole = getUser()?.role;
+  const canUnlock = activeRole === "admin" || activeRole === "teacher";
+  const unlockPrefix = activeRole === "admin" ? "/api/admin" : "/api/teacher";
 
   useEffect(() => {
     api(`/api/teacher/groups/${groupId}/students`).then(setStudents);
@@ -36,7 +41,7 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
     <div className="card">
       <h3>Ученики группы</h3>
       <table className="table">
-        <thead><tr><th>ФИО</th><th>Логин</th><th>Прогресс</th><th>Тестов сдано</th><th>Активность</th><th>Чат темы</th></tr></thead>
+        <thead><tr><th>ФИО</th><th>Логин</th><th>Прогресс</th><th>Тестов сдано</th><th>Активность</th><th>Чат темы</th>{canUnlock && <th>Темы</th>}</tr></thead>
         <tbody>
           {students.map(s => (
             <tr key={s.id}>
@@ -55,6 +60,14 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
                   {themes.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
                 </select>
               </td>
+              {canUnlock && (
+                <td>
+                  <button className="btn small" title="Открыть следующую тему ученику"
+                          onClick={() => setUnlocking(s)}>
+                    🔓 Темы
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -67,6 +80,10 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
           </div>
           <ChatPanel themeId={chatFor} apiBase="/api/teacher" />
         </div>
+      )}
+      {unlocking && (
+        <UnlockThemeModal student={unlocking} apiPrefix={unlockPrefix}
+                          onClose={() => setUnlocking(null)} />
       )}
     </div>
   );

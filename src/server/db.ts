@@ -104,6 +104,14 @@ export interface AnnouncementTarget {
   group_id: number;
 }
 
+export interface ThemeUnlock {
+  id: number;
+  user_id: number;
+  theme_id: number;
+  granted_by: number;
+  created_at: string;
+}
+
 export interface ExtraMaterial {
   id: number;
   course_id?: number;
@@ -205,6 +213,7 @@ class DatabaseStore {
   phoneInvites: PhoneInvite[] = [];
   notifications: Notification[] = [];
   directMessages: DirectMessage[] = [];
+  themeUnlocks: ThemeUnlock[] = [];
 
   private nextId = {
     user: 1,
@@ -225,6 +234,7 @@ class DatabaseStore {
     phoneInvite: 1,
     notification: 1,
     directMessage: 1,
+    themeUnlock: 1,
   };
 
   getId(table: keyof typeof this.nextId): number {
@@ -263,6 +273,7 @@ class DatabaseStore {
         phoneInvites: this.phoneInvites,
         notifications: this.notifications,
         directMessages: this.directMessages,
+        themeUnlocks: this.themeUnlocks,
         nextId: this.nextId,
       };
       fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf-8");
@@ -278,7 +289,10 @@ class DatabaseStore {
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, "utf-8");
         const data = JSON.parse(raw);
+        const nextIdDefaults = { ...this.nextId };
         Object.assign(this, data);
+        // старые файлы базы не содержат новые ключи счётчиков — дополняем дефолтами
+        this.nextId = { ...nextIdDefaults, ...this.nextId };
         console.log("[DatabaseStore] База данных успешно загружена из файла database.json");
         return;
       }
