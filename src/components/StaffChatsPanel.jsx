@@ -6,6 +6,7 @@ import { api } from "../api";
 export default function StaffChatsPanel() {
   const [themes, setThemes] = useState([]);
   const [extraMaterials, setExtraMaterials] = useState([]);
+  const [loadErr, setLoadErr] = useState(null);
   const [courseId, setCourseId] = useState("");
   const [mode, setMode] = useState("extra"); // "themes" | "extra"
   const [themeId, setThemeId] = useState("");
@@ -14,38 +15,40 @@ export default function StaffChatsPanel() {
 
   useEffect(() => {
     Promise.all([
-      api("/api/staff/themes").catch(() => []),
-      api("/api/staff/extra-materials").catch(() => []),
-    ]).then(([ts, ems]) => {
-      setThemes(ts);
-      setExtraMaterials(ems);
+      api("/api/staff/themes").catch((e) => { setLoadErr(`темы: ${e.message}`); return []; }),
+      api("/api/staff/extra-materials").catch((e) => { setLoadErr(`доп. материалы: ${e.message}`); return []; }),
+    ])
+      .then(([ts, ems]) => {
+        setThemes(ts);
+        setExtraMaterials(ems);
 
-      const urlExtra = searchParams.get("extra_material");
-      const urlTheme = searchParams.get("theme");
+        const urlExtra = searchParams.get("extra_material");
+        const urlTheme = searchParams.get("theme");
 
-      if (urlExtra && ems.some((x) => x.id === +urlExtra)) {
-        const found = ems.find((x) => x.id === +urlExtra);
-        setCourseId(found.course_id);
-        setMode("extra");
-        setExtraId(found.id);
-      } else if (urlTheme && ts.some((x) => x.id === +urlTheme)) {
-        const found = ts.find((x) => x.id === +urlTheme);
-        setCourseId(found.course_id);
-        setMode("themes");
-        setThemeId(found.id);
-      } else if (ts[0]) {
-        setCourseId(ts[0].course_id);
-        setThemeId(ts[0].id);
-        if (ems.length > 0) {
-          const em = ems.find((x) => x.course_id === ts[0].course_id);
-          if (em) setExtraId(em.id);
+        if (urlExtra && ems.some((x) => x.id === +urlExtra)) {
+          const found = ems.find((x) => x.id === +urlExtra);
+          setCourseId(found.course_id);
+          setMode("extra");
+          setExtraId(found.id);
+        } else if (urlTheme && ts.some((x) => x.id === +urlTheme)) {
+          const found = ts.find((x) => x.id === +urlTheme);
+          setCourseId(found.course_id);
+          setMode("themes");
+          setThemeId(found.id);
+        } else if (ts[0]) {
+          setCourseId(ts[0].course_id);
+          setThemeId(ts[0].id);
+          if (ems.length > 0) {
+            const em = ems.find((x) => x.course_id === ts[0].course_id);
+            if (em) setExtraId(em.id);
+          }
+        } else if (ems[0]) {
+          setCourseId(ems[0].course_id);
+          setMode("extra");
+          setExtraId(ems[0].id);
         }
-      } else if (ems[0]) {
-        setCourseId(ems[0].course_id);
-        setMode("extra");
-        setExtraId(ems[0].id);
-      }
-    });
+      })
+      .catch((e) => setLoadErr(e.message));
   }, [searchParams]);
 
   // Уникальные курсы из тем и доп. материалов
@@ -73,6 +76,13 @@ export default function StaffChatsPanel() {
   }, [courseId, mode, themes, extraMaterials]);
 
   if (!themes.length && !extraMaterials.length) {
+    if (loadErr) {
+      return (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить темы и материалы: {loadErr}
+        </div>
+      );
+    }
     return <div className="card muted">Тем и дополнительных материалов пока нет — создайте их в курсах</div>;
   }
 

@@ -163,6 +163,14 @@
       "type": "document",
       "url": "/uploads/1790276834919-qmcjrel.docx",
       "order_index": 5
+    },
+    {
+      "id": 64,
+      "theme_id": 16,
+      "title": "klklkmlkm",
+      "type": "note",
+      "url": ";l,\n[p,[\n,,[[pok,l[pl",
+      "order_index": 6
     }
   ],
   "extraMaterials": [
@@ -1658,7 +1666,7 @@
     "course": 6,
     "group": 4,
     "theme": 17,
-    "material": 64,
+    "material": 65,
     "extraMaterial": 2,
     "storageMaterial": 26,
     "test": 3,

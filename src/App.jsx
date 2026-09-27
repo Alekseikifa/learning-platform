@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api, getToken, getUser, setToken, setUser } from "./api";
-import AdminPanel from "./pages/AdminPanel";
 import Login from "./pages/Login";
-import ManagerPanel from "./pages/ManagerPanel";
 import Register from "./pages/Register";
-import StudentPanel from "./pages/StudentPanel";
-import TeacherPanel from "./pages/TeacherPanel";
+
+// панели ролей грузим отдельными чанками — логин/регистрация открываются сразу
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const ManagerPanel = lazy(() => import("./pages/ManagerPanel"));
+const StudentPanel = lazy(() => import("./pages/StudentPanel"));
+const TeacherPanel = lazy(() => import("./pages/TeacherPanel"));
 
 const defaultRouteFor = (role) =>
   role === "admin" ? "/admin"
@@ -15,6 +17,7 @@ const defaultRouteFor = (role) =>
   : "/student";
 
 function ProtectedRoute({ role, children }) {
+  const location = useLocation();
   const initial = () => {
     if (!getToken()) return "no-auth";
     const u = getUser();
@@ -27,34 +30,55 @@ function ProtectedRoute({ role, children }) {
 
   useEffect(() => {
     if (status !== "need-switch") return;
+    let cancelled = false;
+    const timer = setTimeout(() => { if (!cancelled) setStatus("wrong"); }, 10000);
     (async () => {
       try {
         const res = await api("/api/auth/switch-role", {
           method: "POST",
           body: JSON.stringify({ role }),
         });
+        if (cancelled) return;
         setToken(res.access_token);
         setUser({ role: res.role, roles: res.roles, name: res.name });
         setStatus("ok");
       } catch {
-        setStatus("wrong");
+        if (!cancelled) setStatus("wrong");
       }
     })();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [status, role]);
 
   if (status === "no-auth") return <Navigate to="/login" replace />;
   if (status === "wrong") {
     const u = getUser();
-    return <Navigate to={defaultRouteFor(u ? u.role : "student")} replace />;
+    // сохраняем query (?tab=… и пр.), чтобы deep-links не терялись при редиректе «не на свою роль»
+    return <Navigate to={{ pathname: defaultRouteFor(u ? u.role : "student"), search: location.search }} replace />;
   }
-  if (status === "need-switch") return null;
+  if (status === "need-switch") {
+    return (
+      <div style={{ display: "flex", minHeight: "60vh", alignItems: "center", justifyContent: "center" }}>
+        <span className="muted">Переключение роли…</span>
+      </div>
+    );
+  }
   return children;
 }
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <Suspense
+        fallback={
+          <div style={{ display: "flex", minHeight: "60vh", alignItems: "center", justifyContent: "center" }}>
+            <span className="muted">Загрузка…</span>
+          </div>
+        }
+      >
+        <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route
@@ -90,7 +114,8 @@ export default function App() {
           }
         />
         <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

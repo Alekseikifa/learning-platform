@@ -256,10 +256,12 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
       )}
 
       {tabs && (
-        <nav className="tabs">
+        <nav className="tabs" role="tablist" aria-label="Разделы">
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={active === tab.id}
               className={"tab " + (active === tab.id ? "active" : "")}
               onClick={() => onChange(tab.id)}
             >
@@ -270,6 +272,8 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
             <div style={{ position: "relative" }}>
               <button
                 className={"tab " + (dropdown.items.some((i) => i.id === active) ? "active" : "")}
+                aria-haspopup="menu"
+                aria-expanded={dropdownOpen}
                 onClick={() => setDropdownOpen((o) => !o)}
               >
                 {dropdown.label} ▾
@@ -281,6 +285,8 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
                     onClick={() => setDropdownOpen(false)}
                   />
                   <div
+                    role="menu"
+                    aria-label={dropdown.label}
                     style={{
                       position: "absolute", top: "100%", left: 0, zIndex: 50,
                       background: "#fff", border: "1px solid var(--border)", borderRadius: 8,
@@ -290,6 +296,8 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
                     {dropdown.items.map((item) => (
                       <button
                         key={item.id}
+                        role="menuitem"
+                        aria-current={active === item.id ? "true" : undefined}
                         className={"tab " + (active === item.id ? "active" : "")}
                         style={{
                           display: "block", width: "100%", textAlign: "left",

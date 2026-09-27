@@ -3,10 +3,17 @@ import { api } from "../api";
 
 export default function InvitesTab() {
   const [list, setList] = useState([]);
+  const [loadErr, setLoadErr] = useState(null);
   const [form, setForm] = useState({ phone: "", role: "student", note: "" });
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const load = () => api("/api/admin/invites").then(setList);
+  const load = () =>
+    api("/api/admin/invites")
+      .then(setList)
+      .catch((e) => setLoadErr(e.message))
+      .finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const add = async (e) => {
@@ -26,8 +33,10 @@ export default function InvitesTab() {
 
   const del = async (id) => {
     if (!confirm("Удалить приглашение?")) return;
-    await api("/api/admin/invites/" + id, { method: "DELETE" });
-    load();
+    try {
+      await api("/api/admin/invites/" + id, { method: "DELETE" });
+      load();
+    } catch (e) { alert(e.message); }
   };
 
   const roleLabel = (r) =>
@@ -65,7 +74,15 @@ export default function InvitesTab() {
 
       <div className="card">
         <h3>Ожидают регистрации ({list.length})</h3>
-        <table className="table">
+        {loadErr && (
+          <div style={{ color: "#dc2626" }}>Не удалось загрузить приглашения: {loadErr}</div>
+        )}
+        <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <label>Поиск:</label>
+          <input placeholder="Телефон, роль или комментарий…" value={q}
+                 onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+        </div>
+        <div className="table-wrap"><table className="table">
           <thead>
             <tr>
               <th>Телефон</th>
@@ -76,7 +93,28 @@ export default function InvitesTab() {
             </tr>
           </thead>
           <tbody>
-            {list.map(inv => (
+            {(() => {
+              const needle = q.trim().toLowerCase();
+              const rows = needle
+                ? list.filter(inv =>
+                    `${inv.phone} ${roleLabel(inv.role)} ${inv.note || ""}`.toLowerCase().includes(needle))
+                : list;
+              if (!rows.length) {
+                return (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      {loading
+                        ? "Загрузка приглашений…"
+                        : loadErr
+                          ? "Список не загрузился — попробуйте обновить страницу"
+                          : needle
+                            ? "Ничего не найдено по запросу «" + q + "»"
+                            : "Приглашений пока нет. Добавьте первое выше."}
+                    </td>
+                  </tr>
+                );
+              }
+              return rows.map(inv => (
               <tr key={inv.id}>
                 <td><b>{inv.phone}</b></td>
                 <td>{roleLabel(inv.role)}</td>
@@ -90,16 +128,10 @@ export default function InvitesTab() {
                   </button>
                 </td>
               </tr>
-            ))}
-            {!list.length && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  Приглашений пока нет. Добавьте первое выше.
-                </td>
-              </tr>
-            )}
+              ));
+            })()}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

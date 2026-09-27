@@ -180,6 +180,13 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--navy);
   box-shadow: 0 0 0 3px #1e3a5f1a;
 }
+/* видимый фокус для клавиатуры на кнопках и ссылках */
+button:focus-visible,
+a:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
 
 .btn {
   background: var(--bg-soft);
@@ -239,6 +246,13 @@ input:focus, select:focus, textarea:focus {
 .btn[disabled] {
   opacity: .45;
   cursor: not-allowed;
+}
+
+/* широкие таблицы прокручиваются по горизонтали на телефонах */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .table {

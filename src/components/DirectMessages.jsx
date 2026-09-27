@@ -34,7 +34,10 @@ export default function DirectMessages() {
     const u = searchParams.get("user");
     if (u) {
       setSelectedUserId(Number(u));
-      setSearchParams({}, { replace: true });
+      // убираем только user, чтобы не потерять ?tab= кабинета
+      const next = new URLSearchParams(searchParams);
+      next.delete("user");
+      setSearchParams(next, { replace: true });
     }
   }, [searchParams.toString()]);
 

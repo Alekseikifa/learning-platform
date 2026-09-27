@@ -1,5 +1,6 @@
 import { useState } from "react";
 import WarningCard from "./WarningCard";
+import Modal from "./Modal";
 
 export default function WelcomeModal({ isOpen, onClose, settings = {}, userId }) {
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -14,8 +15,12 @@ export default function WelcomeModal({ isOpen, onClose, settings = {}, userId })
   const text = settings.welcome_text || "Мы верим, что время обучения станет для вас поистине особенным временем.\nПусть Дух Святой работает с вашим сердцем на этом пути, а жизнь изменяется!";
 
   return (
-    <div className="modal-back" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16, overflowY: "auto" }}>
-      <div className="card" style={{ width: "100%", maxWidth: 780, background: "#ffffff", borderRadius: 24, padding: "28px 32px", boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.25)", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto" }}>
+    <Modal
+      onClose={handleConfirm}
+      backdropStyle={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16, overflowY: "auto" }}
+      innerClassName="card"
+      innerStyle={{ width: "100%", maxWidth: 780, background: "#ffffff", borderRadius: 24, padding: "28px 32px", boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.25)", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto" }}
+    >
         <div style={{ textAlign: "center", marginBottom: 18 }}>
           <img src="/mku_logo.svg" alt="Логотип" style={{ height: 58, width: "auto", margin: "0 auto 12px", display: "block" }} />
           <h2 style={{ fontSize: 24, fontWeight: 800, color: "var(--text, #0f172a)", margin: 0 }}>{title}</h2>
@@ -28,7 +33,6 @@ export default function WelcomeModal({ isOpen, onClose, settings = {}, userId })
           </label>
           <button className="btn primary" onClick={handleConfirm}>Понятно</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

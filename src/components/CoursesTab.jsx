@@ -2,37 +2,45 @@ import { useEffect, useState } from "react";
 import Collapsible from "./Collapsible";
 import ChatPanel from "./ChatPanel";
 import RepositoryPickerModal from "./RepositoryPickerModal";
+import Modal from "./Modal";
 import { api, uploadFile } from "../api";
+import { getIcon } from "../lib/materialIcons";
 
 export default function CoursesTab({ courses, groups = [], reload, apiPrefix = "/api/admin" }) {
   const [form, setForm] = useState({ title: "", description: "", order_index: courses.length + 1 });
 
   const add = async (e) => {
     e.preventDefault();
-    await api(`${apiPrefix}/courses`, {
-      method: "POST",
-      body: JSON.stringify({
-        title: form.title,
-        description: form.description,
-        order_index: Number(form.order_index) || (courses.length + 1),
-      }),
-    });
-    setForm({ title: "", description: "", order_index: courses.length + 2 });
-    reload();
+    try {
+      await api(`${apiPrefix}/courses`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          order_index: Number(form.order_index) || (courses.length + 1),
+        }),
+      });
+      setForm({ title: "", description: "", order_index: courses.length + 2 });
+      reload();
+    } catch (err) { alert(err.message); }
   };
   const del = async (id) => {
     if (!confirm("Удалить курс со всем содержимым?")) return;
-    await api(`${apiPrefix}/courses/` + id, { method: "DELETE" });
-    reload();
+    try {
+      await api(`${apiPrefix}/courses/` + id, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
 
   const handleSetCourseOrder = async (courseId, newOrder) => {
     if (newOrder < 1) return;
-    await api(`${apiPrefix}/courses/${courseId}`, {
-      method: "PUT",
-      body: JSON.stringify({ order_index: Number(newOrder) }),
-    });
-    reload();
+    try {
+      await api(`${apiPrefix}/courses/${courseId}`, {
+        method: "PUT",
+        body: JSON.stringify({ order_index: Number(newOrder) }),
+      });
+      reload();
+    } catch (e) { alert(e.message); }
   };
 
   return (
@@ -472,8 +480,7 @@ function ExtraMaterialsList({ course, courses = [], groups = [], reload, apiPref
       </form>
 
       {chatMaterial && (
-        <div className="modal-back" onClick={() => setChatMaterial(null)}>
-          <div className="card modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <Modal onClose={() => setChatMaterial(null)} innerStyle={{ maxWidth: 640 }}>
             <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
               <div>
                 <h3 style={{ margin: 0 }}>💬 Чат обсуждения материала</h3>
@@ -481,11 +488,10 @@ function ExtraMaterialsList({ course, courses = [], groups = [], reload, apiPref
                   «{chatMaterial.title}» · Участвуют ученики группы, кураторы и администраторы
                 </div>
               </div>
-              <button className="btn ghost" onClick={() => setChatMaterial(null)}>✕</button>
+              <button className="btn ghost" onClick={() => setChatMaterial(null)} aria-label="Закрыть чат">✕</button>
             </div>
             <ChatPanel extraMaterialId={chatMaterial.id} apiBase="/api/staff" />
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -508,14 +514,6 @@ function ExtraMaterialRow({ material, currentCourseId, onDelete, onUnlink, onUpd
       order_index: +order,
     });
     setEdit(false);
-  };
-
-  const getIcon = (t) => {
-    if (t === "video") return "🎬";
-    if (t === "document") return "📄";
-    if (t === "audio") return "🎧";
-    if (t === "image") return "🖼";
-    return "📝";
   };
 
   const otherCourses = (material.courses || []).filter((c) => c.id !== currentCourseId);
@@ -579,7 +577,7 @@ function ExtraMaterialRow({ material, currentCourseId, onDelete, onUnlink, onUpd
                 Отвязать
               </button>
             )}
-            <button className="btn danger small" onClick={onDelete} title="Удалить полностью">✕</button>
+            <button className="btn danger small" onClick={onDelete} title="Удалить полностью" aria-label="Удалить полностью">✕</button>
           </div>
         </div>
       )}
@@ -729,7 +727,7 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
                 📎 Прикрепить урок из накопителя
               </button>
               <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
-              <button className="btn danger small" onClick={onDelete}>✕</button>
+              <button className="btn danger small" onClick={onDelete} aria-label="Удалить">✕</button>
             </div>
           </>
         )}

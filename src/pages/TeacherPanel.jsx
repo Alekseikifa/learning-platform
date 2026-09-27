@@ -4,8 +4,10 @@ import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabs";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabsLazy";
+import Modal from "../components/Modal";
 import { api } from "../api";
+import { getIcon } from "../lib/materialIcons";
 
 const TABS = [
   { id: "students",      label: "Ученики" },
@@ -18,16 +20,39 @@ const TABS = [
 ];
 
 export default function TeacherPanel() {
-  const [tab, setTab] = useState("students");
-  const [groups, setGroups] = useState([]);
-  const [groupId, setGroupId] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTabState] = useState(() => {
+    const t = searchParams.get("tab");
+    return TABS.some((x) => x.id === t) ? t : "students";
+  });
+  const [groups, setGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupsErr, setGroupsErr] = useState(null);
+  const [groupId, setGroupId] = useState("");
   const [pendingTheme, setPendingTheme] = useState(null);
   const [pendingExtra, setPendingExtra] = useState(null);
 
+  // переключение таба пишем в URL — F5 и «назад» сохраняют место
+  const changeTab = (id) => {
+    setTabState(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", id);
+    setSearchParams(next);
+  };
+
+  // точечная очистка: убираем только использованные параметры, tab оставляем
+  const clearParams = (keys) => {
+    const next = new URLSearchParams(searchParams);
+    keys.forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+  };
+
   // 1. Загружаем группы
   useEffect(() => {
-    api("/api/teacher/groups").then(setGroups);
+    api("/api/teacher/groups")
+      .then(setGroups)
+      .catch((e) => setGroupsErr(e.message))
+      .finally(() => setGroupsLoading(false));
   }, []);
 
   // 2. Дефолтная группа
@@ -35,48 +60,73 @@ export default function TeacherPanel() {
     if (!groupId && groups[0]) setGroupId(groups[0].id);
   }, [groups, groupId]);
 
-  // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению
+  // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению;
+  //    ссылка на тему/материал имеет приоритет над ?tab=
   useEffect(() => {
     const urlTheme = searchParams.get("theme");
     const urlExtra = searchParams.get("extra_material");
     const urlTab = searchParams.get("tab");
     if (urlTheme) {
       setPendingTheme(+urlTheme);
-      setTab("students");
-    }
-    if (urlExtra) {
+      setTabState("students");
+    } else if (urlExtra) {
       setPendingExtra(+urlExtra);
-      setTab("materials");
+      setTabState("materials");
+    } else if (urlTab && TABS.some((x) => x.id === urlTab)) {
+      setTabState(urlTab);
     }
-    if (urlTab) setTab(urlTab);
   }, [searchParams.toString()]);
 
   // 4. Выбираем группу по теме
   useEffect(() => {
-    if (!pendingTheme || !groups.length) return;
+    if (!pendingTheme) return;
+    if (!groupsLoading && !groups.length) {
+      alert("Открыть тему не удалось: вам ещё не назначены группы");
+      setPendingTheme(null);
+      return;
+    }
+    if (!groups.length) return;
     (async () => {
       try {
         const theme = await api(`/api/public/theme/${pendingTheme}`);
         const matching = groups.find(g => g.course_id === theme.course_id);
         if (matching) setGroupId(matching.id);
-      } catch (e) { console.error(e); }
+        else alert("Открыть тему не удалось: вам не назначена группа этого курса");
+        setPendingTheme(null);
+        clearParams(["theme"]);
+      } catch (e) {
+        alert(`Открыть тему не удалось: ${e.message}`);
+        setPendingTheme(null);
+      }
     })();
-  }, [pendingTheme, groups]);
+  }, [pendingTheme, groups, groupsLoading]);
 
   // 5. Выбираем группу по доп. материалу
   useEffect(() => {
-    if (!pendingExtra || !groups.length) return;
+    if (!pendingExtra) return;
+    if (!groupsLoading && !groups.length) {
+      alert("Открыть материал не удалось: вам ещё не назначены группы");
+      setPendingExtra(null);
+      return;
+    }
+    if (!groups.length) return;
     (async () => {
       try {
         const em = await api(`/api/public/extra-material/${pendingExtra}`);
         const matching = groups.find(g => g.course_id === em.course_id);
         if (matching) setGroupId(matching.id);
-      } catch (e) { console.error(e); }
+        else alert("Открыть материал не удалось: вам не назначена группа этого курса");
+        setPendingExtra(null);
+        clearParams(["extra_material"]);
+      } catch (e) {
+        alert(`Открыть материал не удалось: ${e.message}`);
+        setPendingExtra(null);
+      }
     })();
-  }, [pendingExtra, groups]);
+  }, [pendingExtra, groups, groupsLoading]);
 
   return (
-    <Layout title="Панель куратора" tabs={TABS} active={tab} onChange={setTab}>
+    <Layout title="Панель куратора" tabs={TABS} active={tab} onChange={changeTab}>
       <div className="card row">
         <label>Группа:</label>
         <select value={groupId} onChange={e => setGroupId(e.target.value)}>
@@ -88,14 +138,22 @@ export default function TeacherPanel() {
         </select>
       </div>
 
-      {!groups.length && <div className="card muted">Вам ещё не назначены группы</div>}
+      {groupsLoading && <div className="card muted">Загрузка групп…</div>}
+      {groupsErr && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить группы: {groupsErr}
+        </div>
+      )}
+      {!groupsLoading && !groupsErr && !groups.length && tab !== "messages" && (
+        <div className="card muted">Вам ещё не назначены группы</div>
+      )}
 
        {groupId && tab === "students"      && (
         <StudentsTab groupId={+groupId}
                      initialTheme={pendingTheme}
                      onThemeConsumed={() => {
                        setPendingTheme(null);
-                       setSearchParams({}, { replace: true });
+                       clearParams(["theme"]);
                      }} />
       )}
       {groupId && tab === "progress"      && <ProgressTable groupId={+groupId} />}
@@ -105,7 +163,7 @@ export default function TeacherPanel() {
           initialExtra={pendingExtra}
           onExtraConsumed={() => {
             setPendingExtra(null);
-            setSearchParams({}, { replace: true });
+            clearParams(["extra_material"]);
           }}
         />
       )}
@@ -119,10 +177,16 @@ export default function TeacherPanel() {
 
 function AnnouncementsTab({ groups }) {
   const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ title: "", body: "", group_ids: [] });
 
-  const load = () => api("/api/teacher/announcements").then(setList);
+  const load = () =>
+    api("/api/teacher/announcements")
+      .then(setList)
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const startNew = () => {
@@ -148,8 +212,10 @@ function AnnouncementsTab({ groups }) {
   };
   const del = async (id) => {
     if (!confirm("Удалить объявление?")) return;
-    await api("/api/teacher/announcements/" + id, { method: "DELETE" });
-    load();
+    try {
+      await api("/api/teacher/announcements/" + id, { method: "DELETE" });
+      load();
+    } catch (e) { alert(e.message); }
   };
 
   const toggleGroup = (id) => {
@@ -191,6 +257,12 @@ function AnnouncementsTab({ groups }) {
       </div>
 
       <div className="list">
+        {loading && <div className="card muted">Загрузка объявлений…</div>}
+        {err && (
+          <div className="card" style={{ color: "#dc2626" }}>
+            Не удалось загрузить объявления: {err}
+          </div>
+        )}
         {list.map(a => (
           <div className="card" key={a.id}>
             <div className="spread">
@@ -216,7 +288,7 @@ function AnnouncementsTab({ groups }) {
             </div>
           </div>
         ))}
-        {!list.length && <div className="card muted">Объявлений пока нет</div>}
+        {!loading && !err && !list.length && <div className="card muted">Объявлений пока нет</div>}
       </div>
     </div>
   );
@@ -225,17 +297,22 @@ function AnnouncementsTab({ groups }) {
 function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [chatMaterial, setChatMaterial] = useState(null);
 
   useEffect(() => {
     if (!group?.course_id) return;
     setLoading(true);
+    setErr(null);
     api(`/api/teacher/course/${group.course_id}/extra-materials`)
       .then((res) => {
         setMaterials(res);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        setErr(e.message);
+        setLoading(false);
+      });
   }, [group?.course_id]);
 
   useEffect(() => {
@@ -245,14 +322,6 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
       if (onExtraConsumed) onExtraConsumed();
     }
   }, [initialExtra, materials]);
-
-  const getIcon = (t) => {
-    if (t === "video") return "🎬";
-    if (t === "document") return "📄";
-    if (t === "audio") return "🎧";
-    if (t === "image") return "🖼";
-    return "📝";
-  };
 
   if (!group) return <div className="card muted">Выберите группу</div>;
 
@@ -272,7 +341,13 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
 
       {loading && <div className="card muted">Загрузка материалов...</div>}
 
-      {!loading && !materials.length && (
+      {err && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить материалы: {err}
+        </div>
+      )}
+
+      {!loading && !err && !materials.length && (
         <div className="card muted">Для курса «{group.course_title}» ещё не добавлены дополнительные материалы.</div>
       )}
 
@@ -318,20 +393,18 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
       </div>
 
       {chatMaterial && (
-        <div className="modal-back">
-          <div className="card modal" style={{ maxWidth: 640 }}>
-            <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <b>Обсуждение: {chatMaterial.title}</b>
-                <div className="muted small">
-                  Группа: {group.name} · Участвуют ученики группы, кураторы и администрация
-                </div>
+        <Modal onClose={() => setChatMaterial(null)} innerStyle={{ maxWidth: 640 }}>
+          <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <b>Обсуждение: {chatMaterial.title}</b>
+              <div className="muted small">
+                Группа: {group.name} · Участвуют ученики группы, кураторы и администрация
               </div>
-              <button className="btn ghost" onClick={() => setChatMaterial(null)}>✕</button>
             </div>
-            <ChatPanel extraMaterialId={chatMaterial.id} apiBase="/api/teacher" />
+            <button className="btn ghost" onClick={() => setChatMaterial(null)} aria-label="Закрыть чат">✕</button>
           </div>
-        </div>
+          <ChatPanel extraMaterialId={chatMaterial.id} apiBase="/api/teacher" />
+        </Modal>
       )}
     </div>
   );

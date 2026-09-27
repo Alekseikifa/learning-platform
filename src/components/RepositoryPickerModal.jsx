@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { getFormatInfo } from "./UnifiedMaterialsRepository";
+import Modal from "./Modal";
 
 /**
  * Modal to pick either an entire playlist or individual material(s) from the repository
@@ -20,6 +21,7 @@ export default function RepositoryPickerModal({
   const [playlists, setPlaylists] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState(null);
   const [search, setSearch] = useState("");
   const [selectedPlaylistName, setSelectedPlaylistName] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
@@ -28,6 +30,7 @@ export default function RepositoryPickerModal({
   useEffect(() => {
     if (!open) return;
     setLoading(true);
+    setLoadErr(null);
     Promise.all([
       api(`${apiPrefix}/repository/playlists`),
       api(`${apiPrefix}/repository/materials`),
@@ -37,7 +40,7 @@ export default function RepositoryPickerModal({
         setMaterials(mats || []);
         if (pl?.[0]) setSelectedPlaylistName(pl[0].playlist_name);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadErr(err.message))
       .finally(() => setLoading(false));
   }, [open, apiPrefix]);
 
@@ -103,8 +106,14 @@ export default function RepositoryPickerModal({
   });
 
   return (
-    <div className="modal-overlay" style={overlayStyle} onClick={onClose}>
-      <div className="card modal-content" style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+    <Modal
+      onClose={onClose}
+      dismissible={!submitting}
+      backdropClassName="modal-overlay"
+      backdropStyle={overlayStyle}
+      innerClassName="card modal-content"
+      innerStyle={modalContentStyle}
+    >
         {/* Header */}
         <div className="spread" style={{ alignItems: "center", marginBottom: 14, borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
           <div>
@@ -126,6 +135,10 @@ export default function RepositoryPickerModal({
         {loading ? (
           <div className="muted" style={{ padding: 24, textAlign: "center" }}>
             Загрузка накопителя материалов...
+          </div>
+        ) : loadErr ? (
+          <div style={{ color: "#dc2626", padding: 24, textAlign: "center" }}>
+            Не удалось загрузить накопитель: {loadErr}
           </div>
         ) : mode === "playlist" ? (
           /* Mode: Pick Playlist to import */
@@ -262,8 +275,7 @@ export default function RepositoryPickerModal({
             Закрыть
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

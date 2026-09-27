@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import Modal from "./Modal";
 
 export default function UnlockThemeModal({ student, apiPrefix, onClose }) {
   const [data, setData] = useState(null);
@@ -36,14 +37,13 @@ export default function UnlockThemeModal({ student, apiPrefix, onClose }) {
   const total = data ? data.reduce((n, c) => n + c.themes.length, 0) : 0;
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="card modal" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <div className="spread" style={{ marginBottom: 12 }}>
           <div>
             <h3>🔓 Открытие тем</h3>
             <div className="muted small">Ученик: {student.name}</div>
           </div>
-          <button className="btn ghost" onClick={onClose}>✕</button>
+          <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
         </div>
 
         {error && <div className="muted small" style={{ color: "#dc2626" }}>{error}</div>}
@@ -76,7 +76,6 @@ export default function UnlockThemeModal({ student, apiPrefix, onClose }) {
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn primary" onClick={onClose}>Закрыть</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

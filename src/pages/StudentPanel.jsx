@@ -5,8 +5,10 @@ import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
 import AttemptDetailsModal from "../components/AttemptDetailsModal";
+import Modal from "../components/Modal";
 import { api } from "../api";
 import DirectMessages from "../components/DirectMessages";
+import { getIcon } from "../lib/materialIcons";
 
 const TABS = [
   { id: "themes",        label: "Курс и материалы" },
@@ -16,19 +18,40 @@ const TABS = [
 ];
 
 export default function StudentPanel() {
-  const [tab, setTab] = useState("themes");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTabState] = useState(() => {
+    const t = searchParams.get("tab");
+    return TABS.some((x) => x.id === t) ? t : "themes";
+  });
   const [courses, setCourses] = useState([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [coursesErr, setCoursesErr] = useState(null);
   const [courseId, setCourseId] = useState("");
   const [courseSection, setCourseSection] = useState("themes"); // "themes" | "extra"
-  const [searchParams, setSearchParams] = useSearchParams();
   const [pendingTheme, setPendingTheme] = useState(null);
   const [pendingExtra, setPendingExtra] = useState(null);
 
+  // переключение таба пишем в URL — F5 и кнопка «назад» браузера сохраняют место
+  const changeTab = (id) => {
+    setTabState(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", id);
+    setSearchParams(next);
+  };
+
+  // точечная очистка: убираем только использованные параметры, tab оставляем
+  const clearParams = (keys) => {
+    const next = new URLSearchParams(searchParams);
+    keys.forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+  };
+
   // 1. Загружаем курсы один раз
   useEffect(() => {
-    api("/api/student/courses").then(cs => {
-      setCourses(cs);
-    });
+    api("/api/student/courses")
+      .then(setCourses)
+      .catch((e) => setCoursesErr(e.message))
+      .finally(() => setCoursesLoading(false));
   }, []);
 
   // 2. Ставим дефолтный курс, если ещё не выбран
@@ -46,16 +69,19 @@ export default function StudentPanel() {
     if (urlTheme) {
       setPendingTheme(+urlTheme);
       setCourseSection("themes");
-    }
-    if (urlExtra) {
+      setTabState("themes"); // ссылка на тему всегда ведёт на таб курса
+    } else if (urlExtra) {
       setPendingExtra(+urlExtra);
       setCourseSection("extra");
+      setTabState("themes");
     }
-    if (urlTab) setTab(urlTab);
+    if (urlTab && !urlTheme && !urlExtra && TABS.some((x) => x.id === urlTab)) {
+      setTabState(urlTab);
+    }
   }, [searchParams.toString()]);
 
   return (
-    <Layout title="Кабинет ученика" tabs={TABS} active={tab} onChange={setTab}>
+    <Layout title="Кабинет ученика" tabs={TABS} active={tab} onChange={changeTab}>
       {tab === "themes" && (
         <div>
           <label>Курс:</label>
@@ -82,7 +108,15 @@ export default function StudentPanel() {
             </div>
           )}
 
-          {!courses.length && <div className="card muted">Вам пока не назначено курсов</div>}
+          {coursesLoading && <div className="card muted">Загрузка курсов…</div>}
+          {!coursesLoading && coursesErr && (
+            <div className="card" style={{ color: "#dc2626" }}>
+              Не удалось загрузить курсы: {coursesErr}
+            </div>
+          )}
+          {!coursesLoading && !coursesErr && !courses.length && (
+            <div className="card muted">Вам пока не назначено курсов</div>
+          )}
 
           {courseId && courseSection === "themes" && (
             <ThemesList
@@ -90,7 +124,7 @@ export default function StudentPanel() {
               initialTheme={pendingTheme}
               onThemeConsumed={() => {
                 setPendingTheme(null);
-                setSearchParams({}, { replace: true });
+                clearParams(["course", "theme"]);
               }}
             />
           )}
@@ -101,7 +135,7 @@ export default function StudentPanel() {
               initialExtra={pendingExtra}
               onExtraConsumed={() => {
                 setPendingExtra(null);
-                setSearchParams({}, { replace: true });
+                clearParams(["course", "extra_material"]);
               }}
             />
           )}
@@ -116,10 +150,16 @@ export default function StudentPanel() {
 
 function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
   const [themes, setThemes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [chatFor, setChatFor] = useState(null);
 
   // загрузка тем
-  const load = () => api(`/api/student/course/${courseId}/themes`).then(setThemes);
+  const load = () =>
+    api(`/api/student/course/${courseId}/themes`)
+      .then(setThemes)
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
   useEffect(() => {
     if (!courseId) return;
     load();
@@ -147,6 +187,12 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
 
   return (
     <div className="list">
+      {loading && <div className="card muted">Загрузка тем…</div>}
+      {err && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить темы: {err}
+        </div>
+      )}
       {themes.map(th => (
         <Collapsible
           key={th.id}
@@ -211,15 +257,13 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
                    onDone={() => { setChatFor(null); load(); }} />
       )}
       {chatFor?.chatThemeId && (
-        <div className="modal-back">
-          <div className="card modal">
-            <div className="spread">
-              <b>Обсуждение темы: {chatFor.chatTitle}</b>
-              <button className="btn ghost" onClick={() => setChatFor(null)}>✕</button>
-            </div>
-            <ChatPanel themeId={chatFor.chatThemeId} apiBase="/api/student" />
+        <Modal onClose={() => setChatFor(null)}>
+          <div className="spread">
+            <b>Обсуждение темы: {chatFor.chatTitle}</b>
+            <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
           </div>
-        </div>
+          <ChatPanel themeId={chatFor.chatThemeId} apiBase="/api/student" />
+        </Modal>
       )}
     </div>
   );
@@ -287,14 +331,39 @@ function MaterialsBlock({ materials }) {
 
 function TestModal({ testId, onClose, onDone }) {
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(null);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState(null);
 
-  useEffect(() => { api("/api/student/test/" + testId).then(setData); }, [testId]);
+  useEffect(() => {
+    setLoading(true);
+    setLoadErr(null);
+    setData(null);
+    api("/api/student/test/" + testId)
+      .then(setData)
+      .catch((e) => setLoadErr(e.message))
+      .finally(() => setLoading(false));
+  }, [testId]);
 
-  if (!data) return null;
+  if (loadErr || loading || !data) {
+    return (
+      <Modal onClose={onClose} innerStyle={{ maxWidth: 420 }}>
+        <div className="spread">
+          <h3>Тест</h3>
+          <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
+        </div>
+        {loadErr
+          ? <div style={{ color: "#dc2626" }}>Не удалось загрузить тест: {loadErr}</div>
+          : <div className="muted">Загрузка теста…</div>}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+          <button className="btn" onClick={onClose}>Закрыть</button>
+        </div>
+      </Modal>
+    );
+  }
 
   const submit = async () => {
     for (const q of data.questions) {
@@ -316,63 +385,74 @@ function TestModal({ testId, onClose, onDone }) {
   };
 
   return (
-    <div className="modal-back">
-      <div className="card modal">
-        <div className="spread">
-          <h3>{data.test.title}</h3>
-          <button className="btn ghost" onClick={onClose}>✕</button>
-        </div>
-        <div className="muted small">Проходной балл: {data.test.passing_score}%</div>
+    <Modal onClose={onClose}>
+      <div className="spread">
+        <h3>{data.test.title}</h3>
+        <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
+      </div>
+      <div className="muted small">Проходной балл: {data.test.passing_score}%</div>
 
-        {!result && data.questions.map((q, i) => (
-          <div className="q" key={q.id}>
-            <b>{i + 1}. {q.text}</b>
-            {q.answers.map(a => (
-              <label className="ans" key={a.id}>
-                <input type="radio" name={"q" + q.id}
-                       checked={answers[q.id] === a.id}
-                       onChange={() => setAnswers({ ...answers, [q.id]: a.id })} />
-                {a.text}
-              </label>
-            ))}
+      {!result && data.questions.map((q, i) => (
+        <div className="q" key={q.id}>
+          <b>{i + 1}. {q.text}</b>
+          {q.answers.map(a => (
+            <label className="ans" key={a.id}>
+              <input type="radio" name={"q" + q.id}
+                     checked={answers[q.id] === a.id}
+                     onChange={() => setAnswers({ ...answers, [q.id]: a.id })} />
+              {a.text}
+            </label>
+          ))}
+        </div>
+      ))}
+
+      {result && (
+        <>
+          <div className={"result " + (result.passed ? "ok" : "no")}>
+            Результат: <b>{result.score}%</b> ({result.correct}/{result.total}).
+            {" "}{result.passed ? "Тест сдан!" : `Нужно минимум ${result.passing_score}%`}
           </div>
-        ))}
+          <div className="row" style={{ marginTop: 8, justifyContent: "flex-end" }}>
+            <button className="btn" onClick={viewDetails}>Посмотреть мои ответы</button>
+          </div>
+        </>
+      )}
 
-        {result && (
-          <>
-            <div className={"result " + (result.passed ? "ok" : "no")}>
-              Результат: <b>{result.score}%</b> ({result.correct}/{result.total}).
-              {" "}{result.passed ? "Тест сдан!" : `Нужно минимум ${result.passing_score}%`}
-            </div>
-            <div className="row" style={{ marginTop: 8, justifyContent: "flex-end" }}>
-              <button className="btn" onClick={viewDetails}>Посмотреть мои ответы</button>
-            </div>
-          </>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+        <button className="btn ghost" onClick={onClose}>Закрыть</button>
+        {!result && (
+          <button className="btn primary" disabled={busy} onClick={submit}>
+            {busy ? "..." : "Отправить"}
+          </button>
         )}
-
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-          <button className="btn ghost" onClick={onClose}>Закрыть</button>
-          {!result && (
-            <button className="btn primary" disabled={busy} onClick={submit}>
-              {busy ? "..." : "Отправить"}
-            </button>
-          )}
-          {result && result.passed && (
-            <button className="btn primary" onClick={onDone}>Продолжить</button>
-          )}
-        </div>
+        {result && result.passed && (
+          <button className="btn primary" onClick={onDone}>Продолжить</button>
+        )}
       </div>
       {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
-    </div>
+    </Modal>
   );
 }
 
 function Announcements() {
   const [list, setList] = useState([]);
-  useEffect(() => { api("/api/student/announcements").then(setList); }, []);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    api("/api/student/announcements")
+      .then(setList)
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="list">
+      {loading && <div className="card muted">Загрузка объявлений…</div>}
+      {err && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить объявления: {err}
+        </div>
+      )}
       {list.map(a => (
         <div className="card" key={a.id}>
           <div className="spread">
@@ -388,21 +468,32 @@ function Announcements() {
           )}
         </div>
       ))}
-      {!list.length && <div className="card muted">Объявлений пока нет</div>}
+      {!loading && !err && !list.length && <div className="card muted">Объявлений пока нет</div>}
     </div>
   );
 }
 
 function History() {
   const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [details, setDetails] = useState(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
 
-  useEffect(() => { api("/api/student/history").then(setList); }, []);
+  useEffect(() => {
+    api("/api/student/history")
+      .then(setList)
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   const openDetails = async (id) => {
-    setDetails(await api(`/api/student/attempts/${id}/details`));
+    try {
+      setDetails(await api(`/api/student/attempts/${id}/details`));
+    } catch (e) {
+      alert(e.message);
+    }
   };
 
   const cmp = (a, b) => {
@@ -433,7 +524,10 @@ function History() {
   return (
     <div className="card">
       <h3>История попыток</h3>
-      <table className="table">
+      {loading && <div className="muted">Загрузка истории…</div>}
+      {err && <div style={{ color: "#dc2626" }}>Не удалось загрузить историю: {err}</div>}
+      {!loading && !err && !rows.length && <div className="muted">Попыток пока нет</div>}
+      <div className="table-wrap"><table className="table">
         <thead>
           <tr>
             {th("date", "Дата")}
@@ -453,7 +547,7 @@ function History() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
     </div>
   );
@@ -463,16 +557,21 @@ function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) 
   const [materials, setMaterials] = useState([]);
   const [chatFor, setChatFor] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
 
   useEffect(() => {
     if (!courseId) return;
     setLoading(true);
+    setErr(null);
     api(`/api/student/course/${courseId}/extra-materials`)
       .then((res) => {
         setMaterials(res);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        setErr(e.message);
+        setLoading(false);
+      });
   }, [courseId]);
 
   useEffect(() => {
@@ -484,14 +583,6 @@ function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) 
       if (onExtraConsumed) onExtraConsumed();
     }
   }, [initialExtra, materials]);
-
-  const getIcon = (t) => {
-    if (t === "video") return "🎬";
-    if (t === "document") return "📄";
-    if (t === "audio") return "🎧";
-    if (t === "image") return "🖼";
-    return "📝";
-  };
 
   return (
     <div className="list">
@@ -509,7 +600,13 @@ function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) 
 
       {loading && <div className="card muted">Загрузка материалов...</div>}
 
-      {!loading && !materials.length && (
+      {err && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить материалы: {err}
+        </div>
+      )}
+
+      {!loading && !err && !materials.length && (
         <div className="card muted">В этом курсе пока нет дополнительных материалов.</div>
       )}
 
@@ -584,20 +681,18 @@ function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) 
       ))}
 
       {chatFor && (
-        <div className="modal-back">
-          <div className="card modal" style={{ maxWidth: 640 }}>
-            <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <b>Обсуждение: {chatFor.title}</b>
-                <div className="muted small">
-                  Сообщения видят ученики вашей группы, куратор и администрация
-                </div>
+        <Modal onClose={() => setChatFor(null)} innerStyle={{ maxWidth: 640 }}>
+          <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <b>Обсуждение: {chatFor.title}</b>
+              <div className="muted small">
+                Сообщения видят ученики вашей группы, куратор и администрация
               </div>
-              <button className="btn ghost" onClick={() => setChatFor(null)}>✕</button>
             </div>
-            <ChatPanel extraMaterialId={chatFor.id} apiBase="/api/student" />
+            <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
           </div>
-        </div>
+          <ChatPanel extraMaterialId={chatFor.id} apiBase="/api/student" />
+        </Modal>
       )}
     </div>
   );

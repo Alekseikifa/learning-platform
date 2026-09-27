@@ -10,6 +10,8 @@ import {
 
 export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [chatFor, setChatFor] = useState(null);
   const [unlocking, setUnlocking] = useState(null);
   const [themes, setThemes] = useState([]);
@@ -18,8 +20,24 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   const unlockPrefix = activeRole === "admin" ? "/api/admin" : "/api/teacher";
 
   useEffect(() => {
-    api(`/api/teacher/groups/${groupId}/students`).then(setStudents);
-    api(`/api/teacher/groups/${groupId}/progress`).then(p => setThemes(p.themes));
+    let cancelled = false;
+    // при смене группы сбрасываем открытый чат/модалку прошлой группы
+    setChatFor(null);
+    setUnlocking(null);
+    setLoading(true);
+    setErr(null);
+    Promise.all([
+      api(`/api/teacher/groups/${groupId}/students`),
+      api(`/api/teacher/groups/${groupId}/progress`),
+    ])
+      .then(([studentsRes, progress]) => {
+        if (cancelled) return;
+        setStudents(studentsRes);
+        setThemes(progress.themes);
+      })
+      .catch((e) => { if (!cancelled) setErr(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [groupId]);
 
   // реакция на initialTheme от уведомления
@@ -40,7 +58,10 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
   return (
     <div className="card">
       <h3>Ученики группы</h3>
-      <table className="table">
+      {loading && <div className="muted">Загрузка учеников…</div>}
+      {err && <div style={{ color: "#dc2626" }}>Не удалось загрузить учеников: {err}</div>}
+      {!loading && !err && !students.length && <div className="muted">В группе пока нет учеников</div>}
+      <div className="table-wrap"><table className="table">
         <thead><tr><th>ФИО</th><th>Логин</th><th>Прогресс</th><th>Тестов сдано</th><th>Активность</th><th>Чат темы</th>{canUnlock && <th>Темы</th>}</tr></thead>
         <tbody>
           {students.map(s => (
@@ -71,7 +92,7 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {chatFor && (
         <div className="card" style={{ marginTop: 12 }}>
           <div className="spread">
@@ -91,18 +112,27 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
 
 export function ProgressTable({ groupId }) {
   const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
   const [chatFor, setChatFor] = useState(null);
 
   useEffect(() => {
-    api(`/api/teacher/groups/${groupId}/progress`).then(setData);
+    let cancelled = false;
+    setChatFor(null); // чат прошлой группы не должен остаться открытым
+    setData(null);
+    setErr(null);
+    api(`/api/teacher/groups/${groupId}/progress`)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setErr(e.message); });
+    return () => { cancelled = true; };
   }, [groupId]);
 
+  if (err) return <div className="card" style={{ color: "#dc2626" }}>Не удалось загрузить прогресс: {err}</div>;
   if (!data) return <div className="card muted">Загрузка...</div>;
 
   return (
     <div className="card" style={{ overflowX: "auto" }}>
       <h3>Прогресс по темам</h3>
-      <table className="table">
+      <div className="table-wrap"><table className="table">
         <thead>
           <tr>
             <th style={{ position: "sticky", left: 0, background: "#f9fafb" }}>Ученик</th>
@@ -140,7 +170,7 @@ export function ProgressTable({ groupId }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
 
       <h3 style={{ marginTop: 20 }}>Обсуждение тем</h3>
       <div className="row">
@@ -162,18 +192,32 @@ export function ProgressTable({ groupId }) {
 
 export function AttemptsTab({ groupId }) {
   const [attempts, setAttempts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
   const [details, setDetails] = useState(null);
   const [themeFilter, setThemeFilter] = useState("");
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
 
   useEffect(() => {
+    let cancelled = false;
     setThemeFilter("");
-    api(`/api/teacher/groups/${groupId}/attempts`).then(setAttempts);
+    setDetails(null); // модалка ответов прошлой группы
+    setLoading(true);
+    setErr(null);
+    api(`/api/teacher/groups/${groupId}/attempts`)
+      .then((a) => { if (!cancelled) setAttempts(a); })
+      .catch((e) => { if (!cancelled) setErr(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [groupId]);
 
   const openDetails = async (id) => {
-    setDetails(await api(`/api/teacher/attempts/${id}/details`));
+    try {
+      setDetails(await api(`/api/teacher/attempts/${id}/details`));
+    } catch (e) {
+      alert(e.message);
+    }
   };
 
   const themes = (() => {
@@ -234,7 +278,10 @@ export function AttemptsTab({ groupId }) {
           </select>
         </div>
       </div>
-      <table className="table">
+      {loading && <div className="muted">Загрузка попыток…</div>}
+      {err && <div style={{ color: "#dc2626" }}>Не удалось загрузить попытки: {err}</div>}
+      {!loading && !err && !rows.length && <div className="muted">Попыток пока нет</div>}
+      <div className="table-wrap"><table className="table">
         <thead>
           <tr>
             {th("date", "Дата")}
@@ -258,7 +305,7 @@ export function AttemptsTab({ groupId }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
     </div>
   );
@@ -266,7 +313,17 @@ export function AttemptsTab({ groupId }) {
 
 export function AnalyticsTab({ groupId }) {
   const [data, setData] = useState(null);
-  useEffect(() => { api(`/api/teacher/groups/${groupId}/analytics`).then(setData); }, [groupId]);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setErr(null);
+    api(`/api/teacher/groups/${groupId}/analytics`)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setErr(e.message); });
+    return () => { cancelled = true; };
+  }, [groupId]);
+  if (err) return <div className="card" style={{ color: "#dc2626" }}>Не удалось загрузить аналитику: {err}</div>;
   if (!data) return <div className="card muted">Загрузка...</div>;
 
   return (

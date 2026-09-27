@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, uploadFile } from "../api";
 import ChatPanel from "./ChatPanel";
+import Modal from "./Modal";
+import { getIcon } from "../lib/materialIcons";
 
 const MAT_TYPES = [
   { v: "video", l: "🎬 Видео" },
@@ -222,14 +224,6 @@ export default function ExtraMaterialsTabContent({ courses = [], groups = [], ap
     }
     return true;
   });
-
-  const getIcon = (t) => {
-    if (t === "video") return "🎬";
-    if (t === "document") return "📄";
-    if (t === "audio") return "🎧";
-    if (t === "image") return "🖼";
-    return "📝";
-  };
 
   return (
     <div>
@@ -656,8 +650,7 @@ export default function ExtraMaterialsTabContent({ courses = [], groups = [], ap
 
       {/* Discussion Chat Modal */}
       {chatMaterial && (
-        <div className="modal-back" onClick={() => setChatMaterial(null)}>
-          <div className="card modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+        <Modal onClose={() => setChatMaterial(null)} innerStyle={{ maxWidth: 680 }}>
             <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
               <div>
                 <h3 style={{ margin: 0 }}>💬 Чат обсуждения материала</h3>
@@ -670,8 +663,7 @@ export default function ExtraMaterialsTabContent({ courses = [], groups = [], ap
               </button>
             </div>
             <ChatPanel extraMaterialId={chatMaterial.id} apiBase="/api/staff" />
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

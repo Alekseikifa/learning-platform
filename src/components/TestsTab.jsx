@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { parseTestDocx } from "../lib/parseTestDocx";
+import Modal from "./Modal";
 
 /* ---------- TESTS ---------- */
 export default function TestsTab({ courses = [], apiPrefix = "/api/admin" }) {
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
   const [themeId, setThemeId] = useState("");
   const [test, setTest] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(null);
+  const fetchSeq = useRef(0);
 
   const currentCourse = courses.find(c => c.id === +courseId);
   const themes = currentCourse?.themes || [];
@@ -18,8 +22,19 @@ export default function TestsTab({ courses = [], apiPrefix = "/api/admin" }) {
   }, [courseId, courses]);
 
   const load = async () => {
-    if (!themeId) { setTest(null); return; }
-    setTest(await api(`${apiPrefix}/themes/${themeId}/test`));
+    const seq = ++fetchSeq.current; // защита от гонки при быстрой смене темы
+    if (!themeId) { setTest(null); setLoadErr(null); setLoading(false); return; }
+    setTest(null); // тест предыдущей темы не должен остаться видимым
+    setLoadErr(null);
+    setLoading(true);
+    try {
+      const data = await api(`${apiPrefix}/themes/${themeId}/test`);
+      if (seq === fetchSeq.current) setTest(data);
+    } catch (e) {
+      if (seq === fetchSeq.current) setLoadErr(e.message);
+    } finally {
+      if (seq === fetchSeq.current) setLoading(false);
+    }
   };
   useEffect(() => { load(); }, [themeId]);
 
@@ -38,7 +53,15 @@ export default function TestsTab({ courses = [], apiPrefix = "/api/admin" }) {
 
       {!themes.length && <div className="card muted">Сначала добавьте темы</div>}
 
-      {themeId && !test && (
+      {loadErr && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить тест: {loadErr}
+        </div>
+      )}
+
+      {themeId && loading && !loadErr && <div className="card muted">Загрузка теста…</div>}
+
+      {themeId && !loading && !test && !loadErr && (
         <CreateTestForm themeId={+themeId}
                         onCreate={async (payload) => {
                           try { await api(`${apiPrefix}/tests`, { method: "POST", body: JSON.stringify(payload) }); load(); }
@@ -141,21 +164,29 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
   };
 
   const saveEdit = async () => {
-    await api(`${apiPrefix}/tests/${test.id}`, { method: "PUT", body: JSON.stringify(form) });
-    setEdit(false); reload();
+    try {
+      await api(`${apiPrefix}/tests/${test.id}`, { method: "PUT", body: JSON.stringify(form) });
+      setEdit(false); reload();
+    } catch (e) { alert(e.message); }
   };
   const del = async () => {
     if (!confirm("Удалить тест со всеми вопросами?")) return;
-    await api(`${apiPrefix}/tests/` + test.id, { method: "DELETE" });
-    reload();
+    try {
+      await api(`${apiPrefix}/tests/` + test.id, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const delQ = async (id) => {
-    await api(`${apiPrefix}/questions/` + id, { method: "DELETE" });
-    reload();
+    try {
+      await api(`${apiPrefix}/questions/` + id, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const updQ = async (id, patch) => {
-    await api(`${apiPrefix}/questions/${id}`, { method: "PUT", body: JSON.stringify(patch) });
-    reload();
+    try {
+      await api(`${apiPrefix}/questions/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const addQ = async (payload) => {
     try {
@@ -209,8 +240,7 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
       <input ref={fileRef} type="file" accept=".docx" style={{ display: "none" }} onChange={pickDocx} />
 
       {importOpen && parsed && (
-        <div className="modal-back" onClick={() => !importing && setImportOpen(false)}>
-          <div className="card modal" onClick={(e) => e.stopPropagation()}>
+        <Modal onClose={() => setImportOpen(false)} dismissible={!importing}>
             <div className="spread">
               <b>Импорт вопросов из Word</b>
               <span className="small muted">
@@ -259,8 +289,7 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
                 {importing ? "Импорт..." : `Импортировать ${parsed.questions.filter((q) => q.include && q.valid).length}`}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -303,7 +332,7 @@ function QuestionRow({ idx, q, onDelete, onUpdate }) {
               {q.answers.length} вар.
             </span>
             <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
-            <button className="btn danger small" onClick={onDelete}>✕</button>
+            <button className="btn danger small" onClick={onDelete} aria-label="Удалить">✕</button>
           </div>
         </div>
         <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>

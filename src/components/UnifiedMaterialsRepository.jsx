@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { api, uploadFile } from "../api";
+import Modal from "./Modal";
 
 export const MAT_FORMATS = [
   { v: "video", l: "🎬 Видео", badgeColor: "#1E3A5F", bg: "#EBF1F8" },
@@ -556,8 +557,13 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
 
       {/* MODAL: ADD / EDIT MATERIAL */}
       {showAddModal && (
-        <div className="modal-overlay" style={overlayStyle} onClick={() => setShowAddModal(false)}>
-          <div className="card modal-content" style={modalContentStyle} onClick={e => e.stopPropagation()}>
+        <Modal
+          onClose={() => setShowAddModal(false)}
+          backdropClassName="modal-overlay"
+          backdropStyle={overlayStyle}
+          innerClassName="card modal-content"
+          innerStyle={modalContentStyle}
+        >
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
               <h3 style={{ margin: 0 }}>
                 {editingMaterial ? "✏️ Редактирование материала" : "➕ Загрузить материал в накопитель"}
@@ -752,14 +758,18 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL: ATTACH TO COURSE */}
       {attachModal.open && (
-        <div className="modal-overlay" style={overlayStyle} onClick={() => setAttachModal(prev => ({ ...prev, open: false }))}>
-          <div className="card modal-content" style={modalContentStyle} onClick={e => e.stopPropagation()}>
+        <Modal
+          onClose={() => setAttachModal(prev => ({ ...prev, open: false }))}
+          backdropClassName="modal-overlay"
+          backdropStyle={overlayStyle}
+          innerClassName="card modal-content"
+          innerStyle={modalContentStyle}
+        >
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
               <h3 style={{ margin: 0 }}>
                 {attachModal.mode === "playlist"
@@ -866,14 +876,18 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL: RENAME THEME */}
       {renamePlaylistModal.open && (
-        <div className="modal-overlay" style={overlayStyle} onClick={() => setRenameThemeModal({ open: false, oldName: "", newName: "" })}>
-          <div className="card modal-content" style={modalContentStyle} onClick={e => e.stopPropagation()}>
+        <Modal
+          onClose={() => setRenameThemeModal({ open: false, oldName: "", newName: "" })}
+          backdropClassName="modal-overlay"
+          backdropStyle={overlayStyle}
+          innerClassName="card modal-content"
+          innerStyle={modalContentStyle}
+        >
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
               <h3 style={{ margin: 0 }}>✏️ Переименовать плейлист</h3>
               <button
@@ -915,20 +929,24 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL: PREVIEW NOTE */}
       {previewNote && (
-        <div className="modal-overlay" style={overlayStyle} onClick={() => setPreviewNote(null)}>
-          <div className="card modal-content" style={{ ...modalContentStyle, maxWidth: 650 }} onClick={e => e.stopPropagation()}>
+        <Modal
+          onClose={() => setPreviewNote(null)}
+          backdropClassName="modal-overlay"
+          backdropStyle={overlayStyle}
+          innerClassName="card modal-content"
+          innerStyle={{ ...modalContentStyle, maxWidth: 650 }}
+        >
             <div className="spread" style={{ marginBottom: 12, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
               <div>
                 <span className="small muted">{previewNote.playlist_name}</span>
                 <h3 style={{ margin: 0 }}>📝 {previewNote.title}</h3>
               </div>
-              <button type="button" className="btn ghost small" onClick={() => setPreviewNote(null)}>✕</button>
+              <button type="button" className="btn ghost small" onClick={() => setPreviewNote(null)} aria-label="Закрыть">✕</button>
             </div>
             {previewNote.description && (
               <div className="muted small" style={{ marginBottom: 10, fontStyle: "italic" }}>
@@ -938,8 +956,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
             <div style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 14, borderRadius: 8, fontSize: 14, lineHeight: 1.6, maxHeight: 400, overflowY: "auto" }}>
               {previewNote.url}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -1249,7 +1266,7 @@ function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote }
           📎 В курс
         </button>
         <button type="button" className="btn small" onClick={onEdit}>Изм.</button>
-        <button type="button" className="btn danger small" onClick={onDelete}>✕</button>
+        <button type="button" className="btn danger small" onClick={onDelete} aria-label="Удалить">✕</button>
       </div>
     </div>
   );

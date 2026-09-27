@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import SearchSelect from "../components/SearchSelect";
 import Collapsible from "../components/Collapsible";
@@ -12,8 +13,13 @@ import CoursesTab from "../components/CoursesTab";
 import TestsTab from "../components/TestsTab";
 import RepositoryPickerModal from "../components/RepositoryPickerModal";
 import WarningCard from "../components/WarningCard";
+import InvitesTab from "../components/InvitesTab";
 import WelcomeModal from "../components/WelcomeModal";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabs";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabsLazy";
+import Modal from "../components/Modal";
+import PasswordModal from "../components/PasswordModal";
+import UploadsTab from "../components/UploadsTab";
+import { MAT_TYPES } from "../lib/constants";
 import { api, uploadFile, getToken } from "../api";
 
 const TABS = [
@@ -31,25 +37,70 @@ const TABS = [
 ];
 
 const MONITORING_ITEMS = [
-  { id: "mon_students",  label: "Ученики" },
-  { id: "mon_progress",  label: "Таблица прогресса" },
-  { id: "mon_attempts",  label: "Попытки" },
-  { id: "mon_analytics", label: "Аналитика" },
+  { id: "students",  label: "Ученики" },
+  { id: "progress",  label: "Таблица прогресса" },
+  { id: "attempts",  label: "Попытки" },
+  { id: "analytics", label: "Аналитика" },
 ];
 
+// старые ссылки вида ?tab=mon_students из прошлых сборок
+const LEGACY_TABS = {
+  mon_students: "students",
+  mon_progress: "progress",
+  mon_attempts: "attempts",
+  mon_analytics: "analytics",
+};
+const normalizeTab = (t) => LEGACY_TABS[t] || t;
+
 export default function AdminPanel() {
-  const [tab, setTab] = useState("users");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTabState] = useState(() => {
+    const t = normalizeTab(searchParams.get("tab"));
+    const valid = TABS.some((x) => x.id === t) || MONITORING_ITEMS.some((x) => x.id === t);
+    return valid ? t : "users";
+  });
   const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [courses, setCourses] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [dataErr, setDataErr] = useState(null);
   const [groupId, setGroupId] = useState("");
   const [key, setKey] = useState(0);
   const reload = () => setKey(k => k + 1);
 
+  // переключение таба пишем в URL — F5 и «назад» сохраняют место
+  const changeTab = (id) => {
+    setTabState(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", id);
+    setSearchParams(next);
+  };
+
+  // реакция на внешнее изменение URL (клик по уведомлению, назад/вперёд)
   useEffect(() => {
-    api("/api/admin/users").then(setUsers).catch(() => {});
-    api("/api/admin/courses").then(setCourses).catch(() => {});
-    api("/api/staff/groups").then(setGroups).catch(() => {});
+    const raw = searchParams.get("tab");
+    if (!raw) return;
+    const t = normalizeTab(raw);
+    const valid = TABS.some((x) => x.id === t) || MONITORING_ITEMS.some((x) => x.id === t);
+    if (!valid) return;
+    if (t !== raw) {
+      // старую ссылку переписываем на новый id
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", t);
+      setSearchParams(next, { replace: true });
+    }
+    setTabState(t);
+  }, [searchParams.toString()]);
+
+  useEffect(() => {
+    setDataErr(null);
+    api("/api/admin/users").then(setUsers).catch((e) => setDataErr(`пользователи: ${e.message}`)).finally(() => setUsersLoading(false));
+    api("/api/admin/courses").then(setCourses).catch((e) => setDataErr(`курсы: ${e.message}`));
+    api("/api/staff/groups")
+      .then(setGroups)
+      .catch((e) => setDataErr(`группы: ${e.message}`))
+      .finally(() => setGroupsLoading(false));
   }, [key]);
 
   useEffect(() => {
@@ -63,9 +114,14 @@ export default function AdminPanel() {
       title="Панель администратора"
       tabs={TABS}
       active={tab}
-      onChange={setTab}
-      dropdown={{ label: "Мониторинг", items: MONITORING_ITEMS, onChange: setTab }}
+      onChange={changeTab}
+      dropdown={{ label: "Мониторинг", items: MONITORING_ITEMS, onChange: changeTab }}
     >
+      {dataErr && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить данные панели ({dataErr}) — попробуйте обновить страницу
+        </div>
+      )}
       {isMonitoring && (
         <div className="card row">
           <label>Группа:</label>
@@ -76,14 +132,16 @@ export default function AdminPanel() {
           </select>
         </div>
       )}
-      {isMonitoring && !groups.length && <div className="card muted">Группы не найдены</div>}
-      {isMonitoring && groupId && tab === "mon_students"  && <StudentsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "mon_progress"  && <ProgressTable groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "mon_attempts"  && <AttemptsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "mon_analytics" && <AnalyticsTab groupId={+groupId} />}
+      {isMonitoring && !groupsLoading && !groups.length && (
+        <div className="card muted">Группы не найдены</div>
+      )}
+      {isMonitoring && groupId && tab === "students" && <StudentsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "progress" && <ProgressTable groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "attempts" && <AttemptsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "analytics" && <AnalyticsTab groupId={+groupId} />}
 
       {tab === "invites"       && <InvitesTab />}      
-      {tab === "users"         && <UsersTab users={users} reload={reload} />}   
+      {tab === "users"         && <UsersTab users={users} loading={usersLoading} reload={reload} />}   
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/admin" />}
       {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} />}      
       {tab === "messages"      && <DirectMessages />}
@@ -91,17 +149,18 @@ export default function AdminPanel() {
       {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/admin" />}
       {tab === "announcements" && <AnnouncementsPanel initialGroups={groups} />}
       {tab === "chats"         && <StaffChatsPanel />}
-      {tab === "uploads"       && <UploadsTab />}
+      {tab === "uploads"       && <UploadsTab apiPrefix="/api/admin" showMimetype />}
       {tab === "settings"      && <SettingsTab />}
     </Layout>
   );
 }
 
 /* ---------- USERS ---------- */
-function UsersTab({ users, reload }) {
+function UsersTab({ users, loading, reload }) {
   const [form, setForm] = useState({ name: "", username: "", password: "", role: "student" });
   const [editing, setEditing] = useState(null);
   const [resetting, setResetting] = useState(null);
+  const [q, setQ] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -113,9 +172,17 @@ function UsersTab({ users, reload }) {
   };
   const del = async (id) => {
     if (!confirm("Удалить пользователя?")) return;
-    await api("/api/admin/users/" + id, { method: "DELETE" });
-    reload();
+    try {
+      await api("/api/admin/users/" + id, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
+
+  const needle = q.trim().toLowerCase();
+  const filtered = needle
+    ? users.filter(u =>
+        `${u.name} ${u.username} ${u.role} ${u.extra_roles || ""}`.toLowerCase().includes(needle))
+    : users;
 
   return (
     <div>
@@ -133,10 +200,16 @@ function UsersTab({ users, reload }) {
         </select>
         <button className="btn primary">Добавить</button>
       </form>
-      <table className="table">
+      <div className="card row" style={{ alignItems: "center", gap: 8 }}>
+        <label>Поиск:</label>
+        <input placeholder="ФИО, логин или роль…" value={q}
+               onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+        <span className="muted small">{filtered.length} / {users.length}</span>
+      </div>
+      <div className="table-wrap"><table className="table">
         <thead><tr><th>ID</th><th>ФИО</th><th>Логин</th><th>Роль</th><th></th></tr></thead>
         <tbody>
-          {users.map(u => (
+          {filtered.map(u => (
             <tr key={u.id}>
                <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td>
               <td>
@@ -154,8 +227,19 @@ function UsersTab({ users, reload }) {
               </td>
             </tr>
           ))}
+          {!filtered.length && (
+            <tr>
+              <td colSpan={5} className="muted">
+                {loading
+                  ? "Загрузка пользователей…"
+                  : needle
+                    ? "Никого не найдено по запросу «" + q + "»"
+                    : "Пользователей пока нет"}
+              </td>
+            </tr>
+          )}
         </tbody>
-      </table>
+      </table></div>
       {editing && <UserEditModal user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {resetting && <PasswordModal name={resetting.name} onClose={() => setResetting(null)}
                                     onSubmit={async (pw) => {
@@ -199,64 +283,44 @@ function UserEditModal({ user, onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-back">
-      <div className="card modal" style={{ maxWidth: 480 }}>
-        <h3>Редактирование пользователя</h3>
-        <label>ФИО</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%" }} />
-        <label style={{ marginTop: 8, display: "block" }}>Логин</label>
-        <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: "100%" }} />
+    <Modal onClose={onClose} innerStyle={{ maxWidth: 480 }}>
+      <h3>Редактирование пользователя</h3>
+      <label>ФИО</label>
+      <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%" }} />
+      <label style={{ marginTop: 8, display: "block" }}>Логин</label>
+      <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: "100%" }} />
 
-        {!isAdminUser && (
-          <>
-            <label style={{ marginTop: 8, display: "block" }}>Основная роль</label>
-            <select value={role} onChange={e => setRole(e.target.value)} style={{ width: "100%" }}>
-              <option value="student">Ученик</option>
-              <option value="teacher">Куратор</option>
-              <option value="manager">Методист</option>
-            </select>
-          </>
-        )}
+      {!isAdminUser && (
+        <>
+          <label style={{ marginTop: 8, display: "block" }}>Основная роль</label>
+          <select value={role} onChange={e => setRole(e.target.value)} style={{ width: "100%" }}>
+            <option value="student">Ученик</option>
+            <option value="teacher">Куратор</option>
+            <option value="manager">Методист</option>
+          </select>
+        </>
+      )}
 
-        <label style={{ marginTop: 12, display: "block" }}>Дополнительные роли</label>
-        <div className="muted small" style={{ marginBottom: 6 }}>
-          Пользователь сможет переключаться между ролями при входе и в шапке сайта.
-        </div>
-        <div className="chips">
-          {["student", "teacher", "manager"].map(r => (
-            <label key={r} className="chip" style={{ cursor: "pointer" }}>
-              <input type="checkbox"
-                     checked={extra.includes(r)}
-                     onChange={() => toggleExtra(r)} />
-              {r === "student" ? "Ученик" : r === "teacher" ? "Куратор" : "Методист"}
-            </label>
-          ))}
-        </div>
-
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-          <button className="btn ghost" onClick={onClose}>Отмена</button>
-          <button className="btn primary" onClick={save}>Сохранить</button>
-        </div>
+      <label style={{ marginTop: 12, display: "block" }}>Дополнительные роли</label>
+      <div className="muted small" style={{ marginBottom: 6 }}>
+        Пользователь сможет переключаться между ролями при входе и в шапке сайта.
       </div>
-    </div>
-  );
-}
-
-function PasswordModal({ name, onClose, onSubmit }) {
-  const [pw, setPw] = useState("");
-  return (
-    <div className="modal-back">
-      <div className="card modal" style={{ maxWidth: 420 }}>
-        <h3>Смена пароля</h3>
-        <div className="muted small">Пользователь: <b>{name}</b></div>
-        <input type="text" placeholder="Новый пароль" value={pw}
-               onChange={e => setPw(e.target.value)} autoFocus style={{ width: "100%", marginTop: 10 }} />
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-          <button className="btn ghost" onClick={onClose}>Отмена</button>
-          <button className="btn primary" disabled={!pw} onClick={() => onSubmit(pw)}>Сохранить</button>
-        </div>
+      <div className="chips">
+        {["student", "teacher", "manager"].map(r => (
+          <label key={r} className="chip" style={{ cursor: "pointer" }}>
+            <input type="checkbox"
+                   checked={extra.includes(r)}
+                   onChange={() => toggleExtra(r)} />
+            {r === "student" ? "Ученик" : r === "teacher" ? "Куратор" : "Методист"}
+          </label>
+        ))}
       </div>
-    </div>
+
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+        <button className="btn ghost" onClick={onClose}>Отмена</button>
+        <button className="btn primary" onClick={save}>Сохранить</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -269,19 +333,26 @@ function GroupsTab({ courses, users, reload }) {
   const students = users.filter(u => userHasRole(u, "student"));
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
   const [groups, setGroups] = useState([]);
+  const [loadErr, setLoadErr] = useState(null);
   const [newName, setNewName] = useState("");
 
-  const load = () => courseId && api(`/api/admin/groups/${courseId}`).then(setGroups);
+  const load = () =>
+    courseId &&
+    api(`/api/admin/groups/${courseId}`)
+      .then(setGroups)
+      .catch((e) => setLoadErr(e.message));
   useEffect(() => { load(); }, [courseId]);
   useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
 
   const addGroup = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    await api("/api/admin/groups", {
-      method: "POST", body: JSON.stringify({ course_id: +courseId, name: newName.trim() }),
-    });
-    setNewName(""); load(); reload();
+    try {
+      await api("/api/admin/groups", {
+        method: "POST", body: JSON.stringify({ course_id: +courseId, name: newName.trim() }),
+      });
+      setNewName(""); load(); reload();
+    } catch (err) { alert(err.message); }
   };
 
   return (
@@ -298,11 +369,16 @@ function GroupsTab({ courses, users, reload }) {
         <button className="btn primary">Создать группу</button>
       </form>
 
+      {loadErr && (
+        <div className="card" style={{ color: "#dc2626" }}>
+          Не удалось загрузить группы: {loadErr}
+        </div>
+      )}
       {groups.map(g => (
         <GroupCard key={g.id} group={g} teachers={teachers} students={students}
                    reload={() => { load(); reload(); }} />
       ))}
-      {!groups.length && <div className="card muted">В этом курсе пока нет групп</div>}
+      {!groups.length && !loadErr && <div className="card muted">В этом курсе пока нет групп</div>}
     </div>
   );
 }
@@ -314,13 +390,17 @@ function GroupCard({ group, teachers, students, reload }) {
   const [studentId, setStudentId] = useState("");
 
   const saveName = async () => {
-    await api(`/api/admin/groups/${group.id}`, { method: "PUT", body: JSON.stringify({ name }) });
-    setEdit(false); reload();
+    try {
+      await api(`/api/admin/groups/${group.id}`, { method: "PUT", body: JSON.stringify({ name }) });
+      setEdit(false); reload();
+    } catch (e) { alert(e.message); }
   };
   const del = async () => {
     if (!confirm("Удалить группу?")) return;
-    await api(`/api/admin/groups/${group.id}`, { method: "DELETE" });
-    reload();
+    try {
+      await api(`/api/admin/groups/${group.id}`, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const addTeacher = async () => {
     if (!teacherId) return;
@@ -332,8 +412,10 @@ function GroupCard({ group, teachers, students, reload }) {
     } catch (e) { alert(e.message); }
   };
   const removeTeacher = async (tid) => {
-    await api(`/api/admin/groups/${group.id}/teachers/${tid}`, { method: "DELETE" });
-    reload();
+    try {
+      await api(`/api/admin/groups/${group.id}/teachers/${tid}`, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const addStudent = async () => {
     if (!studentId) return;
@@ -345,8 +427,10 @@ function GroupCard({ group, teachers, students, reload }) {
     } catch (e) { alert(e.message); }
   };
   const removeStudent = async (uid) => {
-    await api(`/api/admin/groups/${group.id}/students/${uid}`, { method: "DELETE" });
-    reload();
+    try {
+      await api(`/api/admin/groups/${group.id}/students/${uid}`, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
 
   const studentOptions = students.map(s => ({ value: s.id, label: `${s.name} (${s.username})` }));
@@ -375,7 +459,7 @@ function GroupCard({ group, teachers, students, reload }) {
       <div className="chips">
         {group.teachers.map(t => (
           <span key={t.id} className="chip">
-            {t.name}<button onClick={() => removeTeacher(t.id)}>✕</button>
+            {t.name}<button onClick={() => removeTeacher(t.id)} aria-label="Убрать куратора">✕</button>
           </span>
         ))}
         {!group.teachers.length && <span className="muted small">нет</span>}
@@ -392,7 +476,7 @@ function GroupCard({ group, teachers, students, reload }) {
       <div className="chips">
         {group.students.map(s => (
           <span key={s.id} className="chip">
-            {s.name}<button onClick={() => removeStudent(s.id)}>✕</button>
+            {s.name}<button onClick={() => removeStudent(s.id)} aria-label="Убрать ученика">✕</button>
           </span>
         ))}
         {!group.students.length && <span className="muted small">нет</span>}
@@ -410,21 +494,15 @@ function GroupCard({ group, teachers, students, reload }) {
 }
 
 /* ---------- MATERIALS ---------- */
-const MAT_TYPES = [
-  { v: "video", l: "Видео" },
-  { v: "audio", l: "Аудио" },
-  { v: "image", l: "Рисунок" },
-  { v: "document", l: "Документ / конспект" },
-  { v: "note", l: "Текстовая заметка" },
-];
-
 function MaterialsTab({ courses, groups = [] }) {
   const [subMode, setSubMode] = useState("repository"); // "repository" | "extra" | "themes"
   const [courseId, setCourseId] = useState(courses[0]?.id || "");
   const [themeId, setThemeId] = useState("");
   const [materials, setMaterials] = useState([]);
+  const [materialsErr, setMaterialsErr] = useState(null);
   const [form, setForm] = useState({ title: "", type: "video", url: "", order_index: 0 });
   const [uploading, setUploading] = useState(false);
+  const fetchSeq = useRef(0);
 
   const currentCourse = courses.find(c => c.id === +courseId);
   const themes = currentCourse?.themes || [];
@@ -436,12 +514,18 @@ function MaterialsTab({ courses, groups = [] }) {
   }, [courseId, courses]);
 
   const reload = async () => {
+    const seq = ++fetchSeq.current; // защита от гонки при быстрой смене темы
     if (!themeId) {
       setMaterials([]);
+      setMaterialsErr(null);
       return;
     }
-    const data = await api(`/api/admin/themes/${themeId}/materials`);
-    setMaterials(data);
+    try {
+      const data = await api(`/api/admin/themes/${themeId}/materials`);
+      if (seq === fetchSeq.current) { setMaterials(data); setMaterialsErr(null); }
+    } catch (e) {
+      if (seq === fetchSeq.current) { setMaterials([]); setMaterialsErr(e.message); }
+    }
   };
 
   useEffect(() => {
@@ -451,12 +535,14 @@ function MaterialsTab({ courses, groups = [] }) {
   const add = async (e) => {
     e.preventDefault();
     if (!form.url.trim()) return alert("Пожалуйста, введите URL или загрузите файл.");
-    await api("/api/admin/materials", {
-      method: "POST",
-      body: JSON.stringify({ ...form, theme_id: +themeId, order_index: +form.order_index }),
-    });
-    setForm({ title: "", type: "video", url: "", order_index: 0 });
-    reload();
+    try {
+      await api("/api/admin/materials", {
+        method: "POST",
+        body: JSON.stringify({ ...form, theme_id: +themeId, order_index: +form.order_index }),
+      });
+      setForm({ title: "", type: "video", url: "", order_index: 0 });
+      reload();
+    } catch (err) { alert(err.message); }
   };
   const onUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -552,10 +638,15 @@ function MaterialsTab({ courses, groups = [] }) {
               </form>
 
               <div className="list">
+                {materialsErr && (
+                  <div style={{ color: "#dc2626" }}>
+                    Не удалось загрузить материалы: {materialsErr}
+                  </div>
+                )}
                 {materials.map(m => (
                   <MaterialRow key={m.id} material={m} reload={reload} />
                 ))}
-                {!materials.length && <div className="muted">Материалов в этой теме пока нет</div>}
+                {!materials.length && !materialsErr && <div className="muted">Материалов в этой теме пока нет</div>}
               </div>
             </>
           )}
@@ -574,16 +665,20 @@ function MaterialRow({ material, reload }) {
   const [uploading, setUploading] = useState(false);
 
   const save = async () => {
-    await api(`/api/admin/materials/${material.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ ...form, order_index: +form.order_index }),
-    });
-    setEdit(false); reload();
+    try {
+      await api(`/api/admin/materials/${material.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...form, order_index: +form.order_index }),
+      });
+      setEdit(false); reload();
+    } catch (e) { alert(e.message); }
   };
   const del = async () => {
     if (!confirm("Удалить материал?")) return;
-    await api("/api/admin/materials/" + material.id, { method: "DELETE" });
-    reload();
+    try {
+      await api("/api/admin/materials/" + material.id, { method: "DELETE" });
+      reload();
+    } catch (e) { alert(e.message); }
   };
   const onUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -608,7 +703,7 @@ function MaterialRow({ material, reload }) {
         </div>
         <div>
           <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
-          <button className="btn danger small" onClick={del}>✕</button>
+          <button className="btn danger small" onClick={del} aria-label="Удалить">✕</button>
         </div>
       </div>
     );
@@ -645,51 +740,6 @@ function MaterialRow({ material, reload }) {
 
 
 /* ---------- UPLOADS ---------- */
-function UploadsTab() {
-  const [files, setFiles] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const load = () => api("/api/admin/uploads").then(setFiles);
-  useEffect(() => { load(); }, []);
-
-  const onUpload = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    setBusy(true);
-    try { await uploadFile(file); await load(); }
-    catch (e) { alert(e.message); }
-    finally { setBusy(false); e.target.value = ""; }
-  };
-  const del = async (id) => {
-    if (!confirm("Удалить файл?")) return;
-    await api("/api/admin/uploads/" + id, { method: "DELETE" });
-    load();
-  };
-
-  return (
-    <div>
-      <div className="card row">
-        <label className="btn">
-          {busy ? "Загрузка..." : "Загрузить файл"}
-          <input type="file" hidden onChange={onUpload} />
-        </label>
-      </div>
-      <table className="table">
-        <thead><tr><th>Файл</th><th>Тип</th><th>Размер</th><th>URL</th><th></th></tr></thead>
-        <tbody>
-          {files.map(f => (
-            <tr key={f.id}>
-              <td>{f.original_name}</td>
-              <td>{f.mimetype}</td>
-              <td>{Math.round((f.size || 0) / 1024)} КБ</td>
-              <td><a href={"/uploads/" + f.filename} target="_blank" rel="noreferrer">открыть</a></td>
-              <td><button className="btn danger small" onClick={() => del(f.id)}>Удалить</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /* ---------- SETTINGS ---------- */
 function SettingsTab() {
   const [names, setNames] = useState({ admin: "", teacher: "", student: "", manager: "" });
@@ -713,6 +763,7 @@ function SettingsTab() {
   const [previewWarning, setPreviewWarning] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   const loadSettings = async () => {
     try {
@@ -728,7 +779,9 @@ function SettingsTab() {
       }
       if (data.stats) setStats(data.stats);
     } catch (e) { console.error("Error loading settings:", e); }
-    api("/api/auth/me").then(me => setCreds(c => ({ ...c, username: me.username })));
+    api("/api/auth/me")
+      .then(me => setCreds(c => ({ ...c, username: me.username })))
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -763,7 +816,7 @@ function SettingsTab() {
   };
 
   const restoreBackup = async () => {
-    if (!restoreFile) return;
+    if (!restoreFile || restoreBusy) return;
     let text;
     try {
       text = await restoreFile.text();
@@ -786,6 +839,7 @@ function SettingsTab() {
       `Все изменения после выгрузки будут потеряны. Перед восстановлением сервер сохранит текущую базу в data/database.before-restore.json.\n\nПродолжить?`
     );
     if (!ok) return;
+    setRestoreBusy(true);
     try {
       const result = await uploadFile(restoreFile, "/api/admin/restore");
       const lines = [];
@@ -802,6 +856,8 @@ function SettingsTab() {
       location.reload();
     } catch (e) {
       alert(`Ошибка восстановления: ${e.message}`);
+    } finally {
+      setRestoreBusy(false);
     }
   };
 
@@ -1128,16 +1184,16 @@ function SettingsTab() {
             />
             <button
               className="btn"
-              disabled={!restoreFile}
+              disabled={!restoreFile || restoreBusy}
               onClick={restoreBackup}
               style={{
-                background: restoreFile ? "#b91c1c" : "#94a3b8",
+                background: restoreFile && !restoreBusy ? "#b91c1c" : "#94a3b8",
                 color: "#fff",
                 fontWeight: 600,
-                cursor: restoreFile ? "pointer" : "not-allowed",
+                cursor: restoreFile && !restoreBusy ? "pointer" : "not-allowed",
               }}
             >
-              ♻️ Восстановить
+              {restoreBusy ? "⏳ Восстановление…" : "♻️ Восстановить"}
             </button>
           </div>
         </div>
@@ -1184,111 +1240,6 @@ function SettingsTab() {
         isOpen={previewWelcome}
         onClose={() => setPreviewWelcome(false)}
       />
-    </div>
-  );
-}
-
-/* ---------- PHONE INVITES ---------- */
-function InvitesTab() {
-  const [list, setList] = useState([]);
-  const [form, setForm] = useState({ phone: "", role: "student", note: "" });
-  const [busy, setBusy] = useState(false);
-
-  const load = () => api("/api/admin/invites").then(setList);
-  useEffect(() => { load(); }, []);
-
-  const add = async (e) => {
-    e.preventDefault();
-    if (!form.phone.trim()) return alert("Введите номер телефона");
-    setBusy(true);
-    try {
-      await api("/api/admin/invites", {
-        method: "POST",
-        body: JSON.stringify(form),
-      });
-      setForm({ phone: "", role: "student", note: "" });
-      load();
-    } catch (e) { alert(e.message); }
-    finally { setBusy(false); }
-  };
-
-  const del = async (id) => {
-    if (!confirm("Удалить приглашение?")) return;
-    await api("/api/admin/invites/" + id, { method: "DELETE" });
-    load();
-  };
-
-  const roleLabel = (r) =>
-    r === "manager" ? "Методист"
-    : r === "teacher" ? "Куратор"
-    : "Ученик";
-
-  return (
-    <div>
-      <div className="card">
-        <h3>Приглашения по номеру телефона</h3>
-        <div className="muted small">
-          Внесите номер телефона и предполагаемую роль. После этого человек сможет
-          зарегистрироваться сам на странице «Регистрация», указав ФИО, телефон и пароль.
-        </div>
-        <form className="row" onSubmit={add} style={{ marginTop: 12 }}>
-          <input placeholder="Номер телефона (например, +79261234567)"
-                 value={form.phone}
-                 onChange={e => setForm({ ...form, phone: e.target.value })}
-                 style={{ flex: 1 }} />
-          <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-            <option value="student">Ученик</option>
-            <option value="teacher">Куратор</option>
-            <option value="manager">Методист</option>
-          </select>
-          <input placeholder="Комментарий (кто это)"
-                 value={form.note}
-                 onChange={e => setForm({ ...form, note: e.target.value })}
-                 style={{ flex: 1 }} />
-          <button className="btn primary" disabled={busy}>
-            {busy ? "..." : "Добавить приглашение"}
-          </button>
-        </form>
-      </div>
-
-      <div className="card">
-        <h3>Ожидают регистрации ({list.length})</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Телефон</th>
-              <th>Роль</th>
-              <th>Комментарий</th>
-              <th>Добавлено</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map(inv => (
-              <tr key={inv.id}>
-                <td><b>{inv.phone}</b></td>
-                <td>{roleLabel(inv.role)}</td>
-                <td className="muted small">{inv.note || "—"}</td>
-                <td className="muted small">
-                  {new Date(inv.created_at).toLocaleString("ru-RU")}
-                </td>
-                <td>
-                  <button className="btn danger small" onClick={() => del(inv.id)}>
-                    Удалить
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!list.length && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  Приглашений пока нет. Добавьте первое выше.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
