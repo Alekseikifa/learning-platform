@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import SearchSelect from "../components/SearchSelect";
 import Collapsible from "../components/Collapsible";
 import AnnouncementsPanel from "../components/AnnouncementsPanel";
 import StaffChatsPanel from "../components/StaffChatsPanel";
@@ -16,10 +15,10 @@ import WarningCard from "../components/WarningCard";
 import InvitesTab from "../components/InvitesTab";
 import WelcomeModal from "../components/WelcomeModal";
 import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabsLazy";
-import Modal from "../components/Modal";
 import PasswordModal from "../components/PasswordModal";
+import UserEditModal from "../components/UserEditModal";
+import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
-import { MAT_TYPES } from "../lib/constants";
 import { api, uploadFile, getToken } from "../api";
 
 const TABS = [
@@ -143,7 +142,7 @@ export default function AdminPanel() {
       {tab === "invites"       && <InvitesTab />}      
       {tab === "users"         && <UsersTab users={users} loading={usersLoading} reload={reload} />}   
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/admin" />}
-      {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} />}      
+      {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} apiPrefix="/api/admin" />}      
       {tab === "messages"      && <DirectMessages />}
       {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
       {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/admin" />}
@@ -157,7 +156,7 @@ export default function AdminPanel() {
 
 /* ---------- USERS ---------- */
 function UsersTab({ users, loading, reload }) {
-  const [form, setForm] = useState({ name: "", username: "", password: "", role: "student" });
+  const [form, setForm] = useState({ name: "", username: "", password: "", role: "student", is_active: true });
   const [editing, setEditing] = useState(null);
   const [resetting, setResetting] = useState(null);
   const [q, setQ] = useState("");
@@ -166,7 +165,7 @@ function UsersTab({ users, loading, reload }) {
     e.preventDefault();
     try {
       await api("/api/admin/users", { method: "POST", body: JSON.stringify(form) });
-      setForm({ name: "", username: "", password: "", role: "student" });
+      setForm({ name: "", username: "", password: "", role: "student", is_active: true });
       reload();
     } catch (e) { alert(e.message); }
   };
@@ -198,6 +197,11 @@ function UsersTab({ users, loading, reload }) {
           <option value="teacher">Куратор</option>
           <option value="manager">Методист</option>
         </select>
+        <label className="chip" style={{ cursor: "pointer" }} title="Разрешить пользоваться курсами">
+          <input type="checkbox" checked={form.is_active}
+                 onChange={e => setForm({ ...form, is_active: e.target.checked })} />
+          ✅ Активен
+        </label>
         <button className="btn primary">Добавить</button>
       </form>
       <div className="card row" style={{ alignItems: "center", gap: 8 }}>
@@ -207,7 +211,7 @@ function UsersTab({ users, loading, reload }) {
         <span className="muted small">{filtered.length} / {users.length}</span>
       </div>
       <div className="table-wrap"><table className="table">
-        <thead><tr><th>ID</th><th>ФИО</th><th>Логин</th><th>Роль</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>ФИО</th><th>Логин</th><th>Роль</th><th>Курсы</th><th></th></tr></thead>
         <tbody>
           {filtered.map(u => (
             <tr key={u.id}>
@@ -216,6 +220,13 @@ function UsersTab({ users, loading, reload }) {
                 {u.role}
                 {u.extra_roles && (
                   <span className="muted small"> + {u.extra_roles}</span>
+                )}
+              </td>
+              <td>
+                {u.is_active !== false ? (
+                  <span className="tag ok" title="Доступ к курсам включён">✓ есть</span>
+                ) : (
+                  <span className="tag no" title="Доступ к курсам выключен">✖ нет</span>
                 )}
               </td>
               <td>
@@ -229,7 +240,7 @@ function UsersTab({ users, loading, reload }) {
           ))}
           {!filtered.length && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={6} className="muted">
                 {loading
                   ? "Загрузка пользователей…"
                   : needle
@@ -240,7 +251,7 @@ function UsersTab({ users, loading, reload }) {
           )}
         </tbody>
       </table></div>
-      {editing && <UserEditModal user={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {editing && <UserEditModal user={editing} variant="admin" onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {resetting && <PasswordModal name={resetting.name} onClose={() => setResetting(null)}
                                     onSubmit={async (pw) => {
                                       try {
@@ -254,310 +265,9 @@ function UsersTab({ users, loading, reload }) {
   );
 }
 
-function UserEditModal({ user, onClose, onSaved }) {
-  const isAdminUser = user.role === "admin";
-  const [name, setName] = useState(user.name);
-  const [username, setUsername] = useState(user.username);
-  const [role, setRole] = useState(user.role);
-  const [extra, setExtra] = useState(
-    (user.extra_roles || "").split(",").map(s => s.trim()).filter(Boolean)
-  );
-
-  const toggleExtra = (r) => {
-    setExtra(extra.includes(r) ? extra.filter(x => x !== r) : [...extra, r]);
-  };
-
-  const save = async () => {
-    try {
-      const payload = {
-        name,
-        username,
-        extra_roles: extra.join(","),
-      };
-      if (!isAdminUser) payload.role = role;
-      await api(`/api/admin/users/${user.id}`, {
-        method: "PUT", body: JSON.stringify(payload),
-      });
-      onSaved();
-    } catch (e) { alert(e.message); }
-  };
-
-  return (
-    <Modal onClose={onClose} innerStyle={{ maxWidth: 480 }}>
-      <h3>Редактирование пользователя</h3>
-      <label>ФИО</label>
-      <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%" }} />
-      <label style={{ marginTop: 8, display: "block" }}>Логин</label>
-      <input value={username} onChange={e => setUsername(e.target.value)} style={{ width: "100%" }} />
-
-      {!isAdminUser && (
-        <>
-          <label style={{ marginTop: 8, display: "block" }}>Основная роль</label>
-          <select value={role} onChange={e => setRole(e.target.value)} style={{ width: "100%" }}>
-            <option value="student">Ученик</option>
-            <option value="teacher">Куратор</option>
-            <option value="manager">Методист</option>
-          </select>
-        </>
-      )}
-
-      <label style={{ marginTop: 12, display: "block" }}>Дополнительные роли</label>
-      <div className="muted small" style={{ marginBottom: 6 }}>
-        Пользователь сможет переключаться между ролями при входе и в шапке сайта.
-      </div>
-      <div className="chips">
-        {["student", "teacher", "manager"].map(r => (
-          <label key={r} className="chip" style={{ cursor: "pointer" }}>
-            <input type="checkbox"
-                   checked={extra.includes(r)}
-                   onChange={() => toggleExtra(r)} />
-            {r === "student" ? "Ученик" : r === "teacher" ? "Куратор" : "Методист"}
-          </label>
-        ))}
-      </div>
-
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-        <button className="btn ghost" onClick={onClose}>Отмена</button>
-        <button className="btn primary" onClick={save}>Сохранить</button>
-      </div>
-    </Modal>
-  );
-}
-
-/* ---------- GROUPS ---------- */
-const userHasRole = (u, r) =>
-  u.role === r || (u.extra_roles || "").split(",").map(s => s.trim()).includes(r);
-
-function GroupsTab({ courses, users, reload }) {
-  const teachers = users.filter(u => userHasRole(u, "teacher"));
-  const students = users.filter(u => userHasRole(u, "student"));
-  const [courseId, setCourseId] = useState(courses[0]?.id || "");
-  const [groups, setGroups] = useState([]);
-  const [loadErr, setLoadErr] = useState(null);
-  const [newName, setNewName] = useState("");
-
-  const load = () =>
-    courseId &&
-    api(`/api/admin/groups/${courseId}`)
-      .then(setGroups)
-      .catch((e) => setLoadErr(e.message));
-  useEffect(() => { load(); }, [courseId]);
-  useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
-
-  const addGroup = async (e) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    try {
-      await api("/api/admin/groups", {
-        method: "POST", body: JSON.stringify({ course_id: +courseId, name: newName.trim() }),
-      });
-      setNewName(""); load(); reload();
-    } catch (err) { alert(err.message); }
-  };
-
-  return (
-    <div>
-      <div className="card row">
-        <label>Курс:</label>
-        <select value={courseId} onChange={e => setCourseId(e.target.value)}>
-          {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-        </select>
-      </div>
-      <form className="card row" onSubmit={addGroup}>
-        <input placeholder="Название группы (например, ИС-21)" value={newName}
-               onChange={e => setNewName(e.target.value)} style={{ flex: 1 }} />
-        <button className="btn primary">Создать группу</button>
-      </form>
-
-      {loadErr && (
-        <div className="card" style={{ color: "#dc2626" }}>
-          Не удалось загрузить группы: {loadErr}
-        </div>
-      )}
-      {groups.map(g => (
-        <GroupCard key={g.id} group={g} teachers={teachers} students={students}
-                   reload={() => { load(); reload(); }} />
-      ))}
-      {!groups.length && !loadErr && <div className="card muted">В этом курсе пока нет групп</div>}
-    </div>
-  );
-}
-
-function GroupCard({ group, teachers, students, reload }) {
-  const [edit, setEdit] = useState(false);
-  const [name, setName] = useState(group.name);
-  const [teacherId, setTeacherId] = useState("");
-  const [studentId, setStudentId] = useState("");
-
-  const saveName = async () => {
-    try {
-      await api(`/api/admin/groups/${group.id}`, { method: "PUT", body: JSON.stringify({ name }) });
-      setEdit(false); reload();
-    } catch (e) { alert(e.message); }
-  };
-  const del = async () => {
-    if (!confirm("Удалить группу?")) return;
-    try {
-      await api(`/api/admin/groups/${group.id}`, { method: "DELETE" });
-      reload();
-    } catch (e) { alert(e.message); }
-  };
-  const addTeacher = async () => {
-    if (!teacherId) return;
-    try {
-      await api(`/api/admin/groups/${group.id}/teachers`, {
-        method: "POST", body: JSON.stringify({ teacher_id: +teacherId }),
-      });
-      setTeacherId(""); reload();
-    } catch (e) { alert(e.message); }
-  };
-  const removeTeacher = async (tid) => {
-    try {
-      await api(`/api/admin/groups/${group.id}/teachers/${tid}`, { method: "DELETE" });
-      reload();
-    } catch (e) { alert(e.message); }
-  };
-  const addStudent = async () => {
-    if (!studentId) return;
-    try {
-      await api(`/api/admin/groups/${group.id}/students`, {
-        method: "POST", body: JSON.stringify({ user_id: +studentId }),
-      });
-      setStudentId(""); reload();
-    } catch (e) { alert(e.message); }
-  };
-  const removeStudent = async (uid) => {
-    try {
-      await api(`/api/admin/groups/${group.id}/students/${uid}`, { method: "DELETE" });
-      reload();
-    } catch (e) { alert(e.message); }
-  };
-
-  const studentOptions = students.map(s => ({ value: s.id, label: `${s.name} (${s.username})` }));
-
-  return (
-    <div className="card">
-      <div className="spread">
-        {edit ? (
-          <>
-            <input value={name} onChange={e => setName(e.target.value)} style={{ flex: 1 }} />
-            <button className="btn primary" onClick={saveName}>ОК</button>
-            <button className="btn ghost" onClick={() => setEdit(false)}>Отмена</button>
-          </>
-        ) : (
-          <>
-            <b>{group.name}</b>
-            <div>
-              <button className="btn small" onClick={() => setEdit(true)}>Переименовать</button>{" "}
-              <button className="btn danger small" onClick={del}>Удалить</button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="section-title">Кураторы</div>
-      <div className="chips">
-        {group.teachers.map(t => (
-          <span key={t.id} className="chip">
-            {t.name}<button onClick={() => removeTeacher(t.id)} aria-label="Убрать куратора">✕</button>
-          </span>
-        ))}
-        {!group.teachers.length && <span className="muted small">нет</span>}
-      </div>
-      <div className="row">
-        <select value={teacherId} onChange={e => setTeacherId(e.target.value)}>
-          <option value="">— куратор —</option>
-          {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <button className="btn" onClick={addTeacher}>Добавить</button>
-      </div>
-
-      <div className="section-title">Ученики ({group.students.length})</div>
-      <div className="chips">
-        {group.students.map(s => (
-          <span key={s.id} className="chip">
-            {s.name}<button onClick={() => removeStudent(s.id)} aria-label="Убрать ученика">✕</button>
-          </span>
-        ))}
-        {!group.students.length && <span className="muted small">нет</span>}
-      </div>
-      <div className="row">
-        <div style={{ minWidth: 260 }}>
-          <SearchSelect options={studentOptions} value={studentId}
-                        onChange={v => setStudentId(v)}
-                        placeholder="Поиск ученика по ФИО..." />
-        </div>
-        <button className="btn" onClick={addStudent}>Добавить ученика</button>
-      </div>
-    </div>
-  );
-}
-
 /* ---------- MATERIALS ---------- */
 function MaterialsTab({ courses, groups = [] }) {
-  const [subMode, setSubMode] = useState("repository"); // "repository" | "extra" | "themes"
-  const [courseId, setCourseId] = useState(courses[0]?.id || "");
-  const [themeId, setThemeId] = useState("");
-  const [materials, setMaterials] = useState([]);
-  const [materialsErr, setMaterialsErr] = useState(null);
-  const [form, setForm] = useState({ title: "", type: "video", url: "", order_index: 0 });
-  const [uploading, setUploading] = useState(false);
-  const fetchSeq = useRef(0);
-
-  const currentCourse = courses.find(c => c.id === +courseId);
-  const themes = currentCourse?.themes || [];
-
-  useEffect(() => { if (!courseId && courses[0]) setCourseId(courses[0].id); }, [courses, courseId]);
-  useEffect(() => {
-    if (!themes.length) { setThemeId(""); return; }
-    if (!themes.find(t => t.id === +themeId)) setThemeId(themes[0].id);
-  }, [courseId, courses]);
-
-  const reload = async () => {
-    const seq = ++fetchSeq.current; // защита от гонки при быстрой смене темы
-    if (!themeId) {
-      setMaterials([]);
-      setMaterialsErr(null);
-      return;
-    }
-    try {
-      const data = await api(`/api/admin/themes/${themeId}/materials`);
-      if (seq === fetchSeq.current) { setMaterials(data); setMaterialsErr(null); }
-    } catch (e) {
-      if (seq === fetchSeq.current) { setMaterials([]); setMaterialsErr(e.message); }
-    }
-  };
-
-  useEffect(() => {
-    reload();
-  }, [themeId]);
-
-  const add = async (e) => {
-    e.preventDefault();
-    if (!form.url.trim()) return alert("Пожалуйста, введите URL или загрузите файл.");
-    try {
-      await api("/api/admin/materials", {
-        method: "POST",
-        body: JSON.stringify({ ...form, theme_id: +themeId, order_index: +form.order_index }),
-      });
-      setForm({ title: "", type: "video", url: "", order_index: 0 });
-      reload();
-    } catch (err) { alert(err.message); }
-  };
-  const onUpload = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    setUploading(true);
-    try {
-      const rec = await uploadFile(file);
-      const t = file.type.startsWith("audio") ? "audio"
-              : file.type.startsWith("image") ? "image"
-              : (file.type.includes("pdf") || file.name.endsWith(".doc") || file.name.endsWith(".docx")) ? "document"
-              : file.type.startsWith("video") ? "video"
-              : "document";
-      setForm(f => ({ ...f, url: "/uploads/" + rec.filename, type: t }));
-    } catch (e) { alert(e.message); }
-    finally { setUploading(false); e.target.value = ""; }
-  };
+  const [subMode, setSubMode] = useState("repository"); // "repository" | "extra"
 
   return (
     <div>
@@ -579,165 +289,17 @@ function MaterialsTab({ courses, groups = [] }) {
           >
             🌟 Дополнительные материалы курса (с чатом)
           </button>
-          <button
-            type="button"
-            className={"btn " + (subMode === "themes" ? "primary" : "ghost")}
-            onClick={() => setSubMode("themes")}
-          >
-            📚 Материалы по темам курса ({themes.length} тем)
-          </button>
         </div>
       </div>
 
       {subMode === "repository" ? (
         <UnifiedMaterialsRepository courses={courses} apiPrefix="/api/admin" />
-      ) : subMode === "extra" ? (
+      ) : (
         <ExtraMaterialsTabContent courses={courses} groups={groups} apiPrefix="/api/admin" />
-      ) : (
-        <div>
-          <div className="card row">
-            <label>Курс:</label>
-            <select value={courseId} onChange={e => setCourseId(e.target.value)}>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-            </select>
-            <label>Тема:</label>
-            <select value={themeId} onChange={e => setThemeId(e.target.value)}>
-              {themes.map(t => <option key={t.id} value={t.id}>Тема {t.order_index}. {t.title}</option>)}
-            </select>
-          </div>
-
-          {!themes.length && <div className="card muted">Сначала добавьте темы в этот курс</div>}
-
-          {themeId && (
-            <>
-              <form className="card" onSubmit={add}>
-                <div className="row">
-                  <input placeholder="Название" value={form.title}
-                         onChange={e => setForm({ ...form, title: e.target.value })} required style={{ flex: 1 }} />
-                  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-                    {MAT_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
-                  </select>
-                  <input type="number" placeholder="Порядок" value={form.order_index}
-                         onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 100 }} />
-                </div>
-                {form.type === "note" ? (
-                  <textarea placeholder="Текст заметки" value={form.url}
-                            onChange={e => setForm({ ...form, url: e.target.value })}
-                            rows={4} style={{ width: "100%" }} required />
-                ) : (
-                  <div className="row">
-                    <input placeholder="URL или загрузите файл →" value={form.url}
-                           onChange={e => setForm({ ...form, url: e.target.value })} style={{ flex: 1 }} />
-                    <label className="btn">
-                      {uploading ? "Загрузка..." : "Загрузить файл"}
-                      <input type="file" hidden onChange={onUpload} />
-                    </label>
-                  </div>
-                )}
-                <button className="btn primary" style={{ marginTop: 6 }}>Добавить материал</button>
-              </form>
-
-              <div className="list">
-                {materialsErr && (
-                  <div style={{ color: "#dc2626" }}>
-                    Не удалось загрузить материалы: {materialsErr}
-                  </div>
-                )}
-                {materials.map(m => (
-                  <MaterialRow key={m.id} material={m} reload={reload} />
-                ))}
-                {!materials.length && !materialsErr && <div className="muted">Материалов в этой теме пока нет</div>}
-              </div>
-            </>
-          )}
-        </div>
       )}
     </div>
   );
 }
-
-function MaterialRow({ material, reload }) {
-  const [edit, setEdit] = useState(false);
-  const [form, setForm] = useState({
-    title: material.title, type: material.type,
-    url: material.url, order_index: material.order_index,
-  });
-  const [uploading, setUploading] = useState(false);
-
-  const save = async () => {
-    try {
-      await api(`/api/admin/materials/${material.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ ...form, order_index: +form.order_index }),
-      });
-      setEdit(false); reload();
-    } catch (e) { alert(e.message); }
-  };
-  const del = async () => {
-    if (!confirm("Удалить материал?")) return;
-    try {
-      await api("/api/admin/materials/" + material.id, { method: "DELETE" });
-      reload();
-    } catch (e) { alert(e.message); }
-  };
-  const onUpload = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    setUploading(true);
-    try {
-      const rec = await uploadFile(file);
-      setForm(f => ({ ...f, url: "/uploads/" + rec.filename }));
-    } catch (e) { alert(e.message); }
-    finally { setUploading(false); e.target.value = ""; }
-  };
-
-  if (!edit) {
-    return (
-      <div className="card spread">
-        <div>
-          <b>#{material.order_index} [{material.type}] {material.title}</b>
-          <div className="muted small">
-            {material.type === "note"
-              ? material.url.slice(0, 100) + (material.url.length > 100 ? "…" : "")
-              : <a href={material.url} target="_blank" rel="noreferrer">{material.url}</a>}
-          </div>
-        </div>
-        <div>
-          <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
-          <button className="btn danger small" onClick={del} aria-label="Удалить">✕</button>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="card">
-      <div className="row">
-        <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={{ flex: 1 }} />
-        <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-          {MAT_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
-        </select>
-        <input type="number" value={form.order_index}
-               onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 90 }} />
-      </div>
-      {form.type === "note" ? (
-        <textarea value={form.url} onChange={e => setForm({ ...form, url: e.target.value })}
-                  rows={4} style={{ width: "100%", marginTop: 6 }} />
-      ) : (
-        <div className="row" style={{ marginTop: 6 }}>
-          <input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} style={{ flex: 1 }} />
-          <label className="btn">
-            {uploading ? "Загрузка..." : "Заменить файл"}
-            <input type="file" hidden onChange={onUpload} />
-          </label>
-        </div>
-      )}
-      <div className="row" style={{ marginTop: 6, justifyContent: "flex-end" }}>
-        <button className="btn ghost" onClick={() => setEdit(false)}>Отмена</button>
-        <button className="btn primary" onClick={save}>Сохранить</button>
-      </div>
-    </div>
-  );
-}
-
 
 /* ---------- UPLOADS ---------- */
 /* ---------- SETTINGS ---------- */

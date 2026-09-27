@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -17,6 +18,7 @@ import {
   getAllRolesOf,
   normalizePhone,
   notifyUsers,
+  fixMojibake,
 } from "./src/server/db.js";
 
 const app = express();
@@ -27,6 +29,76 @@ const ACCESS_TOKEN_MINUTES = parseInt(process.env.ACCESS_TOKEN_MINUTES || "1440"
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+/** Публичный URL файла по записи uploadedFiles: /api/files/<id>[.ext] */
+function fileUrlFor(rec: UploadedFile): string {
+  const dot = rec.filename.lastIndexOf(".");
+  const ext = dot > 0 ? rec.filename.slice(dot) : "";
+  return "/api/files/" + rec.id + ext;
+}
+
+/** Безопасное имя файла для записи на диск */
+function sanitizeUploadName(name: string): string {
+  let s = String(name || "")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .replace(/[/\\:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  s = s.replace(/[. ]+$/g, "");
+  return s.slice(0, 180);
+}
+
+/** Уникальное имя файла в uploads/ (не перезаписывает чужой файл) */
+function uniqueUploadName(name: string, current: string): string {
+  let candidate = name;
+  let i = 2;
+  while (candidate !== current && fs.existsSync(path.join(UPLOAD_DIR, candidate))) {
+    candidate = i + "_" + name;
+    i++;
+  }
+  return candidate;
+}
+
+/** Где сейчас используется файл (для запрета удаления) */
+function fileReferrers(fileId: number): string[] {
+  const refs: string[] = [];
+  for (const m of db.storageMaterials) if (m.file_id === fileId) refs.push("накопитель: " + m.title);
+  for (const m of db.materials) if (m.file_id === fileId) refs.push("урок: " + m.title);
+  for (const m of db.extraMaterials) if (m.file_id === fileId) refs.push("доп. материал: " + m.title);
+  return refs;
+}
+
+/** Определяет тип материала по mimetype загруженного файла */
+function typeFromMime(mime: string): string {
+  if (mime.startsWith("video")) return "video";
+  if (mime.startsWith("audio")) return "audio";
+  if (mime.startsWith("image")) return "image";
+  return "document";
+}
+
+/**
+ * Определяет запись uploadedFiles по телу запроса:
+ * явный file_id, ссылка /api/files/<id>[.ext] или старый формат /uploads/<имя>.
+ * missing=true — ссылка ведёт на несуществующую запись.
+ */
+function resolveUploadedFile(body: any): { rec: UploadedFile | null; missing: boolean } {
+  const file_id = body?.file_id;
+  const url = String(body?.url || "").trim();
+  if (file_id !== undefined && file_id !== null && file_id !== "") {
+    const rec = db.uploadedFiles.find((f) => f.id === parseInt(String(file_id), 10));
+    return rec ? { rec, missing: false } : { rec: null, missing: true };
+  }
+  const byId = /^\/api\/files\/(\d+)/.exec(url);
+  if (byId) {
+    const rec = db.uploadedFiles.find((f) => f.id === parseInt(byId[1], 10));
+    return rec ? { rec, missing: false } : { rec: null, missing: true };
+  }
+  if (url.startsWith("/uploads/")) {
+    const rec = db.uploadedFiles.find((f) => f.filename === decodeURIComponent(url.slice("/uploads/".length)));
+    if (rec) return { rec, missing: false };
+  }
+  return { rec: null, missing: false };
 }
 
 const storage = multer.diskStorage({
@@ -152,6 +224,80 @@ function requireRole(...roles: string[]) {
   };
 }
 
+// Доступ к курсам: пока не активирован — студент не получает курсы/тесты/чаты
+function requireActive(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user && req.user.is_active === false) {
+    return res.status(403).json({ detail: "Курсы не активированы. Обратитесь к методисту." });
+  }
+  next();
+}
+
+// пользователь без хэша пароля — для ответов API
+function publicUser(u: User) {
+  const { password_hash: _hash, ...rest } = u;
+  return rest;
+}
+
+// группы, в которых пользователь состоит как ученик
+function studentGroupsOf(u: User) {
+  return db.groupStudents
+    .filter((gs) => gs.user_id === u.id)
+    .map((gs) => {
+      const g = db.groups.find((x) => x.id === gs.group_id);
+      if (!g) return null;
+      const c = db.courses.find((x) => x.id === g.course_id);
+      return { id: g.id, name: g.name, course: c ? c.title : "" };
+    })
+    .filter(Boolean);
+}
+
+// группы, в которых пользователь является куратором
+function curatorGroupsOf(u: User) {
+  return db.groupTeachers
+    .filter((gt) => gt.teacher_id === u.id)
+    .map((gt) => {
+      const g = db.groups.find((x) => x.id === gt.group_id);
+      if (!g) return null;
+      const c = db.courses.find((x) => x.id === g.course_id);
+      return { id: g.id, name: g.name, course: c ? c.title : "" };
+    })
+    .filter(Boolean);
+}
+
+// пользователь для админских/методистских списков: новые поля + группы
+function userInfo(u: User) {
+  return {
+    ...publicUser(u),
+    phone: u.phone || "",
+    created_at: u.created_at || null,
+    last_login_at: u.last_login_at || null,
+    groups: studentGroupsOf(u),
+    teacher_groups: curatorGroupsOf(u),
+  };
+}
+
+// полная замена связей «пользователь — группы» (ученик)
+function setUserStudentGroups(userId: number, groupIds: unknown) {
+  const ids = [...new Set(
+    (Array.isArray(groupIds) ? groupIds : [])
+      .map((x) => parseInt(String(x), 10))
+      .filter((gid) => db.groups.find((g) => g.id === gid))
+  )];
+  db.groupStudents = db.groupStudents.filter((gs) => gs.user_id !== userId);
+  for (const gid of ids) db.groupStudents.push({ group_id: gid, user_id: userId });
+}
+
+// полная замена связей «пользователь — группы» (куратор)
+function setUserCuratorGroups(userId: number, groupIds: unknown) {
+  const ids = [...new Set(
+    (Array.isArray(groupIds) ? groupIds : [])
+      .map((x) => parseInt(String(x), 10))
+      .filter((gid) => db.groups.find((g) => g.id === gid))
+  )];
+  db.groupTeachers = db.groupTeachers.filter((gt) => gt.teacher_id !== userId);
+  for (const gid of ids) db.groupTeachers.push({ group_id: gid, teacher_id: userId });
+}
+
 // -------------------------------------------------------------
 // PUBLIC & HEALTH
 // -------------------------------------------------------------
@@ -269,6 +415,7 @@ app.post("/api/auth/login", (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(400).json({ detail: "Неверный логин или пароль" });
   }
+  user.last_login_at = new Date().toISOString();
   const roles = getAllRolesOf(user);
   res.json({
     access_token: createToken(user.id, user.role, roles),
@@ -317,17 +464,39 @@ app.post("/api/auth/register", (req, res) => {
   const invite = db.phoneInvites[inviteIdx];
   db.phoneInvites.splice(inviteIdx, 1);
 
+  const now = new Date().toISOString();
   const newUser: User = {
     id: db.getId("user"),
     role: invite.role,
-    extra_roles: "",
+    extra_roles: normalizeExtraRoles(invite.role, invite.extra_roles || ""),
     username: phone,
     password_hash: bcrypt.hashSync(password, 10),
     name: cleanName,
+    phone,
+    created_at: now,
+    last_login_at: now,
   };
   db.users.push(newUser);
 
   const roles = getAllRolesOf(newUser);
+  // группы из приглашения: group_ids → ученик, curator_group_ids → куратор
+  if (roles.includes("student")) {
+    for (const gid of invite.group_ids || []) {
+      if (db.groups.find((g) => g.id === gid) &&
+          !db.groupStudents.find((gs) => gs.group_id === gid && gs.user_id === newUser.id)) {
+        db.groupStudents.push({ group_id: gid, user_id: newUser.id });
+      }
+    }
+  }
+  if (roles.includes("teacher")) {
+    for (const gid of invite.curator_group_ids || []) {
+      if (db.groups.find((g) => g.id === gid) &&
+          !db.groupTeachers.find((gt) => gt.group_id === gid && gt.teacher_id === newUser.id)) {
+        db.groupTeachers.push({ group_id: gid, teacher_id: newUser.id });
+      }
+    }
+  }
+
   res.json({
     access_token: createToken(newUser.id, newUser.role, roles),
     role: newUser.role,
@@ -536,11 +705,11 @@ app.post("/api/messages/with/:other_id", authMiddleware, (req: AuthRequest, res:
 // ADMIN
 // -------------------------------------------------------------
 app.get("/api/admin/users", authMiddleware, requireRole("admin"), (_req, res) => {
-  res.json(db.users.filter((u) => u.role !== "admin"));
+  res.json(db.users.filter((u) => u.role !== "admin").map(userInfo));
 });
 
 app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req, res) => {
-  const { role, extra_roles, username, password, name } = req.body;
+  const { role, extra_roles, username, password, name, is_active } = req.body;
   if (!["teacher", "student", "manager"].includes(role)) {
     return res.status(400).json({ detail: "role must be teacher, student or manager" });
   }
@@ -554,9 +723,11 @@ app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req, res) =>
     username,
     password_hash: bcrypt.hashSync(password, 10),
     name,
+    is_active: is_active !== false,
+    created_at: new Date().toISOString(),
   };
   db.users.push(u);
-  res.json(u);
+  res.json(userInfo(u));
 });
 
 app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req, res) => {
@@ -564,13 +735,26 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req,
   const u = db.users.find((x) => x.id === userId);
   if (!u) return res.status(404).json({ detail: "Пользователь не найден" });
 
-  const { name, username, role, extra_roles } = req.body;
+  const { name, username, role, extra_roles, is_active, phone, group_ids, curator_group_ids } = req.body;
   if (name !== undefined) u.name = name;
   if (username !== undefined) {
     if (db.users.find((x) => x.username === username && x.id !== userId)) {
       return res.status(400).json({ detail: "Логин занят" });
     }
     u.username = username;
+  }
+  if (phone !== undefined) {
+    const raw = String(phone).trim();
+    if (!raw) {
+      u.phone = "";
+    } else {
+      const norm = normalizePhone(raw);
+      if (!norm) return res.status(400).json({ detail: "Некорректный номер телефона" });
+      if (db.users.find((x) => x.id !== userId && (x.phone === norm || x.username === norm))) {
+        return res.status(400).json({ detail: "Этот телефон уже используется" });
+      }
+      u.phone = norm;
+    }
   }
   if (role !== undefined && u.role !== "admin") {
     if (!["teacher", "student", "manager"].includes(role)) {
@@ -580,8 +764,11 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req,
     u.extra_roles = normalizeExtraRoles(u.role, u.extra_roles);
   }
   if (extra_roles !== undefined) u.extra_roles = normalizeExtraRoles(u.role, extra_roles);
+  if (is_active !== undefined) u.is_active = !!is_active;
+  if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
+  if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
 
-  res.json(u);
+  res.json(userInfo(u));
 });
 
 app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin"), (req, res) => {
@@ -636,10 +823,15 @@ app.get(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireR
   res.json([...db.phoneInvites].reverse());
 });
 
-app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
-  const { phone: rawPhone, role, note } = req.body;
+app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
+  const { phone: rawPhone, role, note, extra_roles, group_ids, curator_group_ids } = req.body;
   if (!["teacher", "student", "manager"].includes(role)) {
     return res.status(400).json({ detail: "role must be teacher, student or manager" });
+  }
+  const activeRole = req.tokenPayload!.role || req.user!.role;
+  const cleanedExtras = normalizeExtraRoles(role, extra_roles);
+  if (activeRole === "manager" && (role === "manager" || cleanedExtras.split(",").includes("manager"))) {
+    return res.status(400).json({ detail: "Методист не может приглашать методистов" });
   }
   const phone = normalizePhone(rawPhone);
   if (!phone) return res.status(400).json({ detail: "Введите номер телефона" });
@@ -649,12 +841,19 @@ app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, require
   if (db.users.find((u) => u.username === phone)) {
     return res.status(400).json({ detail: "Этот номер уже зарегистрирован" });
   }
+  const cleanGroupIds = (ids: unknown): number[] =>
+    Array.isArray(ids)
+      ? [...new Set(ids.map((x) => parseInt(String(x), 10)).filter((gid) => db.groups.find((g) => g.id === gid)))]
+      : [];
   const inv: PhoneInvite = {
     id: db.getId("phoneInvite"),
     phone,
     role,
     note: note || "",
     created_at: new Date().toISOString(),
+    extra_roles: cleanedExtras,
+    group_ids: cleanGroupIds(group_ids),
+    curator_group_ids: cleanGroupIds(curator_group_ids),
   };
   db.phoneInvites.push(inv);
   if (typeof (db as any).save === "function") (db as any).save();
@@ -1035,7 +1234,7 @@ app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], aut
   res.json({ ok: true });
 });
 
-app.get("/api/admin/groups/:course_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.get(["/api/admin/groups/:course_id", "/api/manager/groups/:course_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const courseId = parseInt(req.params.course_id, 10);
   const groups = db.groups.filter((g) => g.course_id === courseId);
   const out = groups.map((g) => {
@@ -1054,14 +1253,14 @@ app.get("/api/admin/groups/:course_id", authMiddleware, requireRole("admin"), (r
   res.json(out);
 });
 
-app.post("/api/admin/groups", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/groups", "/api/manager/groups"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { course_id, name } = req.body;
   const id = db.getId("group");
   db.groups.push({ id, course_id, name });
   res.json({ id });
 });
 
-app.put("/api/admin/groups/:group_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put(["/api/admin/groups/:group_id", "/api/manager/groups/:group_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const g = db.groups.find((x) => x.id === groupId);
   if (!g) return res.status(404).json({ detail: "Группа не найдена" });
@@ -1069,7 +1268,7 @@ app.put("/api/admin/groups/:group_id", authMiddleware, requireRole("admin"), (re
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/groups/:group_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/groups/:group_id", "/api/manager/groups/:group_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const annIds = db.announcementTargets.filter((at) => at.group_id === groupId).map((at) => at.announcement_id);
   db.announcementTargets = db.announcementTargets.filter((at) => at.group_id !== groupId);
@@ -1080,7 +1279,7 @@ app.delete("/api/admin/groups/:group_id", authMiddleware, requireRole("admin"), 
   res.json({ ok: true });
 });
 
-app.post("/api/admin/groups/:group_id/teachers", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/groups/:group_id/teachers", "/api/manager/groups/:group_id/teachers"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const teacherId = req.body.teacher_id;
   const t = db.users.find((u) => u.id === teacherId);
@@ -1093,7 +1292,7 @@ app.post("/api/admin/groups/:group_id/teachers", authMiddleware, requireRole("ad
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/groups/:group_id/teachers/:teacher_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/groups/:group_id/teachers/:teacher_id", "/api/manager/groups/:group_id/teachers/:teacher_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const teacherId = parseInt(req.params.teacher_id, 10);
   db.groupTeachers = db.groupTeachers.filter(
@@ -1102,7 +1301,7 @@ app.delete("/api/admin/groups/:group_id/teachers/:teacher_id", authMiddleware, r
   res.json({ ok: true });
 });
 
-app.post("/api/admin/groups/:group_id/students", authMiddleware, requireRole("admin"), (req, res) => {
+app.post(["/api/admin/groups/:group_id/students", "/api/manager/groups/:group_id/students"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const userId = req.body.user_id;
   const s = db.users.find((u) => u.id === userId);
@@ -1115,7 +1314,7 @@ app.post("/api/admin/groups/:group_id/students", authMiddleware, requireRole("ad
   res.json({ ok: true });
 });
 
-app.delete("/api/admin/groups/:group_id/students/:user_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete(["/api/admin/groups/:group_id/students/:user_id", "/api/manager/groups/:group_id/students/:user_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const groupId = parseInt(req.params.group_id, 10);
   const userId = parseInt(req.params.user_id, 10);
   db.groupStudents = db.groupStudents.filter(
@@ -1134,8 +1333,18 @@ app.get(["/api/admin/themes/:theme_id/materials", "/api/manager/themes/:theme_id
 
 app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { theme_id, title, type, url, order_index } = req.body;
+  const { rec, missing } = resolveUploadedFile(req.body);
+  if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
   const id = db.getId("material");
-  db.materials.push({ id, theme_id, title, type, url, order_index: order_index || 0 });
+  db.materials.push({
+    id,
+    theme_id,
+    title,
+    type,
+    url: rec ? fileUrlFor(rec) : url,
+    order_index: order_index || 0,
+    file_id: rec ? rec.id : null,
+  });
   res.json({ id });
 });
 
@@ -1144,6 +1353,12 @@ app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_
   const m = db.materials.find((x) => x.id === matId);
   if (!m) return res.status(404).json({ detail: "Материал не найден" });
   Object.assign(m, req.body);
+  if (req.body.url !== undefined || req.body.file_id !== undefined) {
+    const { rec, missing } = resolveUploadedFile(req.body);
+    if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+    m.file_id = rec ? rec.id : null;
+    if (rec) m.url = fileUrlFor(rec);
+  }
   res.json({ ok: true });
 });
 
@@ -1206,6 +1421,9 @@ const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
   const cleanTitle = (title || "").trim();
   if (!cleanTitle) return res.status(400).json({ detail: "Введите название материала" });
 
+  const { rec, missing } = resolveUploadedFile(req.body);
+  if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+
   let cids: number[] = Array.isArray(course_ids) ? course_ids.map(Number) : [];
   if (course_id && !cids.includes(Number(course_id))) {
     cids.push(Number(course_id));
@@ -1224,9 +1442,10 @@ const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
     title: cleanTitle,
     description: description || "",
     type: type || "note",
-    url: url || "",
+    url: rec ? fileUrlFor(rec) : url || "",
     order_index: order_index !== undefined ? Number(order_index) : 0,
     created_at: new Date().toISOString(),
+    file_id: rec ? rec.id : null,
   };
   db.extraMaterials.push(newEm);
 
@@ -1270,6 +1489,12 @@ app.put("/api/admin/extra-materials/:id", authMiddleware, requireRole("admin", "
   if (req.body.type !== undefined) em.type = req.body.type;
   if (req.body.url !== undefined) em.url = req.body.url;
   if (req.body.order_index !== undefined) em.order_index = Number(req.body.order_index);
+  if (req.body.file_id !== undefined || req.body.url !== undefined) {
+    const { rec: fileRec, missing } = resolveUploadedFile(req.body);
+    if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+    em.file_id = fileRec ? fileRec.id : null;
+    if (fileRec) em.url = fileUrlFor(fileRec);
+  }
   if (Array.isArray(req.body.course_ids)) {
     em.course_ids = req.body.course_ids.map(Number);
     em.course_id = em.course_ids[0] || undefined;
@@ -1397,34 +1622,83 @@ app.delete(["/api/admin/questions/:question_id", "/api/manager/questions/:questi
   res.json({ ok: true });
 });
 
+// Публичная отдача загруженных файлов по ID (с поддержкой Range/частичной загрузки)
+app.get("/api/files/:file_id", (req, res) => {
+  const fileId = parseInt(req.params.file_id, 10);
+  const rec = db.uploadedFiles.find((f) => f.id === fileId);
+  if (!rec) return res.status(404).json({ detail: "Файл не найден" });
+  const filePath = path.join(UPLOAD_DIR, rec.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ detail: "Файл отсутствует на диске" });
+  const download = req.query.download === "1";
+  const display = rec.original_name || rec.filename;
+  const asciiName = display.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_") || "file";
+  res.setHeader(
+    "Content-Disposition",
+    `${download ? "attachment" : "inline"}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(display)}`
+  );
+  res.sendFile(filePath, { headers: { "Content-Type": rec.mimetype || "application/octet-stream" } }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
 app.post("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (upload.single("file") as any), (req, res) => {
   if (!req.file) return res.status(400).json({ detail: "Файл не загружен" });
   const rec: UploadedFile = {
     id: db.getId("uploadedFile"),
     filename: req.file.filename,
-    original_name: req.file.originalname,
+    original_name: fixMojibake(req.file.originalname),
     mimetype: req.file.mimetype,
     size: req.file.size,
     uploaded_at: new Date().toISOString(),
   };
   db.uploadedFiles.push(rec);
-  res.json(rec);
+  res.json({ ...rec, url: fileUrlFor(rec) });
 });
 
 app.get("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (_req, res) => {
   res.json([...db.uploadedFiles].reverse());
 });
 
+// Переименование файла (меняет отображаемое имя и имя на диске)
+app.put(["/api/admin/uploads/:file_id", "/api/manager/uploads/:file_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+  const fileId = parseInt(req.params.file_id, 10);
+  const rec = db.uploadedFiles.find((f) => f.id === fileId);
+  if (!rec) return res.status(404).json({ detail: "Файл не найден" });
+  if (req.body.original_name === undefined) return res.status(400).json({ detail: "Не передано новое название" });
+  const newName = sanitizeUploadName(fixMojibake(String(req.body.original_name || "")));
+  if (!newName) return res.status(400).json({ detail: "Название файла не может быть пустым" });
+  rec.original_name = newName;
+  const oldPath = path.join(UPLOAD_DIR, rec.filename);
+  if (fs.existsSync(oldPath)) {
+    const target = uniqueUploadName(newName, rec.filename);
+    if (target !== rec.filename) {
+      try {
+        fs.renameSync(oldPath, path.join(UPLOAD_DIR, target));
+        rec.filename = target;
+      } catch (err: any) {
+        console.error("[Uploads] Не удалось переименовать файл на диске:", err.message);
+      }
+    }
+  }
+  db.save();
+  res.json(rec);
+});
+
 app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const fileId = parseInt(req.params.file_id, 10);
   const recIdx = db.uploadedFiles.findIndex((f) => f.id === fileId);
   if (recIdx === -1) return res.status(404).json({ detail: "Файл не найден" });
+  const refs = fileReferrers(fileId);
+  if (refs.length) {
+    return res.status(400).json({ detail: "Файл используется: " + refs.join("; ") + ". Сначала удалите эти материалы." });
+  }
   const rec = db.uploadedFiles[recIdx];
   const filePath = path.join(UPLOAD_DIR, rec.filename);
   if (fs.existsSync(filePath)) {
     try { fs.unlinkSync(filePath); } catch {}
   }
   db.uploadedFiles.splice(recIdx, 1);
+  db.save();
   res.json({ ok: true });
 });
 
@@ -1456,10 +1730,27 @@ app.get("/api/manager/courses", authMiddleware, requireRole("manager"), (_req, r
 });
 
 app.get("/api/manager/users", authMiddleware, requireRole("manager"), (_req, res) => {
-  const users = db.users
-    .filter((u) => ["teacher", "student"].includes(u.role))
-    .map((u) => ({ id: u.id, name: u.name, username: u.username, role: u.role }));
-  res.json(users);
+  const out = db.users
+    .filter((u) => u.role !== "admin")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((u) => {
+      const base = {
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        role: u.role,
+        extra_roles: u.extra_roles || "",
+        is_active: u.is_active !== false,
+        phone: u.phone || "",
+        created_at: u.created_at || null,
+        last_login_at: u.last_login_at || null,
+        teacher_groups: curatorGroupsOf(u),
+      };
+      // группы-ученики отдаём только ученикам — таблица методиста показывает их лишь там
+      if (!isStudent(u)) return base;
+      return { ...base, groups: studentGroupsOf(u) };
+    });
+  res.json(out);
 });
 
 app.get("/api/manager/groups", authMiddleware, requireRole("manager"), (_req, res) => {
@@ -1480,26 +1771,34 @@ app.get("/api/manager/groups", authMiddleware, requireRole("manager"), (_req, re
   res.json(out);
 });
 
-app.post("/api/manager/students", authMiddleware, requireRole("manager"), (req, res) => {
-  const { name, username, password, group_ids } = req.body;
+app.post("/api/manager/users", authMiddleware, requireRole("manager"), (req, res) => {
+  const { name, username, password, role, extra_roles, is_active, group_ids } = req.body;
   const cleanName = (name || "").trim();
   const cleanUser = (username || "").trim();
   if (!cleanName || !cleanUser || !password) {
     return res.status(400).json({ detail: "Заполните ФИО, логин и пароль" });
   }
+  if (!["student", "teacher"].includes(role)) {
+    return res.status(400).json({ detail: "Методист может создавать только учеников и кураторов" });
+  }
   if (db.users.find((u) => u.username === cleanUser)) {
     return res.status(400).json({ detail: "Логин занят" });
   }
+  const cleanedExtras = (Array.isArray(extra_roles) ? extra_roles : String(extra_roles || "").split(","))
+    .map((r: unknown) => String(r).trim())
+    .filter((r: string) => r && r !== "manager" && r !== role);
   const id = db.getId("user");
   db.users.push({
     id,
-    role: "student",
-    extra_roles: "",
+    role,
+    extra_roles: normalizeExtraRoles(role, cleanedExtras),
     username: cleanUser,
     password_hash: bcrypt.hashSync(password, 10),
     name: cleanName,
+    is_active: is_active !== false,
+    created_at: new Date().toISOString(),
   });
-  if (Array.isArray(group_ids)) {
+  if (role === "student" && Array.isArray(group_ids)) {
     for (const gid of group_ids) {
       if (db.groups.find((g) => g.id === gid)) {
         db.groupStudents.push({ group_id: gid, user_id: id });
@@ -1509,45 +1808,39 @@ app.post("/api/manager/students", authMiddleware, requireRole("manager"), (req, 
   res.json({ id });
 });
 
-app.get("/api/manager/students", authMiddleware, requireRole("manager"), (_req, res) => {
-  const students = db.users
-    .filter((u) => isStudent(u))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const out = students.map((s) => {
-    const gIds = db.groupStudents.filter((gs) => gs.user_id === s.id).map((gs) => gs.group_id);
-    const groups = gIds
-      .map((gid) => {
-        const g = db.groups.find((x) => x.id === gid);
-        if (!g) return null;
-        const c = db.courses.find((x) => x.id === g.course_id);
-        return { id: g.id, name: g.name, course: c ? c.title : "" };
-      })
-      .filter(Boolean);
-    return { id: s.id, name: s.name, username: s.username, groups };
-  });
-  res.json(out);
-});
-
-app.put("/api/manager/students/:user_id", authMiddleware, requireRole("manager"), (req, res) => {
+app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (req, res) => {
   const userId = parseInt(req.params.user_id, 10);
-  const u = db.users.find((x) => x.id === userId && isStudent(x));
-  if (!u) return res.status(404).json({ detail: "Ученик не найден" });
-  if (req.body.name !== undefined) u.name = req.body.name;
-  if (req.body.username !== undefined) {
-    if (db.users.find((x) => x.username === req.body.username && x.id !== userId)) {
+  const u = db.users.find((x) => x.id === userId);
+  if (!u || u.role === "admin") return res.status(404).json({ detail: "Пользователь не найден" });
+  const { name, username, role, extra_roles, is_active, group_ids, curator_group_ids } = req.body;
+  if (name !== undefined && String(name).trim()) u.name = String(name).trim();
+  if (username !== undefined) {
+    const cleanUser = String(username).trim();
+    if (!cleanUser) return res.status(400).json({ detail: "Логин не может быть пустым" });
+    if (db.users.find((x) => x.username === cleanUser && x.id !== userId)) {
       return res.status(400).json({ detail: "Логин занят" });
     }
-    u.username = req.body.username;
+    u.username = cleanUser;
   }
-  res.json({ ok: true });
-});
-
-app.put("/api/manager/students/:user_id/password", authMiddleware, requireRole("manager"), (req, res) => {
-  const userId = parseInt(req.params.user_id, 10);
-  const u = db.users.find((x) => x.id === userId && isStudent(x));
-  if (!u) return res.status(404).json({ detail: "Ученик не найден" });
-  u.password_hash = bcrypt.hashSync(req.body.password, 10);
-  res.json({ ok: true });
+  if (is_active !== undefined) u.is_active = !!is_active;
+  if (u.role !== "manager") {
+    if (role !== undefined) {
+      if (!["student", "teacher"].includes(role)) {
+        return res.status(400).json({ detail: "Методист может назначать только роли ученика и куратора" });
+      }
+      u.role = role;
+      u.extra_roles = normalizeExtraRoles(u.role, u.extra_roles);
+    }
+    if (extra_roles !== undefined) {
+      const cleaned = (Array.isArray(extra_roles) ? extra_roles : String(extra_roles).split(","))
+        .map((r: unknown) => String(r).trim())
+        .filter((r: string) => r && r !== "manager");
+      u.extra_roles = normalizeExtraRoles(u.role, cleaned);
+    }
+    if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
+    if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
+  }
+  res.json({ ...userInfo(u), is_active: u.is_active !== false });
 });
 
 app.post("/api/manager/students/:user_id/groups/:group_id", authMiddleware, requireRole("manager"), (req, res) => {
@@ -1658,6 +1951,12 @@ app.put("/api/manager/extra-materials/:id", authMiddleware, requireRole("manager
   if (req.body.type !== undefined) em.type = req.body.type;
   if (req.body.url !== undefined) em.url = req.body.url;
   if (req.body.order_index !== undefined) em.order_index = Number(req.body.order_index);
+  if (req.body.file_id !== undefined || req.body.url !== undefined) {
+    const { rec: fileRec, missing } = resolveUploadedFile(req.body);
+    if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+    em.file_id = fileRec ? fileRec.id : null;
+    if (fileRec) em.url = fileUrlFor(fileRec);
+  }
   if (Array.isArray(req.body.course_ids)) {
     em.course_ids = req.body.course_ids.map(Number);
     em.course_id = em.course_ids[0] || undefined;
@@ -1680,13 +1979,13 @@ app.post("/api/manager/uploads", authMiddleware, requireRole("manager"), (upload
   const rec: UploadedFile = {
     id: db.getId("uploadedFile"),
     filename: req.file.filename,
-    original_name: req.file.originalname,
+    original_name: fixMojibake(req.file.originalname),
     mimetype: req.file.mimetype,
     size: req.file.size,
     uploaded_at: new Date().toISOString(),
   };
   db.uploadedFiles.push(rec);
-  res.json(rec);
+  res.json({ ...rec, url: fileUrlFor(rec) });
 });
 
 app.get("/api/manager/uploads", authMiddleware, requireRole("manager"), (_req, res) => {
@@ -1697,12 +1996,17 @@ app.delete("/api/manager/uploads/:file_id", authMiddleware, requireRole("manager
   const fileId = parseInt(req.params.file_id, 10);
   const recIdx = db.uploadedFiles.findIndex((f) => f.id === fileId);
   if (recIdx === -1) return res.status(404).json({ detail: "Файл не найден" });
+  const refs = fileReferrers(fileId);
+  if (refs.length) {
+    return res.status(400).json({ detail: "Файл используется: " + refs.join("; ") + ". Сначала удалите эти материалы." });
+  }
   const rec = db.uploadedFiles[recIdx];
   const filePath = path.join(UPLOAD_DIR, rec.filename);
   if (fs.existsSync(filePath)) {
     try { fs.unlinkSync(filePath); } catch {}
   }
   db.uploadedFiles.splice(recIdx, 1);
+  db.save();
   res.json({ ok: true });
 });
 
@@ -2245,7 +2549,7 @@ function themeGrants(userId: number): Set<number> {
   return new Set(db.themeUnlocks.filter((gu) => gu.user_id === userId).map((gu) => gu.theme_id));
 }
 
-app.get("/api/student/courses", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/courses", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const cids = studentCourseIds(req.user!.id);
   const courses = db.courses
     .filter((c) => cids.includes(c.id))
@@ -2253,7 +2557,7 @@ app.get("/api/student/courses", authMiddleware, requireRole("student"), (req: Au
   res.json(courses);
 });
 
-app.get("/api/student/course/:course_id/themes", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/course/:course_id/themes", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   if (!inStudentCourse(req.user!.id, courseId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -2393,7 +2697,7 @@ app.delete(
   }
 );
 
-app.get("/api/student/test/:test_id", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/test/:test_id", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const testId = parseInt(req.params.test_id, 10);
   const test = db.tests.find((t) => t.id === testId);
   if (!test) return res.status(404).json({ detail: "Тест не найден" });
@@ -2425,7 +2729,7 @@ app.get("/api/student/test/:test_id", authMiddleware, requireRole("student"), (r
   });
 });
 
-app.post("/api/student/test/:test_id/submit", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.post("/api/student/test/:test_id/submit", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const testId = parseInt(req.params.test_id, 10);
   const test = db.tests.find((t) => t.id === testId);
   if (!test) return res.status(404).json({ detail: "Тест не найден" });
@@ -2595,7 +2899,7 @@ app.get("/api/student/announcements", authMiddleware, requireRole("student"), (r
   res.json(out);
 });
 
-app.get("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme || !inStudentCourse(req.user!.id, theme.course_id)) {
@@ -2620,7 +2924,7 @@ app.get("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("stude
   res.json(rows);
 });
 
-app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme || !inStudentCourse(req.user!.id, theme.course_id)) {
@@ -2656,7 +2960,7 @@ app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("stud
   res.json({ id: msgId });
 });
 
-app.get("/api/student/course/:course_id/extra-materials", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/course/:course_id/extra-materials", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   if (!inStudentCourse(req.user!.id, courseId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -2679,7 +2983,7 @@ app.get("/api/student/course/:course_id/extra-materials", authMiddleware, requir
   res.json(mats);
 });
 
-app.get("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.get("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em || !canStudentAccessExtra(req.user!.id, em)) {
@@ -2704,7 +3008,7 @@ app.get("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("st
   res.json(rows);
 });
 
-app.post("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+app.post("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em || !canStudentAccessExtra(req.user!.id, em)) {
@@ -2968,6 +3272,12 @@ app.put("/api/staff/extra-materials/:id", authMiddleware, requireRole("admin", "
   if (req.body.type !== undefined) em.type = req.body.type;
   if (req.body.url !== undefined) em.url = req.body.url;
   if (req.body.order_index !== undefined) em.order_index = Number(req.body.order_index);
+  if (req.body.file_id !== undefined || req.body.url !== undefined) {
+    const { rec: fileRec, missing } = resolveUploadedFile(req.body);
+    if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+    em.file_id = fileRec ? fileRec.id : null;
+    if (fileRec) em.url = fileUrlFor(fileRec);
+  }
   if (Array.isArray(req.body.course_ids)) {
     em.course_ids = req.body.course_ids.map(Number);
     em.course_id = em.course_ids[0] || undefined;
@@ -3209,10 +3519,15 @@ app.get(["/api/staff/repository/themes", "/api/admin/repository/themes", "/api/m
 
 app.post(["/api/staff/repository/materials", "/api/admin/repository/materials", "/api/manager/repository/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const { title, playlist_name, type, url, description, order_index, file_name, file_size } = req.body;
-  const cleanTitle = (title || "").trim();
+
+  // Разрешаем файл: явный file_id, ссылка /api/files/<id>[.ext] или старый формат /uploads/<имя>
+  const { rec: fileRec, missing } = resolveUploadedFile(req.body);
+  if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+
+  const cleanUrl = fileRec ? fileUrlFor(fileRec) : (url || "").trim();
+  const cleanTitle = (title || "").trim() || (fileRec ? (fileRec.original_name || "").replace(/\.[^.]+$/, "") : "");
   const cleanPlaylist = (playlist_name || "").trim() || "Общие материалы";
-  const cleanType = (type || "video").trim();
-  const cleanUrl = (url || "").trim();
+  const cleanType = (type || "").trim() || (fileRec ? typeFromMime(fileRec.mimetype) : "video");
 
   if (!cleanTitle) {
     return res.status(400).json({ detail: "Введите название материала / урока" });
@@ -3234,8 +3549,9 @@ app.post(["/api/staff/repository/materials", "/api/admin/repository/materials", 
     url: cleanUrl,
     description: (description || "").trim(),
     order_index: nextOrder,
-    file_name: file_name || "",
-    file_size: file_size || 0,
+    file_name: fileRec ? fileRec.original_name : file_name || "",
+    file_size: fileRec ? fileRec.size : file_size || 0,
+    file_id: fileRec ? fileRec.id : null,
     created_at: new Date().toISOString(),
   };
 
@@ -3257,6 +3573,20 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
   if (req.body.order_index !== undefined) item.order_index = Number(req.body.order_index);
   if (req.body.file_name !== undefined) item.file_name = req.body.file_name;
 
+  // Разрешаем привязку к файлу, если переданы file_id или ссылка
+  if (req.body.file_id !== undefined || req.body.url !== undefined) {
+    const { rec: fileRec, missing } = resolveUploadedFile(req.body);
+    if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
+    if (fileRec) {
+      item.file_id = fileRec.id;
+      item.url = fileUrlFor(fileRec);
+      item.file_name = fileRec.original_name;
+      item.file_size = fileRec.size;
+    } else {
+      item.file_id = null;
+    }
+  }
+
   // Автоматическая синхронизация с уроками учеников
   db.materials.forEach((m: any) => {
     if (m.repository_material_id === id || m.storage_id === id || m.title === oldTitle || m.title === item.title) {
@@ -3265,6 +3595,7 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
       m.title = item.title;
       m.type = item.type;
       m.url = item.url;
+      m.file_id = item.file_id;
     }
   });
 
@@ -3287,8 +3618,29 @@ app.delete(["/api/staff/repository/materials/:id", "/api/admin/repository/materi
   db.materials = db.materials.filter((m) => m.repository_material_id !== id && m.storage_id !== id);
   const removed = before - db.materials.length;
 
-  // 4. Удаляем физический файл с диска (если он есть)
-  if (repoItem && repoItem.url) {
+  // 4. Физический файл удаляем, только если он больше нигде не используется
+  if (repoItem && repoItem.file_id != null) {
+    const fid = repoItem.file_id;
+    const stillUsed =
+      db.storageMaterials.some((x) => x.file_id === fid) ||
+      db.materials.some((m) => m.file_id === fid) ||
+      db.extraMaterials.some((em) => em.file_id === fid);
+    if (!stillUsed) {
+      const rec = db.uploadedFiles.find((f) => f.id === fid);
+      if (rec) {
+        const filePath = path.join(UPLOAD_DIR, rec.filename);
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+            console.log("[Repository] Файл удалён с диска: " + filePath);
+          } catch (err: any) {
+            console.log("[Repository] Не удалось удалить файл " + filePath + ": " + err.message);
+          }
+        }
+        db.uploadedFiles = db.uploadedFiles.filter((f) => f.id !== fid);
+      }
+    }
+  } else if (repoItem && repoItem.url) {
     const urlPath = String(repoItem.url).trim();
     if (urlPath.startsWith("/uploads/")) {
       const fileName = urlPath.replace("/uploads/", "");
@@ -3348,6 +3700,7 @@ const importPlaylistHandler = (req: Request, res: Response) => {
       title: item.title,
       type: item.type,
       url: item.url,
+      file_id: item.file_id,
       order_index: item.order_index || 0,
     });
   }
@@ -3395,6 +3748,7 @@ app.post(["/api/staff/courses/:course_id/themes/:theme_id/attach-material", "/ap
     title: repoItem.title,
     type: repoItem.type,
     url: repoItem.url,
+    file_id: repoItem.file_id,
     order_index: nextOrder,
   };
   db.materials.push(newMat);
@@ -3433,6 +3787,7 @@ const importExtraPlaylistHandler = (req: Request, res: Response) => {
       description: item.description || "",
       type: item.type,
       url: item.url,
+      file_id: item.file_id,
       order_index: curOrder++,
       created_at: new Date().toISOString(),
     };
@@ -3481,6 +3836,7 @@ app.post(["/api/staff/courses/:course_id/attach-extra-material", "/api/admin/cou
     description: repoItem.description || "",
     type: repoItem.type,
     url: repoItem.url,
+    file_id: repoItem.file_id,
     order_index: nextOrder,
     created_at: new Date().toISOString(),
   };

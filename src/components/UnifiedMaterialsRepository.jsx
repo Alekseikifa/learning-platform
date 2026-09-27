@@ -119,7 +119,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       }
       setForm(prev => ({
         ...prev,
-        url: "/uploads/" + res.filename,
+        url: res.url || ("/api/files/" + res.id),
         type: detectedType,
         title: prev.title || file.name.replace(/\.[^/.]+$/, ""),
       }));
@@ -715,7 +715,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                     <div className="row" style={{ gap: 8, alignItems: "center" }}>
                       <span className="small muted" style={{ whiteSpace: "nowrap" }}>Либо прямая ссылка:</span>
                       <input
-                        placeholder="https://... или /uploads/..."
+                        placeholder="https://... или /api/files/..."
                         value={form.url}
                         onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                         required

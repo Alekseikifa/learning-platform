@@ -6,15 +6,18 @@
       "extra_roles": "manager,teacher,student",
       "username": "admin",
       "password_hash": "$2a$10$c3ncwiYAj5OL8oF3P57A3.mmrU.tXbbsVEv8zik2lHoPfl0tVLTCK",
-      "name": "Администратор"
+      "name": "Администратор",
+      "last_login_at": "2026-09-27T11:32:50.436Z"
     },
     {
       "id": 2,
       "role": "student",
-      "extra_roles": "student,teacher,manager",
+      "extra_roles": "teacher,manager",
       "username": "kifa",
       "password_hash": "$2a$10$PhE2DoLTlIuF/msfma.UM.DRNO1VcOfVLfI69GDz4IwzsatuTkRdu",
-      "name": "Волков Алексей"
+      "name": "Волков Алексей",
+      "phone": "",
+      "is_active": true
     },
     {
       "id": 3,
@@ -22,7 +25,8 @@
       "extra_roles": "",
       "username": "manager",
       "password_hash": "$2a$10$Jt8LaMJXwyEa6gidR/aHzeEVEPq7l6NxueXsMkfPqtXuekSgnhyZ6",
-      "name": "Мария Смирнова (Методист)"
+      "name": "Мария Смирнова (Методист)",
+      "is_active": true
     },
     {
       "id": 4,
@@ -37,8 +41,9 @@
       "role": "student",
       "extra_roles": "",
       "username": "1",
-      "password_hash": "$2a$10$/HMQA8Abtjy7szrqVVErbuWihNm/r2Cgk8.JApuWTveFwKA9VwWx.",
-      "name": "Петров Денис"
+      "password_hash": "$2a$10$2qtWOR/4RIGrUyy4c.16AeA/L2ygI1Tdj0lqI1MxUCuxBsCfbv.Q6",
+      "name": "Петров Денис",
+      "is_active": true
     }
   ],
   "courses": [
@@ -91,18 +96,18 @@
       "teacher_id": 3
     },
     {
-      "group_id": 3,
+      "group_id": 2,
       "teacher_id": 2
     }
   ],
   "groupStudents": [
     {
       "group_id": 3,
-      "user_id": 2
+      "user_id": 4
     },
     {
       "group_id": 3,
-      "user_id": 4
+      "user_id": 2
     }
   ],
   "themes": [
@@ -153,24 +158,6 @@
       "type": "video",
       "url": "https://youtu.be/4M4h8xJvyBM",
       "order_index": 4
-    },
-    {
-      "id": 63,
-      "theme_id": 16,
-      "repository_material_id": 25,
-      "storage_id": 25,
-      "title": "Конспект Библейские заветы Дмитрий Бобков",
-      "type": "document",
-      "url": "/uploads/1790276834919-qmcjrel.docx",
-      "order_index": 5
-    },
-    {
-      "id": 64,
-      "theme_id": 16,
-      "title": "klklkmlkm",
-      "type": "note",
-      "url": ";l,\n[p,[\n,,[[pok,l[pl",
-      "order_index": 6
     }
   ],
   "extraMaterials": [
@@ -236,18 +223,6 @@
       "file_name": "",
       "file_size": 0,
       "created_at": "2026-09-24T19:06:27.579Z"
-    },
-    {
-      "id": 25,
-      "title": "Конспект Библейские заветы Дмитрий Бобков",
-      "playlist_name": "Библейские Заветы. Дмитрий Бобков",
-      "type": "document",
-      "url": "/uploads/1790276834919-qmcjrel.docx",
-      "description": "",
-      "order_index": 5,
-      "file_name": "",
-      "file_size": 0,
-      "created_at": "2026-09-24T19:07:21.189Z"
     }
   ],
   "tests": [
@@ -1508,16 +1483,7 @@
     "allow_review_answers": "true",
     "notify_curators_on_test": "true"
   },
-  "uploadedFiles": [
-    {
-      "id": 28,
-      "filename": "1790276834919-qmcjrel.docx",
-      "original_name": "ÐÐ¾Ð½ÑÐ¿ÐµÐºÑ ÐÐ¸Ð±Ð»ÐµÐ¹ÑÐºÐ¸Ðµ Ð·Ð°Ð²ÐµÑÑ ÐÐ¼Ð¸ÑÑÐ¸Ð¹ ÐÐ¾Ð±ÐºÐ¾Ð².docx",
-      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "size": 13353,
-      "uploaded_at": "2026-09-24T19:07:14.926Z"
-    }
-  ],
+  "uploadedFiles": [],
   "phoneInvites": [
     {
       "id": 1,
@@ -1666,9 +1632,9 @@
     "course": 6,
     "group": 4,
     "theme": 17,
-    "material": 65,
+    "material": 66,
     "extraMaterial": 2,
-    "storageMaterial": 26,
+    "storageMaterial": 27,
     "test": 3,
     "question": 34,
     "answer": 137,
@@ -1676,8 +1642,8 @@
     "attemptAnswer": 55,
     "announcement": 3,
     "chatMessage": 7,
-    "uploadedFile": 29,
-    "phoneInvite": 3,
+    "uploadedFile": 30,
+    "phoneInvite": 4,
     "notification": 10,
     "directMessage": 5,
     "themeUnlock": 1

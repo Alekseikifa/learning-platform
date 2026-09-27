@@ -109,7 +109,17 @@ export default function StudentPanel() {
           )}
 
           {coursesLoading && <div className="card muted">Загрузка курсов…</div>}
-          {!coursesLoading && coursesErr && (
+          {!coursesLoading && coursesErr && coursesErr.includes("не активирован") && (
+            <div className="card" style={{ border: "1px solid #f59e0b", background: "#fffbeb" }}>
+              <h3 style={{ margin: "0 0 6px" }}>🚧 Доступ к курсам не активирован</h3>
+              <div className="muted">
+                Учтите: курсы появятся после того, как методист или администратор
+                включит галочку «Активен» в вашей карточке. Если вы считаете, что это
+                ошибка — обратитесь к методисту.
+              </div>
+            </div>
+          )}
+          {!coursesLoading && coursesErr && !coursesErr.includes("не активирован") && (
             <div className="card" style={{ color: "#dc2626" }}>
               Не удалось загрузить курсы: {coursesErr}
             </div>

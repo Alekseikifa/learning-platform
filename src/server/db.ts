@@ -2,6 +2,21 @@ import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
 
+/**
+ * Чинит кракозябры в именах файлов: байты UTF-8, прочитанные как latin1
+ * (например "ÐšÐ¾Ð½ÑÐµÐ¿Ñ‚" вместо "Конспект").
+ * Возвращает исходную строку, если исправление небезопасно.
+ */
+export function fixMojibake(name: string): string {
+  if (!name || /[Ѐ-ӿ]/.test(name)) return name;
+  if (Array.from(name).some((ch) => ch.charCodeAt(0) > 0xff)) return name;
+  const decoded = Buffer.from(name, "latin1").toString("utf8");
+  if (decoded.includes("�")) return name;
+  if (Buffer.from(decoded, "utf8").toString("latin1") !== name) return name;
+  if (!/[А-Яа-яЁё]/.test(decoded)) return name;
+  return decoded;
+}
+
 export interface User {
   id: number;
   role: string;
@@ -9,6 +24,14 @@ export interface User {
   username: string;
   password_hash: string;
   name: string;
+  /** доступ к курсам; отсутствие поля = активен (обратная совместимость) */
+  is_active?: boolean;
+  /** телефон, указанный при регистрации (у старых пользователей может отсутствовать) */
+  phone?: string;
+  /** дата регистрации (ISO); отсутствует у пользователей, созданных до появления поля */
+  created_at?: string;
+  /** последняя авторизация (ISO); null/отсутствие = ещё не входил после обновления */
+  last_login_at?: string | null;
 }
 
 export interface Course {
@@ -50,6 +73,8 @@ export interface Material {
   order_index: number;
   repository_material_id?: number | null;
   storage_id?: number | null;
+  /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
+  file_id?: number | null;
 }
 
 export interface Test {
@@ -123,6 +148,8 @@ export interface ExtraMaterial {
   url: string;
   order_index: number;
   created_at: string;
+  /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
+  file_id?: number | null;
 }
 
 export interface StorageMaterial {
@@ -130,12 +157,14 @@ export interface StorageMaterial {
   title: string;
   playlist_name: string; // Плейлист / раздел, объединяющий материалы (уроки)
   type: string;       // "video" | "audio" | "image" | "document" | "note" | "link"
-  url: string;        // Ссылка, путь /uploads/... или текст заметки
+  url: string;        // Ссылка: /api/files/<id>[.ext] для загруженных, внешний URL или текст заметки
   description?: string;
   order_index: number;
   file_name?: string;
   file_size?: number;
   created_at: string;
+  /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
+  file_id?: number | null;
 }
 
 export interface ChatMessage {
@@ -167,6 +196,12 @@ export interface PhoneInvite {
   role: string;
   note: string;
   created_at: string;
+  /** дополнительные роли (через запятую), которые получит пользователь при регистрации */
+  extra_roles?: string;
+  /** группы, в которые пользователь попадёт как ученик */
+  group_ids?: number[];
+  /** группы, в которых пользователь станет куратором */
+  curator_group_ids?: number[];
 }
 
 export interface Notification {
@@ -293,6 +328,13 @@ class DatabaseStore {
         Object.assign(this, data);
         // старые файлы базы не содержат новые ключи счётчиков — дополняем дефолтами
         this.nextId = { ...nextIdDefaults, ...this.nextId };
+        // миграция старых баз: телефон = логин у пользователей, зарегистрированных по номеру
+        for (const u of this.users) {
+          if (!u.phone && u.username && /^\+?\d{7,15}$/.test(u.username)) {
+            u.phone = u.username;
+          }
+        }
+        this.migrateUploadRefs();
         console.log("[DatabaseStore] База данных успешно загружена из файла database.json");
         return;
       }
@@ -302,6 +344,90 @@ class DatabaseStore {
     this.seed();
     this.save();
     console.log("[DatabaseStore] Создан начальный файл database.json");
+  }
+
+  /**
+   * Миграция загруженных файлов:
+   * 1) чинит кракозябры в original_name;
+   * 2) переводит ссылки вида /uploads/<имя> на /api/files/<id>[.ext]
+   *    (создаёт запись uploadedFiles для файлов на диске, которых ещё нет в базе).
+   */
+  private migrateUploadRefs() {
+    const uploadsDir = "/var/www/learning-platform/uploads";
+    const extMime: Record<string, string> = {
+      ".pdf": "application/pdf",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".ppt": "application/vnd.ms-powerpoint",
+      ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ".txt": "text/plain; charset=utf-8",
+      ".zip": "application/zip",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+      ".mp4": "video/mp4",
+      ".webm": "video/webm",
+      ".mov": "video/quicktime",
+      ".m4v": "video/x-m4v",
+      ".mp3": "audio/mpeg",
+      ".wav": "audio/wav",
+      ".ogg": "audio/ogg",
+      ".m4a": "audio/mp4",
+    };
+
+    for (const f of this.uploadedFiles) {
+      const fixed = fixMojibake(f.original_name);
+      if (fixed !== f.original_name) f.original_name = fixed;
+    }
+
+    const byName = new Map<string, UploadedFile>();
+    for (const f of this.uploadedFiles) {
+      if (!byName.has(f.filename)) byName.set(f.filename, f);
+    }
+
+    const items = [...this.storageMaterials, ...this.materials, ...this.extraMaterials];
+    for (const m of items) {
+      if (typeof m.url !== "string") continue;
+      const url = m.url.trim();
+      if (!url.startsWith("/uploads/")) continue;
+      let fname = url.slice("/uploads/".length);
+      try {
+        fname = decodeURIComponent(fname);
+      } catch {}
+      let rec = byName.get(fname);
+      if (!rec) {
+        const filePath = path.join(uploadsDir, fname);
+        if (!fs.existsSync(filePath)) continue;
+        let size = 0;
+        let uploadedAt = new Date().toISOString();
+        try {
+          const st = fs.statSync(filePath);
+          size = st.size;
+          uploadedAt = st.mtime.toISOString();
+        } catch {}
+        rec = {
+          id: this.getId("uploadedFile"),
+          filename: fname,
+          original_name: fname,
+          mimetype: extMime[path.extname(fname).toLowerCase()] || "application/octet-stream",
+          size,
+          uploaded_at: uploadedAt,
+        };
+        this.uploadedFiles.push(rec);
+        byName.set(fname, rec);
+      }
+      const dot = rec.filename.lastIndexOf(".");
+      const ext = dot > 0 ? rec.filename.slice(dot) : "";
+      m.url = "/api/files/" + rec.id + ext;
+      m.file_id = rec.id;
+      if ("file_name" in m && !m.file_name) m.file_name = rec.original_name;
+      if ("file_size" in m && !m.file_size) m.file_size = rec.size;
+    }
   }
 
   constructor() {

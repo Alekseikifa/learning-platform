@@ -369,7 +369,7 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
                 )}
                 {m.url && (
                   <div className="small" style={{ marginTop: 6 }}>
-                    {m.url.startsWith("http") || m.url.startsWith("/uploads") ? (
+                    {m.url.startsWith("http") || m.url.startsWith("/uploads") || m.url.startsWith("/api/files") ? (
                       <a href={m.url} target="_blank" rel="noreferrer" className="muted">
                         🔗 {m.url}
                       </a>

@@ -557,7 +557,7 @@ function ExtraMaterialRow({ material, currentCourseId, onDelete, onUnlink, onUpd
             )}
             {material.url && (
               <div className="small" style={{ marginTop: 2 }}>
-                {material.url.startsWith("http") || material.url.startsWith("/uploads") ? (
+                {material.url.startsWith("http") || material.url.startsWith("/uploads") || material.url.startsWith("/api/files") ? (
                   <a href={material.url} target="_blank" rel="noreferrer" className="muted">
                     🔗 {material.url}
                   </a>
@@ -667,6 +667,7 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
   const [materials, setMaterials] = useState([]);
   const [loadingMats, setLoadingMats] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [noteFor, setNoteFor] = useState(null);
 
   const loadMats = async () => {
     setLoadingMats(true);
@@ -788,9 +789,24 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     {m.url && (
-                      <a href={m.url} target="_blank" rel="noreferrer" className="btn ghost small" style={{ fontSize: 11, textDecoration: "none", padding: "2px 6px" }}>
-                        ↗ Открыть
-                      </a>
+                      m.type === "note" ? (
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          style={{ fontSize: 11, padding: "2px 6px" }}
+                          onClick={() => setNoteFor(m)}
+                        >
+                          📖 Читать
+                        </button>
+                      ) : m.url.startsWith("http") || m.url.startsWith("/uploads") || m.url.startsWith("/api/files") ? (
+                        <a href={m.url} target="_blank" rel="noreferrer" className="btn ghost small" style={{ fontSize: 11, textDecoration: "none", padding: "2px 6px" }}>
+                          ↗ Открыть
+                        </a>
+                      ) : (
+                        <span className="muted small" style={{ fontSize: 11 }} title={m.url}>
+                          📝 {m.url.slice(0, 60)}{m.url.length > 60 ? "…" : ""}
+                        </span>
+                      )
                     )}
                     <button
                       type="button"
@@ -824,6 +840,31 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
             reload();
           }}
         />
+      )}
+
+      {noteFor && (
+        <Modal onClose={() => setNoteFor(null)} innerStyle={{ maxWidth: 640 }}>
+          <h3>📝 {noteFor.title}</h3>
+          {noteFor.description && <div className="muted small">{noteFor.description}</div>}
+          <div
+            style={{
+              whiteSpace: "pre-wrap",
+              background: "var(--bg)",
+              padding: 14,
+              borderRadius: 8,
+              fontSize: 14,
+              lineHeight: 1.6,
+              maxHeight: 400,
+              overflowY: "auto",
+              marginTop: 10,
+            }}
+          >
+            {noteFor.url}
+          </div>
+          <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="btn ghost" onClick={() => setNoteFor(null)} aria-label="Закрыть">Закрыть</button>
+          </div>
+        </Modal>
       )}
     </div>
   );

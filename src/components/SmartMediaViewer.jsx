@@ -58,7 +58,8 @@ export function parseVideoUrl(rawUrl) {
 
   // 5. Прямые видеофайлы (.mp4, .webm, .ogg)
   const isVideoExt = /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url);
-  const isUploadVideo = url.startsWith('/uploads/') && !/\.(pdf|doc|docx|zip|rar|jpg|png|webp)$/i.test(url);
+  const isUploadFile = url.startsWith('/uploads/') || url.startsWith('/api/files/');
+  const isUploadVideo = isUploadFile && !/\.(pdf|doc|docx|zip|rar|jpg|png|webp)$/i.test(url);
   if (isVideoExt || isUploadVideo) {
     return {
       platform: 'Видеофайл',
