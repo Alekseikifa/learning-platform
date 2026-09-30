@@ -171,6 +171,8 @@ export interface ChatMessage {
   id: number;
   theme_id?: number | null;
   extra_material_id?: number | null;
+  /** группа, к которой относится обсуждение (null — старые/осиротевшие сообщения, видит только администрация) */
+  group_id?: number | null;
   user_id: number;
   text: string;
   created_at: string;
@@ -335,6 +337,7 @@ class DatabaseStore {
           }
         }
         this.migrateUploadRefs();
+        this.migrateChatGroups();
         console.log("[DatabaseStore] База данных успешно загружена из файла database.json");
         return;
       }
@@ -342,8 +345,38 @@ class DatabaseStore {
       console.error("[DatabaseStore] Ошибка загрузки database.json, откат к начальным данным:", err);
     }
     this.seed();
+    this.migrateChatGroups();
     this.save();
     console.log("[DatabaseStore] Создан начальный файл database.json");
+  }
+
+  /**
+   * Обсуждения привязаны к группе: проставляет group_id у старых сообщений,
+   * у которых он не был записан (тема → первая группа её курса,
+   * доп. материал → первая закреплённая группа, иначе первая группа курса).
+   */
+  private migrateChatGroups() {
+    for (const m of this.chatMessages) {
+      if (m.group_id !== undefined && m.group_id !== null) continue;
+      let gid: number | null = null;
+      if (m.theme_id != null) {
+        const t = this.themes.find((x) => x.id === m.theme_id);
+        const g = t ? this.groups.find((x) => x.course_id === t.course_id) : undefined;
+        gid = g ? g.id : null;
+      } else if (m.extra_material_id != null) {
+        const em = this.extraMaterials.find((x) => x.id === m.extra_material_id);
+        if (em) {
+          const gids = Array.isArray(em.group_ids) ? em.group_ids : [];
+          const cids = Array.isArray(em.course_ids) ? em.course_ids.slice() : [];
+          if (!cids.length && em.course_id) cids.push(em.course_id);
+          const g =
+            this.groups.find((x) => gids.includes(x.id)) ||
+            this.groups.find((x) => cids.includes(x.course_id));
+          gid = g ? g.id : null;
+        }
+      }
+      m.group_id = gid;
+    }
   }
 
   /**

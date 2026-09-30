@@ -403,7 +403,7 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
             </div>
             <button className="btn ghost" onClick={() => setChatMaterial(null)} aria-label="Закрыть чат">✕</button>
           </div>
-          <ChatPanel extraMaterialId={chatMaterial.id} apiBase="/api/teacher" />
+          <ChatPanel extraMaterialId={chatMaterial.id} groupId={group?.id} apiBase="/api/teacher" />
         </Modal>
       )}
     </div>

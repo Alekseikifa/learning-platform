@@ -7,7 +7,7 @@
       "username": "admin",
       "password_hash": "$2a$10$c3ncwiYAj5OL8oF3P57A3.mmrU.tXbbsVEv8zik2lHoPfl0tVLTCK",
       "name": "Администратор",
-      "last_login_at": "2026-09-27T11:32:50.436Z"
+      "last_login_at": "2026-09-28T12:55:21.752Z"
     },
     {
       "id": 2,
@@ -17,7 +17,8 @@
       "password_hash": "$2a$10$PhE2DoLTlIuF/msfma.UM.DRNO1VcOfVLfI69GDz4IwzsatuTkRdu",
       "name": "Волков Алексей",
       "phone": "",
-      "is_active": true
+      "is_active": true,
+      "last_login_at": "2026-09-28T15:21:44.989Z"
     },
     {
       "id": 3,
@@ -87,7 +88,7 @@
     {
       "id": 3,
       "course_id": 3,
-      "name": "А"
+      "name": "26-27"
     }
   ],
   "groupTeachers": [
@@ -97,16 +98,32 @@
     },
     {
       "group_id": 2,
+      "teacher_id": 3
+    },
+    {
+      "group_id": 3,
       "teacher_id": 2
     }
   ],
   "groupStudents": [
+    {
+      "group_id": 2,
+      "user_id": 4
+    },
+    {
+      "group_id": 3,
+      "user_id": 5
+    },
     {
       "group_id": 3,
       "user_id": 4
     },
     {
       "group_id": 3,
+      "user_id": 2
+    },
+    {
+      "group_id": 2,
       "user_id": 2
     }
   ],
@@ -116,6 +133,12 @@
       "course_id": 3,
       "title": "Библейские Заветы. Дмитрий Бобков",
       "order_index": 1
+    },
+    {
+      "id": 18,
+      "course_id": 3,
+      "title": "Жизнь Служения",
+      "order_index": 2
     }
   ],
   "materials": [
@@ -158,6 +181,39 @@
       "type": "video",
       "url": "https://youtu.be/4M4h8xJvyBM",
       "order_index": 4
+    },
+    {
+      "id": 69,
+      "theme_id": 18,
+      "repository_material_id": 27,
+      "storage_id": 27,
+      "title": "Жизнь Служения - урок 1. Светлана Гунина",
+      "type": "video",
+      "url": "https://www.youtube.com/watch?v=-sD4qD82ofs",
+      "file_id": null,
+      "order_index": 1
+    },
+    {
+      "id": 70,
+      "theme_id": 18,
+      "repository_material_id": 28,
+      "storage_id": 28,
+      "title": "Жизнь Служения - урок 2. Светлана Гунина",
+      "type": "video",
+      "url": "https://www.youtube.com/watch?v=H4WCXvxsR_s",
+      "file_id": null,
+      "order_index": 2
+    },
+    {
+      "id": 71,
+      "theme_id": 18,
+      "repository_material_id": 29,
+      "storage_id": 29,
+      "title": "Конспект Жизнь Служения урок 1-2, Светлана Гунина",
+      "type": "document",
+      "url": "/api/files/30.docx",
+      "file_id": 30,
+      "order_index": 3
     }
   ],
   "extraMaterials": [
@@ -223,6 +279,45 @@
       "file_name": "",
       "file_size": 0,
       "created_at": "2026-09-24T19:06:27.579Z"
+    },
+    {
+      "id": 27,
+      "title": "Жизнь Служения - урок 1. Светлана Гунина",
+      "playlist_name": "Жизнь Служения",
+      "type": "video",
+      "url": "https://www.youtube.com/watch?v=-sD4qD82ofs",
+      "description": "",
+      "order_index": 1,
+      "file_name": "",
+      "file_size": 0,
+      "file_id": null,
+      "created_at": "2026-09-27T19:21:59.783Z"
+    },
+    {
+      "id": 28,
+      "title": "Жизнь Служения - урок 2. Светлана Гунина",
+      "playlist_name": "Жизнь Служения",
+      "type": "video",
+      "url": "https://www.youtube.com/watch?v=H4WCXvxsR_s",
+      "description": "",
+      "order_index": 2,
+      "file_name": "",
+      "file_size": 0,
+      "file_id": null,
+      "created_at": "2026-09-27T19:23:00.048Z"
+    },
+    {
+      "id": 29,
+      "title": "Конспект Жизнь Служения урок 1-2, Светлана Гунина",
+      "playlist_name": "Жизнь Служения",
+      "type": "document",
+      "url": "/api/files/30.docx",
+      "description": "",
+      "order_index": 3,
+      "file_name": "Конспект Жизнь Служения урок 1-2, Светлана Гунина.docx",
+      "file_size": 16638,
+      "file_id": 30,
+      "created_at": "2026-09-27T19:23:29.205Z"
     }
   ],
   "tests": [
@@ -231,7 +326,7 @@
       "theme_id": 16,
       "title": "Тест Библейские заветы. Дмитрий Бобков",
       "passing_score": 100,
-      "max_attempts": 1
+      "max_attempts": 5
     }
   ],
   "questions": [
@@ -1441,28 +1536,40 @@
       "extra_material_id": 1,
       "user_id": 1,
       "text": "Приветствуем всех участников курса! В этом чате обсуждаются дополнительные материалы. Пишите свои мысли и вопросы.",
-      "created_at": "2026-09-21T11:28:00.403Z"
+      "created_at": "2026-09-21T11:28:00.403Z",
+      "group_id": null
     },
     {
       "id": 4,
       "extra_material_id": 1,
       "user_id": 2,
       "text": "Отличный список литературы. Рекомендую начать с первой книги Бонхёффера.",
-      "created_at": "2026-09-21T12:28:00.403Z"
+      "created_at": "2026-09-21T12:28:00.403Z",
+      "group_id": null
     },
     {
       "id": 5,
       "theme_id": 16,
       "user_id": 3,
       "text": "как обстоят дела",
-      "created_at": "2026-09-24T20:51:14.970Z"
+      "created_at": "2026-09-24T20:51:14.970Z",
+      "group_id": 3
     },
     {
       "id": 6,
       "theme_id": 16,
       "user_id": 2,
       "text": "Нормально",
-      "created_at": "2026-09-24T20:54:58.533Z"
+      "created_at": "2026-09-24T20:54:58.533Z",
+      "group_id": 3
+    },
+    {
+      "id": 7,
+      "theme_id": 16,
+      "user_id": 2,
+      "text": "мне было сложно в 1 теме",
+      "created_at": "2026-09-27T19:49:04.083Z",
+      "group_id": 3
     }
   ],
   "settings": {
@@ -1476,14 +1583,23 @@
     "welcome_text": "Мы верим, что время обучения станет для вас поистине особенным временем.\nПусть Дух Святой работает с вашим сердцем на этом пути, а жизнь изменяется!",
     "welcome_enabled": "true",
     "warning_title": "Уважаемые студенты!",
-    "warning_text": "Обращаем ваше внимание, что копирование и распространение материалов обучения (конспекты, видео и аудио-уроки) запрещено.\nВы можете использовать материалы в целях собственного обучения, а также сохранять на личные устройства, без передачи третьим лицам. Надеемся на ваше понимание и благословляем на плодотворную учебу!!!",
+    "warning_text": "Обращаем ваше внимание, что копирование и распространение материалов обучения (конспекты, видео и аудио-уроки) запрещено.\nВы можете использовать материалы в целях собственного обучения, а также сохранять на личные устройства, без передачи третьим лицам. Надеемся на ваше понимание и благословляем на плодотворную учебу!",
     "warning_enabled": "true",
     "show_header_banner": "true",
     "default_passing_score": "100",
     "allow_review_answers": "true",
     "notify_curators_on_test": "true"
   },
-  "uploadedFiles": [],
+  "uploadedFiles": [
+    {
+      "id": 30,
+      "filename": "1790537008343-1krerfh.docx",
+      "original_name": "Конспект Жизнь Служения урок 1-2, Светлана Гунина.docx",
+      "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 16638,
+      "uploaded_at": "2026-09-27T19:23:28.358Z"
+    }
+  ],
   "phoneInvites": [
     {
       "id": 1,
@@ -1590,6 +1706,26 @@
       "link": "/teacher?theme=16",
       "read_at": "2026-09-25T07:21:04.186Z",
       "created_at": "2026-09-24T20:54:58.534Z"
+    },
+    {
+      "id": 10,
+      "user_id": 2,
+      "type": "chat",
+      "title": "Новое сообщение от Волков Алексей в «Библейские Заветы. Дмитрий Бобков»",
+      "body": "мне было сложно в 1 теме",
+      "link": "/teacher?theme=16",
+      "read_at": "2026-09-27T19:49:30.730Z",
+      "created_at": "2026-09-27T19:49:04.088Z"
+    },
+    {
+      "id": 11,
+      "user_id": 3,
+      "type": "chat",
+      "title": "Новое сообщение от Волков Алексей в «Библейские Заветы. Дмитрий Бобков»",
+      "body": "мне было сложно в 1 теме",
+      "link": "/teacher?theme=16",
+      "read_at": null,
+      "created_at": "2026-09-27T19:49:04.088Z"
     }
   ],
   "directMessages": [
@@ -1626,26 +1762,34 @@
       "created_at": "2026-09-24T20:51:59.657Z"
     }
   ],
-  "themeUnlocks": [],
+  "themeUnlocks": [
+    {
+      "id": 2,
+      "user_id": 2,
+      "theme_id": 17,
+      "granted_by": 2,
+      "created_at": "2026-09-27T19:39:56.028Z"
+    }
+  ],
   "nextId": {
     "user": 6,
     "course": 6,
     "group": 4,
-    "theme": 17,
-    "material": 66,
+    "theme": 19,
+    "material": 72,
     "extraMaterial": 2,
-    "storageMaterial": 27,
+    "storageMaterial": 31,
     "test": 3,
     "question": 34,
     "answer": 137,
     "attempt": 3,
     "attemptAnswer": 55,
     "announcement": 3,
-    "chatMessage": 7,
-    "uploadedFile": 30,
+    "chatMessage": 8,
+    "uploadedFile": 31,
     "phoneInvite": 4,
-    "notification": 10,
+    "notification": 12,
     "directMessage": 5,
-    "themeUnlock": 1
+    "themeUnlock": 3
   }
 }

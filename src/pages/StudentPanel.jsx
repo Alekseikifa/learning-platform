@@ -80,14 +80,24 @@ export default function StudentPanel() {
     }
   }, [searchParams.toString()]);
 
+  // группы ученика в выбранном курсе (первая в списке = группа, через которую работает чат темы)
+  const selectedCourse = courses.find((c) => String(c.id) === String(courseId));
+  const myGroups = selectedCourse && Array.isArray(selectedCourse.groups) ? selectedCourse.groups : [];
+  const groupList = myGroups.length ? myGroups.map((g) => g.name).join(", ") : "—";
+
   return (
     <Layout title="Кабинет ученика" tabs={TABS} active={tab} onChange={changeTab}>
       {tab === "themes" && (
         <div>
-          <label>Курс:</label>
-          <select value={courseId} onChange={e => setCourseId(e.target.value)}>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-          </select>
+          <div className="card row">
+            <label>Курс:</label>
+            <select value={courseId} onChange={e => setCourseId(e.target.value)}>
+              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+            {courseId && (
+              <span className="muted small">Группа: {groupList}</span>
+            )}
+          </div>
 
           {courseId && (
             <div className="row" style={{ gap: 8, margin: "12px 0" }}>
@@ -131,6 +141,7 @@ export default function StudentPanel() {
           {courseId && courseSection === "themes" && (
             <ThemesList
               courseId={+courseId}
+              groups={myGroups}
               initialTheme={pendingTheme}
               onThemeConsumed={() => {
                 setPendingTheme(null);
@@ -142,6 +153,7 @@ export default function StudentPanel() {
           {courseId && courseSection === "extra" && (
             <ExtraMaterialsStudentList
               courseId={+courseId}
+              groups={myGroups}
               initialExtra={pendingExtra}
               onExtraConsumed={() => {
                 setPendingExtra(null);
@@ -158,7 +170,7 @@ export default function StudentPanel() {
   );
 }
 
-function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
+function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
   const [themes, setThemes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -268,8 +280,13 @@ function ThemesList({ courseId, initialTheme, onThemeConsumed }) {
       )}
       {chatFor?.chatThemeId && (
         <Modal onClose={() => setChatFor(null)}>
-          <div className="spread">
-            <b>Обсуждение темы: {chatFor.chatTitle}</b>
+          <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <b>Обсуждение темы: {chatFor.chatTitle}</b>
+              <div className="muted small">
+                Группа: {groups && groups[0] ? groups[0].name : "—"} · Общаются ученики этой группы, куратор и администрация
+              </div>
+            </div>
             <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
           </div>
           <ChatPanel themeId={chatFor.chatThemeId} apiBase="/api/student" />
@@ -563,7 +580,7 @@ function History() {
   );
 }
 
-function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) {
+function ExtraMaterialsStudentList({ courseId, groups, initialExtra, onExtraConsumed }) {
   const [materials, setMaterials] = useState([]);
   const [chatFor, setChatFor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -696,7 +713,7 @@ function ExtraMaterialsStudentList({ courseId, initialExtra, onExtraConsumed }) 
             <div>
               <b>Обсуждение: {chatFor.title}</b>
               <div className="muted small">
-                Сообщения видят ученики вашей группы, куратор и администрация
+                Группа: {groups && groups[0] ? groups[0].name : "—"} · Сообщения видят ученики этой группы, куратор и администрация
               </div>
             </div>
             <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>

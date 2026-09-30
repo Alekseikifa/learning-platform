@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { api, getUser } from "../api";
 
-export default function ChatPanel({ themeId, extraMaterialId, apiBase }) {
+export default function ChatPanel({ themeId, extraMaterialId, apiBase, groupId }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const bottomRef = useRef(null);
   const me = getUser();
 
+  const groupQuery = groupId ? `?group_id=${groupId}` : "";
   const chatUrl = extraMaterialId
-    ? `${apiBase}/extra-materials/${extraMaterialId}/chat`
-    : `${apiBase}/themes/${themeId}/chat`;
+    ? `${apiBase}/extra-materials/${extraMaterialId}/chat${groupQuery}`
+    : `${apiBase}/themes/${themeId}/chat${groupQuery}`;
 
   const load = async () => {
     if (!themeId && !extraMaterialId) return;
@@ -28,7 +29,7 @@ export default function ChatPanel({ themeId, extraMaterialId, apiBase }) {
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
-  }, [themeId, extraMaterialId, chatUrl]);
+  }, [themeId, extraMaterialId, chatUrl, groupId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -62,7 +63,8 @@ export default function ChatPanel({ themeId, extraMaterialId, apiBase }) {
             <div className="chat-meta">
               <b>{m.user_name}</b>
               <span className="muted small">
-                {getRoleBadge(m.user_role)}{" "}
+                {getRoleBadge(m.user_role)}
+                {m.group_name ? ` · группа «${m.group_name}»` : ""}{" "}
                 · {new Date(m.created_at).toLocaleString()}
               </span>
             </div>

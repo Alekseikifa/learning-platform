@@ -99,7 +99,7 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed }) {
             <b>Чат темы: {themes.find(t => t.id === chatFor)?.title}</b>
             <button className="btn ghost" onClick={() => setChatFor(null)}>Закрыть</button>
           </div>
-          <ChatPanel themeId={chatFor} apiBase="/api/teacher" />
+          <ChatPanel themeId={chatFor} groupId={+groupId} apiBase="/api/teacher" />
         </div>
       )}
       {unlocking && (
@@ -183,7 +183,7 @@ export function ProgressTable({ groupId }) {
       </div>
       {chatFor && (
         <div style={{ marginTop: 12 }}>
-          <ChatPanel themeId={chatFor} apiBase="/api/teacher" />
+          <ChatPanel themeId={chatFor} groupId={+groupId} apiBase="/api/teacher" />
         </div>
       )}
     </div>

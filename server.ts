@@ -15,6 +15,9 @@ import {
   ExtraMaterial,
   Material,
   StorageMaterial,
+  Group,
+  Theme,
+  ChatMessage,
   getAllRolesOf,
   normalizePhone,
   notifyUsers,
@@ -796,6 +799,244 @@ app.delete("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (r
   db.groupTeachers = db.groupTeachers.filter((gt) => gt.teacher_id !== userId);
   db.chatMessages = db.chatMessages.filter((cm) => cm.user_id !== userId);
   res.json({ ok: true });
+});
+
+// -------------------------------------------------------------
+// ADMIN: ЭКСПОРТ / ИМПОРТ ПОЛЬЗОВАТЕЛЕЙ (CSV)
+// -------------------------------------------------------------
+const CSV_USER_HEADERS = [
+  "id", "username", "name", "phone", "role", "extra_roles",
+  "is_active", "groups", "curator_groups", "created_at", "last_login_at",
+];
+
+function csvEscape(value: unknown, delim: string): string {
+  const s = value === null || value === undefined ? "" : String(value);
+  if (s.includes(delim) || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function buildCsv(headers: string[], rows: unknown[][]): string {
+  const lines = [headers.map((h) => csvEscape(h, ";")).join(";")];
+  for (const row of rows) lines.push(row.map((v) => csvEscape(v, ";")).join(";"));
+  return "\uFEFF" + lines.join("\r\n") + "\r\n";
+}
+
+app.get("/api/admin/users/export.csv", authMiddleware, requireRole("admin"), (_req, res) => {
+  const users = db.users.filter((u) => u.role !== "admin");
+  const rows = users.map((u) => [
+    u.id,
+    u.username,
+    u.name,
+    u.phone || "",
+    u.role,
+    u.extra_roles || "",
+    u.is_active === false ? "нет" : "да",
+    studentGroupsOf(u).map((g) => (g ? g.name : "")).filter(Boolean).join("|"),
+    curatorGroupsOf(u).map((g) => (g ? g.name : "")).filter(Boolean).join("|"),
+    u.created_at || "",
+    u.last_login_at || "",
+  ]);
+  const csv = buildCsv(CSV_USER_HEADERS, rows);
+  const fname = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.send(csv);
+});
+
+type ImportRow = {
+  name?: unknown;
+  username?: unknown;
+  phone?: unknown;
+  role?: unknown;
+  extra_roles?: unknown;
+  password?: unknown;
+  groups?: unknown;
+  curator_groups?: unknown;
+  is_active?: unknown;
+};
+
+// каноническая роль по коду, алиасу или пользовательскому названию из настроек
+function canonicalRole(raw: unknown): "teacher" | "student" | "manager" | null {
+  const s = String(raw || "").trim().toLowerCase().replace(/ё/g, "е");
+  if (!s) return null;
+  const direct: Record<string, "teacher" | "student" | "manager"> = {
+    student: "student", ученик: "student", ученица: "student", ученики: "student",
+    teacher: "teacher", куратор: "teacher", учитель: "teacher", преподаватель: "teacher",
+    manager: "manager", методист: "manager",
+  };
+  if (direct[s]) return direct[s];
+  for (const key of ["student", "teacher", "manager"] as const) {
+    const custom = String(db.settings["role_" + key + "_name"] || "").trim().toLowerCase();
+    if (custom && custom === s) return key;
+  }
+  return null;
+}
+
+function parseImportBool(v: unknown): boolean {
+  if (v === undefined || v === null || v === "") return true;
+  if (typeof v === "boolean") return v;
+  const s = String(v).trim().toLowerCase();
+  if (["false", "0", "нет", "no", "n", "off", "выключен"].includes(s)) return false;
+  if (["true", "1", "да", "yes", "y", "on", "включён", "включен"].includes(s)) return true;
+  return true;
+}
+
+function generateImportPassword(): string {
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(12);
+  let out = "";
+  for (let i = 0; i < 12; i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
+
+app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, res) => {
+  const rows: ImportRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ detail: "Не переданы строки для импорта" });
+  if (rows.length > 2000) return res.status(400).json({ detail: "Слишком много строк (максимум 2000 за раз)" });
+  const dryRun = req.body?.dry_run !== false;
+  const defaultPassword = typeof req.body?.options?.default_password === "string" ? req.body.options.default_password.trim() : "";
+
+  const out: {
+    index: number;
+    status: "ok" | "skip" | "error";
+    name: string;
+    username: string;
+    password?: string;
+    detail: string;
+  }[] = [];
+  const seenUsernames = new Set<string>();
+  let created = 0;
+  let skipped = 0;
+  let errorsCount = 0;
+  let warningsCount = 0;
+
+  rows.forEach((row, index) => {
+    const errs: string[] = [];
+    const warns: string[] = [];
+
+    const name = String(row.name ?? "").trim();
+    let username = String(row.username ?? "").trim();
+    const phoneRaw = String(row.phone ?? "").trim();
+    let phone = "";
+    if (phoneRaw) {
+      phone = normalizePhone(phoneRaw);
+      if (!/^\+?\d{7,15}$/.test(phone)) errs.push("некорректный номер телефона");
+    }
+    if (!username && phone) username = phone;
+    if (!name) errs.push("не указано ФИО");
+    if (!username) errs.push("не указан логин (и телефон)");
+
+    const roleRaw = String(row.role ?? "").trim();
+    let role: "teacher" | "student" | "manager" | null = null;
+    if (!roleRaw) {
+      errs.push("не указана роль");
+    } else if (["admin", "админ", "администратор"].includes(roleRaw.toLowerCase())) {
+      errs.push("роль администратора импортировать нельзя");
+    } else {
+      role = canonicalRole(roleRaw);
+      if (!role) errs.push(`неизвестная роль «${roleRaw}»`);
+    }
+
+    let password = String(row.password ?? "").trim() || defaultPassword;
+    let passwordGenerated = false;
+    if (!password) {
+      password = generateImportPassword();
+      passwordGenerated = true;
+    } else if (password.length < 4) {
+      errs.push("пароль короче 4 символов");
+    }
+
+    const extraParts = String(row.extra_roles ?? "")
+      .split(/[,|;]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const extraCanonical: string[] = [];
+    for (const p of extraParts) {
+      const r = canonicalRole(p);
+      if (r && r !== role) extraCanonical.push(r);
+      else if (!r) warns.push(`неизвестная доп. роль «${p}» — пропущена`);
+    }
+
+    const resolveGroups = (value: unknown, label: string): number[] => {
+      const names = Array.isArray(value) ? value.map((x) => String(x).trim()).filter(Boolean) : [];
+      const ids: number[] = [];
+      for (const nm of names) {
+        const matches = db.groups.filter((g) => g.name.trim().toLowerCase() === nm.toLowerCase());
+        if (!matches.length) {
+          warns.push(`группа «${nm}» (${label}) не найдена — пропущена`);
+          continue;
+        }
+        if (matches.length > 1) warns.push(`несколько групп с названием «${nm}» (${label}) — назначена первая`);
+        if (!ids.includes(matches[0].id)) ids.push(matches[0].id);
+      }
+      return ids;
+    };
+    const groupIds = resolveGroups(row.groups, "ученик");
+    const curatorIds = resolveGroups(row.curator_groups, "куратор");
+
+    const unameKey = username.toLowerCase();
+    if (username && seenUsernames.has(unameKey)) errs.push("дубликат логина внутри файла");
+    if (username) seenUsernames.add(unameKey);
+
+    const existing = username ? db.users.find((u) => u.username === username) : undefined;
+    const phoneConflict =
+      phone && db.users.find((u) => u.id !== existing?.id && (u.phone === phone || u.username === phone));
+
+    let status: "ok" | "skip" | "error" = "ok";
+    let detail = warns.join("; ");
+
+    if (existing) {
+      status = "skip";
+      detail = "уже есть в базе" + (detail ? "; " + detail : "");
+      skipped++;
+    } else if (errs.length) {
+      status = "error";
+      detail = errs.join("; ") + (detail ? "; " + detail : "");
+      errorsCount++;
+    } else if (phoneConflict) {
+      status = "error";
+      detail = "телефон уже используется другим пользователем" + (detail ? "; " + detail : "");
+      errorsCount++;
+    }
+
+    warningsCount += warns.length;
+
+    const entry: (typeof out)[number] = { index, status, name, username, detail };
+
+    if (status === "ok") {
+      if (!dryRun) {
+        const u: User = {
+          id: db.getId("user"),
+          role: role!,
+          extra_roles: normalizeExtraRoles(role!, extraCanonical),
+          username,
+          password_hash: bcrypt.hashSync(password, 10),
+          name,
+          is_active: parseImportBool(row.is_active),
+          created_at: new Date().toISOString(),
+        };
+        if (phone) u.phone = phone;
+        db.users.push(u);
+        for (const gid of groupIds) db.groupStudents.push({ group_id: gid, user_id: u.id });
+        for (const gid of curatorIds) db.groupTeachers.push({ group_id: gid, teacher_id: u.id });
+        entry.password = password;
+        if (passwordGenerated) entry.detail = (detail ? detail + "; " : "") + "пароль сгенерирован";
+      }
+      created++;
+    }
+
+    out.push(entry);
+  });
+
+  if (!dryRun) db.save();
+
+  res.json({
+    dry_run: dryRun,
+    summary: { total: rows.length, created, skipped, errors: errorsCount, warnings: warningsCount },
+    rows: out,
+  });
 });
 
 app.put(["/api/admin/credentials", "/api/admin/admin/credentials"], authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
@@ -2023,6 +2264,113 @@ function ownTeacherGroup(teacherId: number, groupId: number): boolean {
   return db.groupTeachers.some((gt) => gt.teacher_id === teacherId && gt.group_id === groupId);
 }
 
+// -------------------------------------------------------------
+// Обсуждения (чаты) — строго по группе
+// -------------------------------------------------------------
+
+/** Группа ученика в курсе (первая в порядке db.groups), либо null. */
+function studentGroupInCourse(userId: number, courseId: number): number | null {
+  const myGids = db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
+  const g = db.groups.find((x) => myGids.includes(x.id) && x.course_id === courseId);
+  return g ? g.id : null;
+}
+
+/** Группа, которую курирует учитель в курсе (первая в порядке db.groups), либо null. */
+function teacherGroupInCourse(teacherId: number, courseId: number): number | null {
+  const tGids = teacherGroupIds(teacherId);
+  const g = db.groups.find((x) => tGids.includes(x.id) && x.course_id === courseId);
+  return g ? g.id : null;
+}
+
+/** Группа, для которой открыт доп. материал (закреплённая группа или группа его курса). */
+function extraMatchesGroup(em: ExtraMaterial, g: Group): boolean {
+  return em.group_ids.includes(g.id) || em.course_ids.includes(g.course_id) || em.course_id === g.course_id;
+}
+
+/**
+ * Группа, в которой участник ведёт обсуждение доп. материала.
+ * requested — явный выбор (?group_id=): должен принадлежать участнику и материалу, иначе отказ.
+ */
+function extraChatGroupFor(
+  userId: number,
+  em: ExtraMaterial,
+  who: "student" | "teacher",
+  requested: number | null
+): number | null {
+  const myGids =
+    who === "teacher"
+      ? teacherGroupIds(userId)
+      : db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
+  if (requested !== null) {
+    const g = db.groups.find((x) => x.id === requested);
+    if (!g || !myGids.includes(requested) || !extraMatchesGroup(em, g)) return null;
+    return g.id;
+  }
+  const g = db.groups.find((x) => myGids.includes(x.id) && extraMatchesGroup(em, x));
+  return g ? g.id : null;
+}
+
+/** Группа для сообщения администрации в доп. материале: первая закреплённая, иначе первая группа курса. */
+function extraChatGroupForStaff(em: ExtraMaterial): number | null {
+  const g =
+    db.groups.find((x) => em.group_ids.includes(x.id)) ||
+    db.groups.find((x) => em.course_ids.includes(x.course_id) || (em.course_id != null && x.course_id === em.course_id));
+  return g ? g.id : null;
+}
+
+/** Группа куратора для чата темы: явный ?group_id= (если куратор её ведёт и это курс темы) или первая группа курса темы. */
+function teacherThemeChatGroup(teacherId: number, theme: Theme, requestedRaw: unknown): number | null {
+  const requested = parseOptionalInt(requestedRaw);
+  if (requested !== null) {
+    const g = db.groups.find((x) => x.id === requested);
+    if (!g || g.course_id !== theme.course_id || !teacherGroupIds(teacherId).includes(requested)) return null;
+    return g.id;
+  }
+  return teacherGroupInCourse(teacherId, theme.course_id);
+}
+
+interface ChatRow {
+  id: number;
+  text: string;
+  created_at: string;
+  user_id: number;
+  user_name: string;
+  user_role: string;
+  is_mine: boolean;
+  group_id?: number | null;
+  group_name?: string;
+}
+
+/** Сообщения чата → строки ответа. withGroup — добавлять группу (для администрации, видит все группы). */
+function chatRows(messages: ChatMessage[], viewerId: number, withGroup: boolean): ChatRow[] {
+  return messages
+    .slice()
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map((m) => {
+      const u = db.users.find((x) => x.id === m.user_id);
+      const row: ChatRow = {
+        id: m.id,
+        text: m.text,
+        created_at: m.created_at,
+        user_id: m.user_id,
+        user_name: u ? u.name : "",
+        user_role: u ? u.role : "",
+        is_mine: m.user_id === viewerId,
+      };
+      if (withGroup) {
+        const g = m.group_id != null ? db.groups.find((x) => x.id === m.group_id) : null;
+        row.group_id = m.group_id ?? null;
+        row.group_name = g ? g.name : "";
+      }
+      return row;
+    });
+}
+
+function parseOptionalInt(v: unknown): number | null {
+  const n = parseInt(String(v ?? ""), 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 function testIdsForGroups(groupIds: number[]): number[] {
   const courseIds = db.groups.filter((g) => groupIds.includes(g.id)).map((g) => g.course_id);
   const themeIds = db.themes.filter((t) => courseIds.includes(t.course_id)).map((t) => t.id);
@@ -2383,22 +2731,13 @@ app.get("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teach
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-  const rows = db.chatMessages
-    .filter((m) => m.theme_id === themeId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
+  const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id);
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
+  const rows = db.chatMessages.filter((m) => m.theme_id === themeId && m.group_id === gid);
+  res.json(chatRows(rows, req.user!.id, false));
 });
 
 app.post("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
@@ -2406,18 +2745,22 @@ app.post("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teac
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
+  const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id);
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
   const msgId = db.getId("chatMessage");
   db.chatMessages.push({
     id: msgId,
     theme_id: themeId,
+    group_id: gid,
     user_id: req.user!.id,
     text: req.body.text,
     created_at: new Date().toISOString(),
   });
 
-  const gids = teacherGroupIds(req.user!.id);
-  const targetGroups = db.groups.filter((g) => gids.includes(g.id) && g.course_id === theme.course_id).map((g) => g.id);
-  const studentIds = db.groupStudents.filter((gs) => targetGroups.includes(gs.group_id)).map((gs) => gs.user_id);
+  const studentIds = db.groupStudents.filter((gs) => gs.group_id === gid).map((gs) => gs.user_id);
   notifyUsers(
     studentIds,
     "chat",
@@ -2460,22 +2803,13 @@ app.get("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("te
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
-  const rows = db.chatMessages
-    .filter((m) => m.extra_material_id === extraId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
+  const gid = extraChatGroupFor(req.user!.id, em, "teacher", parseOptionalInt(req.query.group_id));
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
+  const rows = db.chatMessages.filter((m) => m.extra_material_id === extraId && m.group_id === gid);
+  res.json(chatRows(rows, req.user!.id, false));
 });
 
 app.post("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
@@ -2489,29 +2823,26 @@ app.post("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("t
   const text = (req.body.text || "").trim();
   if (!text) return res.status(400).json({ detail: "Сообщение не может быть пустым" });
 
+  const gid = extraChatGroupFor(req.user!.id, em, "teacher", parseOptionalInt(req.query.group_id));
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
   const msgId = db.getId("chatMessage");
   db.chatMessages.push({
     id: msgId,
     extra_material_id: extraId,
+    group_id: gid,
     user_id: req.user!.id,
     text,
     created_at: new Date().toISOString(),
   });
 
-  // Find all student recipients who have access to this extra material across teacher's groups
-  const gids = teacherGroupIds(req.user!.id);
-  const targetGroupIds = new Set<number>();
-  for (const gid of gids) {
-    const g = db.groups.find((x) => x.id === gid);
-    if (!g) continue;
-    if (em.group_ids.includes(gid) || em.course_ids.includes(g.course_id) || em.course_id === g.course_id) {
-      targetGroupIds.add(gid);
-    }
-  }
-
+  // уведомляем учеников и администрацию этой группы
   const studentIds = db.groupStudents
-    .filter((gs) => targetGroupIds.has(gs.group_id))
-    .map((gs) => gs.user_id);
+    .filter((gs) => gs.group_id === gid)
+    .map((gs) => gs.user_id)
+    .filter((id) => id !== req.user!.id);
   const adminIds = db.users.filter((u) => hasRole(u, "admin") || hasRole(u, "manager")).map((u) => u.id);
 
   notifyUsers(
@@ -2551,9 +2882,18 @@ function themeGrants(userId: number): Set<number> {
 
 app.get("/api/student/courses", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const cids = studentCourseIds(req.user!.id);
+  const myGids = db.groupStudents.filter((gs) => gs.user_id === req.user!.id).map((gs) => gs.group_id);
   const courses = db.courses
     .filter((c) => cids.includes(c.id))
-    .map((c) => ({ id: c.id, title: c.title, description: c.description }));
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      // группы ученика в этом курсе (порядок db.groups — первая = группа, через которую работает чат)
+      groups: db.groups
+        .filter((g) => g.course_id === c.id && myGids.includes(g.id))
+        .map((g) => ({ id: g.id, name: g.name })),
+    }));
   res.json(courses);
 });
 
@@ -2902,32 +3242,20 @@ app.get("/api/student/announcements", authMiddleware, requireRole("student"), (r
 app.get("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const theme = db.themes.find((t) => t.id === themeId);
-  if (!theme || !inStudentCourse(req.user!.id, theme.course_id)) {
+  const gid = theme ? studentGroupInCourse(req.user!.id, theme.course_id) : null;
+  if (!theme || gid === null) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
-  const rows = db.chatMessages
-    .filter((m) => m.theme_id === themeId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
+  const rows = db.chatMessages.filter((m) => m.theme_id === themeId && m.group_id === gid);
+  res.json(chatRows(rows, req.user!.id, false));
 });
 
 app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const theme = db.themes.find((t) => t.id === themeId);
-  if (!theme || !inStudentCourse(req.user!.id, theme.course_id)) {
+  const gid = theme ? studentGroupInCourse(req.user!.id, theme.course_id) : null;
+  if (!theme || gid === null) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
@@ -2935,20 +3263,13 @@ app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("stud
   db.chatMessages.push({
     id: msgId,
     theme_id: themeId,
+    group_id: gid,
     user_id: req.user!.id,
     text: req.body.text,
     created_at: new Date().toISOString(),
   });
 
-  const myGids = db.groupStudents
-    .filter((gs) => gs.user_id === req.user!.id)
-    .map((gs) => gs.group_id)
-    .filter((gid) => {
-      const g = db.groups.find((x) => x.id === gid);
-      return g && g.course_id === theme.course_id;
-    });
-
-  const teacherIds = db.groupTeachers.filter((gt) => myGids.includes(gt.group_id)).map((gt) => gt.teacher_id);
+  const teacherIds = db.groupTeachers.filter((gt) => gt.group_id === gid).map((gt) => gt.teacher_id);
   notifyUsers(
     teacherIds,
     "chat",
@@ -2990,22 +3311,13 @@ app.get("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("st
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
-  const rows = db.chatMessages
-    .filter((m) => m.extra_material_id === extraId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
+  const gid = extraChatGroupFor(req.user!.id, em, "student", null);
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
+  const rows = db.chatMessages.filter((m) => m.extra_material_id === extraId && m.group_id === gid);
+  res.json(chatRows(rows, req.user!.id, false));
 });
 
 app.post("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("student"), requireActive, (req: AuthRequest, res: Response) => {
@@ -3018,26 +3330,28 @@ app.post("/api/student/extra-materials/:id/chat", authMiddleware, requireRole("s
   const text = (req.body.text || "").trim();
   if (!text) return res.status(400).json({ detail: "Сообщение не может быть пустым" });
 
+  const gid = extraChatGroupFor(req.user!.id, em, "student", null);
+  if (gid === null) {
+    return res.status(403).json({ detail: "Доступ запрещён" });
+  }
+
   const msgId = db.getId("chatMessage");
   db.chatMessages.push({
     id: msgId,
     extra_material_id: extraId,
+    group_id: gid,
     user_id: req.user!.id,
     text,
     created_at: new Date().toISOString(),
   });
 
-  // Notify curators of student's groups, admins, and group members across this material
-  const myGids = db.groupStudents
-    .filter((gs) => gs.user_id === req.user!.id)
-    .map((gs) => gs.group_id);
-
+  // Уведомления: кураторы этой группы, администрация и одногруппники
   const teacherIds = db.groupTeachers
-    .filter((gt) => myGids.includes(gt.group_id))
+    .filter((gt) => gt.group_id === gid)
     .map((gt) => gt.teacher_id);
   const adminIds = db.users.filter((u) => hasRole(u, "admin") || hasRole(u, "manager")).map((u) => u.id);
   const peerStudentIds = db.groupStudents
-    .filter((gs) => myGids.includes(gs.group_id) && gs.user_id !== req.user!.id)
+    .filter((gs) => gs.group_id === gid && gs.user_id !== req.user!.id)
     .map((gs) => gs.user_id);
 
   notifyUsers(
@@ -3201,22 +3515,9 @@ app.get("/api/staff/themes/:theme_id/chat", authMiddleware, requireRole("admin",
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-  const rows = db.chatMessages
-    .filter((m) => m.theme_id === themeId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
+  // администрация видит сообщения всех групп темы (с указанием группы)
+  const rows = db.chatMessages.filter((m) => m.theme_id === themeId);
+  res.json(chatRows(rows, req.user!.id, true));
 });
 
 app.post("/api/staff/themes/:theme_id/chat", authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
@@ -3224,32 +3525,46 @@ app.post("/api/staff/themes/:theme_id/chat", authMiddleware, requireRole("admin"
   const theme = db.themes.find((t) => t.id === themeId);
   if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
+  // группа: явный ?group_id= / body.group_id, иначе первая группа курса темы
+  const requested = parseOptionalInt(req.query.group_id ?? req.body.group_id);
+  let gid: number | null = null;
+  if (requested !== null) {
+    const g = db.groups.find((x) => x.id === requested);
+    if (!g || g.course_id !== theme.course_id) {
+      return res.status(400).json({ detail: "Группа не относится к курсу темы" });
+    }
+    gid = g.id;
+  } else {
+    const first = db.groups.find((g) => g.course_id === theme.course_id);
+    gid = first ? first.id : null;
+  }
+
   const msgId = db.getId("chatMessage");
   db.chatMessages.push({
     id: msgId,
     theme_id: themeId,
+    group_id: gid,
     user_id: req.user!.id,
     text: req.body.text,
     created_at: new Date().toISOString(),
   });
 
-  const gids = db.groups.filter((g) => g.course_id === theme.course_id).map((g) => g.id);
-  const recipients = new Set<number>();
-  for (const gid of gids) {
+  if (gid !== null) {
+    const recipients = new Set<number>();
     for (const gs of db.groupStudents.filter((x) => x.group_id === gid)) recipients.add(gs.user_id);
     for (const gt of db.groupTeachers.filter((x) => x.group_id === gid)) recipients.add(gt.teacher_id);
+    recipients.delete(req.user!.id);
+
+    notifyUsers(
+      Array.from(recipients),
+      "chat",
+      `Сообщение от ${req.user!.name} в теме «${theme.title}»`,
+      (req.body.text || "").slice(0, 160),
+      `/student?course=${theme.course_id}&theme=${themeId}`
+    );
   }
-  recipients.delete(req.user!.id);
 
-  notifyUsers(
-    Array.from(recipients),
-    "chat",
-    `Сообщение от ${req.user!.name} в теме «${theme.title}»`,
-    (req.body.text || "").slice(0, 160),
-    `/student?course=${theme.course_id}&theme=${themeId}`
-  );
-
-  res.json({ id: msgId });
+  res.json({ id: msgId, group_id: gid });
 });
 
 app.get("/api/staff/extra-materials", authMiddleware, requireRole("admin", "manager"), (_req, res) => {
@@ -3295,30 +3610,18 @@ app.delete("/api/staff/extra-materials/:id", authMiddleware, requireRole("admin"
   res.json({ ok: true });
 });
 
-app.get("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
+// Чат доп. материала для администрации/методиста: видит все группы (с указанием группы),
+// при отправке сообщение попадает в выбранную (group_id) или первую подходящую группу.
+const getStaffExtraChatHandler = (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em) return res.status(404).json({ detail: "Материал не найден" });
 
-  const rows = db.chatMessages
-    .filter((m) => m.extra_material_id === extraId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
-});
+  const rows = db.chatMessages.filter((m) => m.extra_material_id === extraId);
+  res.json(chatRows(rows, req.user!.id, true));
+};
 
-app.post("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
+const postStaffExtraChatHandler = (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em) return res.status(404).json({ detail: "Материал не найден" });
@@ -3327,26 +3630,31 @@ app.post("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("adm
   const text = (req.body.text || "").trim();
   if (!text) return res.status(400).json({ detail: "Сообщение не может быть пустым" });
 
+  const requested = parseOptionalInt(req.query.group_id ?? req.body.group_id);
+  let gid: number | null;
+  if (requested !== null) {
+    const g = db.groups.find((x) => x.id === requested);
+    if (!g || !extraMatchesGroup(em, g)) {
+      return res.status(400).json({ detail: "Группа не относится к этому материалу" });
+    }
+    gid = g.id;
+  } else {
+    gid = extraChatGroupForStaff(em);
+  }
+
   const msgId = db.getId("chatMessage");
   db.chatMessages.push({
     id: msgId,
     extra_material_id: extraId,
+    group_id: gid,
     user_id: req.user!.id,
     text,
     created_at: new Date().toISOString(),
   });
 
-  // Notify students and teachers in all attached courses and groups
-  const targetGroupIds = new Set<number>(em.group_ids);
-  for (const cid of em.course_ids) {
-    for (const g of db.groups.filter((x) => x.course_id === cid)) {
-      targetGroupIds.add(g.id);
-    }
-  }
-
   const studentRecipients = new Set<number>();
   const teacherRecipients = new Set<number>();
-  for (const gid of targetGroupIds) {
+  if (gid !== null) {
     for (const gs of db.groupStudents.filter((x) => x.group_id === gid)) studentRecipients.add(gs.user_id);
     for (const gt of db.groupTeachers.filter((x) => x.group_id === gid)) teacherRecipients.add(gt.teacher_id);
   }
@@ -3369,78 +3677,15 @@ app.post("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("adm
     `/teacher?extra_material=${extraId}`
   );
 
-  res.json({ id: msgId });
-});
+  res.json({ id: msgId, group_id: gid });
+};
+
+app.get("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), getStaffExtraChatHandler);
+app.post("/api/staff/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), postStaffExtraChatHandler);
 
 // Admin aliases
-app.get("/api/admin/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
-  const extraId = parseInt(req.params.id, 10);
-  const em = db.extraMaterials.find((x) => x.id === extraId);
-  if (!em) return res.status(404).json({ detail: "Материал не найден" });
-
-  const rows = db.chatMessages
-    .filter((m) => m.extra_material_id === extraId)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((m) => {
-      const u = db.users.find((x) => x.id === m.user_id);
-      return {
-        id: m.id,
-        text: m.text,
-        created_at: m.created_at,
-        user_id: m.user_id,
-        user_name: u ? u.name : "",
-        user_role: u ? u.role : "",
-        is_mine: m.user_id === req.user!.id,
-      };
-    });
-  res.json(rows);
-});
-
-app.post("/api/admin/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
-  const extraId = parseInt(req.params.id, 10);
-  const em = db.extraMaterials.find((x) => x.id === extraId);
-  if (!em) return res.status(404).json({ detail: "Материал не найден" });
-
-  const text = (req.body.text || "").trim();
-  if (!text) return res.status(400).json({ detail: "Сообщение не может быть пустым" });
-
-  const msgId = db.getId("chatMessage");
-  db.chatMessages.push({
-    id: msgId,
-    extra_material_id: extraId,
-    user_id: req.user!.id,
-    text,
-    created_at: new Date().toISOString(),
-  });
-
-  const gids = db.groups.filter((g) => g.course_id === em.course_id).map((g) => g.id);
-  const studentRecipients = new Set<number>();
-  const teacherRecipients = new Set<number>();
-  for (const gid of gids) {
-    for (const gs of db.groupStudents.filter((x) => x.group_id === gid)) studentRecipients.add(gs.user_id);
-    for (const gt of db.groupTeachers.filter((x) => x.group_id === gid)) teacherRecipients.add(gt.teacher_id);
-  }
-  studentRecipients.delete(req.user!.id);
-  teacherRecipients.delete(req.user!.id);
-
-  notifyUsers(
-    Array.from(studentRecipients),
-    "chat",
-    `Сообщение от администрации (${req.user!.name}) в доп. материале «${em.title}»`,
-    text.slice(0, 160),
-    `/student?course=${em.course_id}&extra_material=${extraId}`
-  );
-
-  notifyUsers(
-    Array.from(teacherRecipients),
-    "chat",
-    `Сообщение от администрации (${req.user!.name}) в доп. материале «${em.title}»`,
-    text.slice(0, 160),
-    `/teacher?extra_material=${extraId}`
-  );
-
-  res.json({ id: msgId });
-});
+app.get("/api/admin/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), getStaffExtraChatHandler);
+app.post("/api/admin/extra-materials/:id/chat", authMiddleware, requireRole("admin", "manager"), postStaffExtraChatHandler);
 
 // -------------------------------------------------------------
 // UNIFIED MATERIALS REPOSITORY (STORAGE / НАКОПИТЕЛЬ МАТЕРИАЛОВ)

@@ -19,6 +19,7 @@ import PasswordModal from "../components/PasswordModal";
 import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
+import UserImportModal from "../components/UserImportModal";
 import { api, uploadFile, getToken } from "../api";
 
 const TABS = [
@@ -326,6 +327,7 @@ function SettingsTab() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [usersCsvOpen, setUsersCsvOpen] = useState(false);
 
   const loadSettings = async () => {
     try {
@@ -374,6 +376,30 @@ function SettingsTab() {
       alert(`Не удалось скачать резервную копию: ${e.message}`);
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  const downloadUsersCsv = async () => {
+    try {
+      const res = await fetch("/api/admin/users/export.csv", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        let detail = "Ошибка экспорта";
+        try { detail = (await res.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Не удалось выгрузить пользователей: ${e.message}`);
     }
   };
 
@@ -581,7 +607,17 @@ function SettingsTab() {
         {previewWarning && (
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
             <div className="small muted" style={{ marginBottom: 8 }}>Предпросмотр карточки Frame_34_1:</div>
-            <WarningCard />
+            {platform.warning_enabled === "true" ? (
+              <WarningCard
+                title={platform.warning_title}
+                text={platform.warning_text}
+                enabled
+              />
+            ) : (
+              <div className="small" style={{ color: "#b45309" }}>
+                ⚠ Предупреждение выключено (чекбокс выше) — ученики его не увидят.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -795,13 +831,40 @@ function SettingsTab() {
             </div>
           </div>
         )}
+
+        {/* 8. Импорт и экспорт пользователей (CSV) */}
+        <div className="card">
+          <div className="spread" style={{ alignItems: "center" }}>
+            <div>
+              <h3 style={{ margin: 0 }}>Пользователи: импорт и экспорт (CSV)</h3>
+              <div className="muted small">
+                Выгрузка всех пользователей (кроме администраторов) и импорт из CSV любого формата
+                с выбором соответствия колонок файла полям платформы: ФИО, логин, телефон, роль, группы и т.д.
+              </div>
+            </div>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button
+              className="btn"
+              onClick={downloadUsersCsv}
+              style={{ background: "#1e3a8a", color: "#fff", fontWeight: 600 }}
+            >
+              ⬇ Экспорт CSV
+            </button>
+            <button className="btn primary" onClick={() => setUsersCsvOpen(true)}>
+              ⬆ Импорт CSV
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Preview Modal for Welcome Window */}
       <WelcomeModal
         isOpen={previewWelcome}
         onClose={() => setPreviewWelcome(false)}
+        settings={platform}
       />
+      {usersCsvOpen && <UserImportModal onClose={() => setUsersCsvOpen(false)} />}
     </div>
   );
 }
