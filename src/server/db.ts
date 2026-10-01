@@ -281,7 +281,7 @@ class DatabaseStore {
   
   save() {
     try {
-      const dataDir = "/var/www/learning-platform/data";
+      const dataDir = path.resolve(process.cwd(), "data");
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
@@ -322,7 +322,7 @@ class DatabaseStore {
 
   load() {
     try {
-      const filePath = "/var/www/learning-platform/data/database.json";
+      const filePath = path.resolve(process.cwd(), "data/database.json");
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, "utf-8");
         const data = JSON.parse(raw);
@@ -386,7 +386,7 @@ class DatabaseStore {
    *    (создаёт запись uploadedFiles для файлов на диске, которых ещё нет в базе).
    */
   private migrateUploadRefs() {
-    const uploadsDir = "/var/www/learning-platform/uploads";
+    const uploadsDir = path.resolve(process.cwd(), "uploads");
     const extMime: Record<string, string> = {
       ".pdf": "application/pdf",
       ".doc": "application/msword",
