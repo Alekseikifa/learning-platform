@@ -3,6 +3,7 @@ import Collapsible from "./Collapsible";
 import ChatPanel from "./ChatPanel";
 import RepositoryPickerModal from "./RepositoryPickerModal";
 import Modal from "./Modal";
+import SmartMediaViewer from "./SmartMediaViewer";
 import { api, uploadFile } from "../api";
 import { getIcon } from "../lib/materialIcons";
 
@@ -668,6 +669,7 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
   const [loadingMats, setLoadingMats] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
+  const [previewMaterial, setPreviewMaterial] = useState(null);
 
   const loadMats = async () => {
     setLoadingMats(true);
@@ -776,7 +778,7 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
                     border: "1px solid var(--border)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1 }}>
                     <span style={{ fontWeight: 700, fontSize: 12, color: "var(--navy)" }}>
                       #{m.order_index || idx + 1}
                     </span>
@@ -784,10 +786,39 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
                       {m.type === "video" ? "🎬 Видео" : m.type === "note" ? "📝 Конспект" : m.type === "document" ? "📄 Документ" : m.type === "audio" ? "🎧 Аудио" : m.type === "image" ? "🖼 Рисунок" : "📎 Файл"}
                     </span>
                     <b style={{ fontSize: 13 }}>{m.title}</b>
+                    {m.sources && m.sources.length > 0 && (
+                      <span className="tag" style={{ fontSize: 10, background: "#e0e7ff", color: "#3730a3", padding: "1px 6px" }}>
+                        ▶ Источники ({m.sources.length}): {m.sources.map(s => s.platform === "vk" ? "VK" : s.platform === "youtube" ? "YouTube" : s.platform === "rutube" ? "RuTube" : "Файл").join(", ")}
+                      </span>
+                    )}
+                    {m.synopsis && (
+                      <span className="tag" style={{ fontSize: 10, background: "#f3e8ff", color: "#6b21a8", padding: "1px 6px" }}>
+                        📝 Конспект
+                      </span>
+                    )}
+                    {m.audio_url && (
+                      <span className="tag" style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px" }}>
+                        🎧 Аудио
+                      </span>
+                    )}
+                    {m.attachments && m.attachments.length > 0 && (
+                      <span className="tag" style={{ fontSize: 10, background: "#ecfdf5", color: "#065f46", padding: "1px 6px" }}>
+                        📎 Файлы ({m.attachments.length})
+                      </span>
+                    )}
                     {m.description && <span className="small muted">· {m.description}</span>}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      style={{ fontSize: 11, padding: "2px 8px", color: "var(--navy)", fontWeight: 600, border: "1px solid var(--border)" }}
+                      onClick={() => setPreviewMaterial(m)}
+                      title="Предпросмотр урока в интерактивном плеере с переключением источников (ВКонтакте/YouTube), аудио и документами"
+                    >
+                      👁 Просмотр
+                    </button>
                     {m.url && (
                       m.type === "note" ? (
                         <button
@@ -864,6 +895,31 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
           <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
             <button className="btn ghost" onClick={() => setNoteFor(null)} aria-label="Закрыть">Закрыть</button>
           </div>
+        </Modal>
+      )}
+
+      {previewMaterial && (
+        <Modal onClose={() => setPreviewMaterial(null)} innerStyle={{ maxWidth: 880, padding: 20 }}>
+          <div className="spread" style={{ alignItems: "center", marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+            <div>
+              <div className="small muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
+                Предпросмотр урока (вид ученика)
+              </div>
+              <h3 style={{ margin: "2px 0 0", fontSize: 18, color: "var(--navy)" }}>
+                {previewMaterial.title}
+              </h3>
+            </div>
+            <button className="btn ghost" onClick={() => setPreviewMaterial(null)} aria-label="Закрыть">✕</button>
+          </div>
+          <SmartMediaViewer
+            url={previewMaterial.url}
+            title={previewMaterial.title}
+            sources={previewMaterial.sources}
+            synopsis={previewMaterial.synopsis}
+            audio_url={previewMaterial.audio_url}
+            attachments={previewMaterial.attachments}
+            materialType={previewMaterial.type}
+          />
         </Modal>
       )}
     </div>

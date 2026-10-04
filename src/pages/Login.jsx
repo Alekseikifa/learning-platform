@@ -61,8 +61,9 @@ export default function Login() {
         <button className="btn primary" disabled={isLoading}>
           {isLoading ? "..." : "Войти"}
         </button>
-        <div className="muted small" style={{ textAlign: "center" }}>
-          Нет аккаунта? <Link to="/register">Зарегистрироваться по телефону</Link>
+
+        <div className="muted small" style={{ textAlign: "center", marginTop: 4 }}>
+          Нет аккаунта? <Link to="/register">Зарегистрироваться по номеру телефона</Link>
         </div>
       </form>
     </div>

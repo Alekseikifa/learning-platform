@@ -5,9 +5,9 @@
       "role": "admin",
       "extra_roles": "manager,teacher,student",
       "username": "admin",
-      "password_hash": "$2a$10$c3ncwiYAj5OL8oF3P57A3.mmrU.tXbbsVEv8zik2lHoPfl0tVLTCK",
+      "password_hash": "$2a$10$X1fXeiAYUJcIaXWZkXiVleCGDHphWHwQgnhWt/GLwIowyou4uhn0m",
       "name": "Администратор",
-      "last_login_at": "2026-09-28T12:55:21.752Z"
+      "last_login_at": "2026-10-04T05:34:21.186Z"
     },
     {
       "id": 2,
@@ -25,9 +25,10 @@
       "role": "teacher",
       "extra_roles": "",
       "username": "manager",
-      "password_hash": "$2a$10$Jt8LaMJXwyEa6gidR/aHzeEVEPq7l6NxueXsMkfPqtXuekSgnhyZ6",
+      "password_hash": "$2a$10$Bni19PGNoYKnNFJgZ9d20.8ZPgUJsjR7Cp2GJxesuX4uMkv4AVzLW",
       "name": "Мария Смирнова (Методист)",
-      "is_active": true
+      "is_active": true,
+      "last_login_at": "2026-10-04T05:32:42.484Z"
     },
     {
       "id": 4,
@@ -35,7 +36,8 @@
       "extra_roles": "",
       "username": "student",
       "password_hash": "$2a$10$PWLiaMVznPi1vAHJZp3KJeUwZuCZJZyS0sVir9znrqbMJJmHBVBIa",
-      "name": "Даниил Петров (Ученик)"
+      "name": "Даниил Петров (Ученик)",
+      "last_login_at": "2026-10-04T05:33:24.320Z"
     },
     {
       "id": 5,
@@ -45,6 +47,16 @@
       "password_hash": "$2a$10$2qtWOR/4RIGrUyy4c.16AeA/L2ygI1Tdj0lqI1MxUCuxBsCfbv.Q6",
       "name": "Петров Денис",
       "is_active": true
+    },
+    {
+      "id": 6,
+      "role": "teacher",
+      "extra_roles": "",
+      "username": "teacher",
+      "password_hash": "$2a$10$XR2YRKTsdi1qEV1ymYP6j.7VXsvEmjnKZQuNWFhDrceuoAynLDGyy",
+      "name": "Александр Иванов (Куратор)",
+      "is_active": true,
+      "last_login_at": "2026-10-04T05:32:42.676Z"
     }
   ],
   "courses": [
@@ -103,6 +115,10 @@
     {
       "group_id": 3,
       "teacher_id": 2
+    },
+    {
+      "group_id": 2,
+      "teacher_id": 6
     }
   ],
   "groupStudents": [
@@ -150,7 +166,18 @@
       "title": "Библейские Заветы  - 1 урок. Дмитрий Бобков",
       "type": "video",
       "url": "https://youtu.be/3PpuucT_BeQ",
-      "order_index": 1
+      "order_index": 1,
+      "file_id": null,
+      "sources": [
+        {
+          "platform": "vk",
+          "url": "https://vkvideo.ru/video65958298_456239050?pl=65958298_-4",
+          "label": "ВКонтакте (VK Видео)"
+        }
+      ],
+      "attachments": [],
+      "synopsis": "лоыдрвыщдлчтс длфывтжщфывжлтывжл \nлдотраолдтрвадлтфыдл фджьывэавылт\nжфдчафывжащшрывжащшрфывжлащрт \nжлрвыжащывждтвылат эыфвьэзщоьэзащоэцвэь\nфыдвлтажывража",
+      "audio_url": null
     },
     {
       "id": 60,
@@ -214,6 +241,49 @@
       "url": "/api/files/30.docx",
       "file_id": 30,
       "order_index": 3
+    },
+    {
+      "id": 72,
+      "theme_id": 16,
+      "title": "Библейские заветы, урок первый, Дмитрий Бабков",
+      "type": "video",
+      "url": "https://vk.com/video-220754053_456239018",
+      "order_index": 1,
+      "sources": [
+        {
+          "platform": "vk",
+          "url": "https://vk.com/video-220754053_456239018",
+          "label": "ВКонтакте (VK Видео)"
+        },
+        {
+          "platform": "youtube",
+          "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          "label": "YouTube"
+        },
+        {
+          "platform": "rutube",
+          "url": "https://rutube.ru/video/e9d0d3f2ecba4d9396eb51faee7e6cb8/",
+          "label": "RuTube"
+        }
+      ],
+      "synopsis": "Конспект первого урока «Библейские заветы» (преп. Дмитрий Бабков):\n\n1. Понятие завета в Священном Писании (евр. בְּרִית — berith).\n2. Адамов завет и Завет с Ноем: знамение радуги и безусловная милость Творца.\n3. Завет с Авраамом: обетование земли, потомства и благословения всех народов.\n4. Синайский завет: Закон как детоводитель ко Христу.\n5. Новый Завет: исполнение обетований в Иисусе Христе через веру и благодать.",
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "attachments": [
+        {
+          "title": "Конспект лекции №1 (PDF)",
+          "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+          "type": "document",
+          "file_name": "biblical_covenants_lesson_1.pdf",
+          "file_size": 145000
+        },
+        {
+          "title": "Рабочая тетрадь и вопросы к уроку (DOCX)",
+          "url": "https://example.com/workbook_lesson_1.docx",
+          "type": "document",
+          "file_name": "workbook_lesson_1.docx",
+          "file_size": 98000
+        }
+      ]
     }
   ],
   "extraMaterials": [
@@ -238,11 +308,22 @@
       "playlist_name": "Библейские Заветы. Дмитрий Бобков",
       "type": "video",
       "url": "https://youtu.be/3PpuucT_BeQ",
-      "description": "",
+      "description": "ЮТУБ",
       "order_index": 1,
       "file_name": "",
       "file_size": 0,
-      "created_at": "2026-09-24T19:05:03.322Z"
+      "created_at": "2026-09-24T19:05:03.322Z",
+      "file_id": null,
+      "sources": [
+        {
+          "platform": "vk",
+          "url": "https://vkvideo.ru/video65958298_456239050?pl=65958298_-4",
+          "label": "ВКонтакте (VK Видео)"
+        }
+      ],
+      "attachments": [],
+      "synopsis": "лоыдрвыщдлчтс длфывтжщфывжлтывжл \nлдотраолдтрвадлтфыдл фджьывэавылт\nжфдчафывжащшрывжащшрфывжлащрт \nжлрвыжащывждтвылат эыфвьэзщоьэзащоэцвэь\nфыдвлтажывража",
+      "audio_url": null
     },
     {
       "id": 22,
@@ -318,6 +399,50 @@
       "file_size": 16638,
       "file_id": 30,
       "created_at": "2026-09-27T19:23:29.205Z"
+    },
+    {
+      "id": 31,
+      "title": "Библейские заветы, урок первый, Дмитрий Бабков",
+      "playlist_name": "Библейские заветы (курс лекций)",
+      "type": "video",
+      "url": "https://vk.com/video-220754053_456239018",
+      "description": "Лекция Дмитрия Бабкова о библейских заветах. Доступен выбор источника (ВКонтакте / YouTube / RuTube), аудиоверсия, краткий конспект и файлы.",
+      "order_index": 1,
+      "sources": [
+        {
+          "platform": "vk",
+          "url": "https://vk.com/video-220754053_456239018",
+          "label": "ВКонтакте (VK Видео)"
+        },
+        {
+          "platform": "youtube",
+          "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          "label": "YouTube"
+        },
+        {
+          "platform": "rutube",
+          "url": "https://rutube.ru/video/e9d0d3f2ecba4d9396eb51faee7e6cb8/",
+          "label": "RuTube"
+        }
+      ],
+      "synopsis": "Конспект первого урока «Библейские заветы» (преп. Дмитрий Бабков):\n\n1. Понятие завета в Священном Писании (евр. בְּרִית — berith).\n2. Адамов завет и Завет с Ноем: знамение радуги и безусловная милость Творца.\n3. Завет с Авраамом: обетование земли, потомства и благословения всех народов.\n4. Синайский завет: Закон как детоводитель ко Христу.\n5. Новый Завет: исполнение обетований в Иисусе Христе через веру и благодать.",
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "attachments": [
+        {
+          "title": "Конспект лекции №1 (PDF)",
+          "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+          "type": "document",
+          "file_name": "biblical_covenants_lesson_1.pdf",
+          "file_size": 145000
+        },
+        {
+          "title": "Рабочая тетрадь и вопросы к уроку (DOCX)",
+          "url": "https://example.com/workbook_lesson_1.docx",
+          "type": "document",
+          "file_name": "workbook_lesson_1.docx",
+          "file_size": 98000
+        }
+      ]
     }
   ],
   "tests": [
@@ -1570,6 +1695,51 @@
       "text": "мне было сложно в 1 теме",
       "created_at": "2026-09-27T19:49:04.083Z",
       "group_id": 3
+    },
+    {
+      "id": 8,
+      "theme_id": 16,
+      "group_id": 3,
+      "user_id": 4,
+      "text": "Мой отчёт по первому уроку Дмитрия Бабкова. Все тезисы усвоены.",
+      "created_at": "2026-10-02T08:00:30.505Z",
+      "is_report": true,
+      "report_status": "accepted",
+      "material_id": 72,
+      "reply_to_id": null,
+      "reactions": {},
+      "report_comment": "Прекрасный конспект, зачёт!",
+      "report_reviewed_by": 1,
+      "report_reviewed_at": "2026-10-02T08:01:01.408Z"
+    },
+    {
+      "id": 9,
+      "theme_id": 16,
+      "group_id": 3,
+      "user_id": 4,
+      "text": "Отчёт по второму уроку завета. Конспект заполнен.",
+      "created_at": "2026-10-02T08:00:34.242Z",
+      "is_report": true,
+      "report_status": "pending",
+      "material_id": 60,
+      "reply_to_id": null,
+      "reactions": {}
+    },
+    {
+      "id": 10,
+      "theme_id": 16,
+      "group_id": 3,
+      "user_id": 4,
+      "text": "Отчёт по третьему уроку Библейских Заветов. Все задания выполнены.",
+      "created_at": "2026-10-02T08:08:32.648Z",
+      "is_report": true,
+      "report_status": "accepted",
+      "material_id": 61,
+      "reply_to_id": null,
+      "reactions": {},
+      "report_comment": "Отлично, зачёт по третьему уроку!",
+      "report_reviewed_by": 1,
+      "report_reviewed_at": "2026-10-02T08:08:42.840Z"
     }
   ],
   "settings": {
@@ -1624,7 +1794,7 @@
       "title": "Объявление: Добро пожаловать на курс!",
       "body": "Приветствуем всех участников курса...",
       "link": "/student?tab=announcements",
-      "read_at": null,
+      "read_at": "2026-10-02T07:50:42.098Z",
       "created_at": "2026-09-21T13:28:00.402Z"
     },
     {
@@ -1634,7 +1804,7 @@
       "title": "Сообщение от Волков Алексей",
       "body": "пивет",
       "link": "/student?tab=messages&user=2",
-      "read_at": null,
+      "read_at": "2026-10-02T07:50:42.098Z",
       "created_at": "2026-09-24T08:09:46.551Z"
     },
     {
@@ -1726,6 +1896,116 @@
       "link": "/teacher?theme=16",
       "read_at": null,
       "created_at": "2026-09-27T19:49:04.088Z"
+    },
+    {
+      "id": 12,
+      "user_id": 3,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №1 «Библейские заветы, урок первый, Дмитрий Бабков» от Даниил Петров (Ученик)",
+      "body": "Мой отчёт по первому уроку Дмитрия Бабкова. Все тезисы усвоены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:30.505Z"
+    },
+    {
+      "id": 13,
+      "user_id": 2,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №1 «Библейские заветы, урок первый, Дмитрий Бабков» от Даниил Петров (Ученик)",
+      "body": "Мой отчёт по первому уроку Дмитрия Бабкова. Все тезисы усвоены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:30.505Z"
+    },
+    {
+      "id": 14,
+      "user_id": 1,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №1 «Библейские заветы, урок первый, Дмитрий Бабков» от Даниил Петров (Ученик)",
+      "body": "Мой отчёт по первому уроку Дмитрия Бабкова. Все тезисы усвоены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:30.505Z"
+    },
+    {
+      "id": 15,
+      "user_id": 3,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №2 «Библейские Заветы  - 2 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по второму уроку завета. Конспект заполнен.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:34.242Z"
+    },
+    {
+      "id": 16,
+      "user_id": 2,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №2 «Библейские Заветы  - 2 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по второму уроку завета. Конспект заполнен.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:34.242Z"
+    },
+    {
+      "id": 17,
+      "user_id": 1,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №2 «Библейские Заветы  - 2 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по второму уроку завета. Конспект заполнен.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:00:34.242Z"
+    },
+    {
+      "id": 18,
+      "user_id": 4,
+      "type": "report",
+      "title": "Отчёт по уроку №1 «Библейские заветы, урок первый, Дмитрий Бабков» (тема «Библейские Заветы. Дмитрий Бобков»): ✅ Зачтено",
+      "body": "Комментарий куратора: Прекрасный конспект, зачёт!",
+      "link": "/student?course=3&theme=16",
+      "read_at": null,
+      "created_at": "2026-10-02T08:01:01.409Z"
+    },
+    {
+      "id": 19,
+      "user_id": 3,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №3 «Библейские Заветы  - 3 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по третьему уроку Библейских Заветов. Все задания выполнены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:08:32.649Z"
+    },
+    {
+      "id": 20,
+      "user_id": 2,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №3 «Библейские Заветы  - 3 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по третьему уроку Библейских Заветов. Все задания выполнены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:08:32.649Z"
+    },
+    {
+      "id": 21,
+      "user_id": 1,
+      "type": "report",
+      "title": "📝 Новый отчёт: Урок №3 «Библейские Заветы  - 3 урок. Дмитрий Бобков» от Даниил Петров (Ученик)",
+      "body": "Отчёт по третьему уроку Библейских Заветов. Все задания выполнены.",
+      "link": "/teacher?theme=16&group_id=3",
+      "read_at": null,
+      "created_at": "2026-10-02T08:08:32.649Z"
+    },
+    {
+      "id": 22,
+      "user_id": 4,
+      "type": "report",
+      "title": "Отчёт по уроку №3 «Библейские Заветы  - 3 урок. Дмитрий Бобков» (тема «Библейские Заветы. Дмитрий Бобков»): ✅ Зачтено",
+      "body": "Комментарий куратора: Отлично, зачёт по третьему уроку!",
+      "link": "/student?course=3&theme=16",
+      "read_at": null,
+      "created_at": "2026-10-02T08:08:42.841Z"
     }
   ],
   "directMessages": [
@@ -1771,25 +2051,128 @@
       "created_at": "2026-09-27T19:39:56.028Z"
     }
   ],
+  "materialCompletions": [
+    {
+      "id": 1,
+      "user_id": 4,
+      "material_id": 59,
+      "completed_at": "2026-10-02T07:47:58.501Z"
+    }
+  ],
+  "scheduleEvents": [
+    {
+      "id": 1,
+      "course_id": 1,
+      "group_id": 2,
+      "title": "🚀 Старт темы 1: Библейские Заветы. Дмитрий Бобков",
+      "event_type": "theme_open",
+      "start_date": "2026-10-01",
+      "theme_id": 16,
+      "description": "Начало изучения материалов темы. Рекомендуется посмотреть вводные видеоуроки и конспекты.",
+      "created_at": "2026-10-04T04:32:24.498Z"
+    },
+    {
+      "id": 2,
+      "course_id": 1,
+      "group_id": 2,
+      "title": "📝 Дедлайн сдачи отчёта: Библейские Заветы  - 1 урок. Дмитрий Бобков",
+      "event_type": "report_deadline",
+      "start_date": "2026-10-08T23:59:00",
+      "theme_id": 16,
+      "material_id": 59,
+      "description": "Срок сдачи индивидуального отчёта куратору на проверку.",
+      "created_at": "2026-10-04T04:32:24.498Z"
+    },
+    {
+      "id": 3,
+      "course_id": 1,
+      "group_id": 2,
+      "title": "🎥 Онлайн-встреча с куратором (вопросы и ответы)",
+      "event_type": "webinar",
+      "start_date": "2026-10-12T19:00:00",
+      "end_date": "2026-10-12T20:30:00",
+      "link_url": "https://telemost.yandex.ru/j/mku-covenants-meeting",
+      "description": "Живой разбор сложных вопросов, комментарии по отчётам и рекомендации куратора.",
+      "created_at": "2026-10-04T04:32:24.498Z"
+    },
+    {
+      "id": 4,
+      "course_id": 1,
+      "group_id": 2,
+      "title": "✍️ Срок сдачи проверочного теста по теме 1",
+      "event_type": "test_deadline",
+      "start_date": "2026-10-15T23:59:00",
+      "theme_id": 16,
+      "description": "Необходимо сдать проверочный тест темы для перехода к следующему блоку.",
+      "created_at": "2026-10-04T04:32:24.498Z"
+    },
+    {
+      "id": 5,
+      "course_id": 3,
+      "group_id": 3,
+      "title": "🚀 Открытие темы: Жизнь Служения",
+      "event_type": "theme_open",
+      "start_date": "2026-10-03",
+      "end_date": null,
+      "theme_id": 18,
+      "material_id": null,
+      "link_url": null,
+      "description": "Старт изучения темы и практических материалов.",
+      "created_by": 1,
+      "created_at": "2026-10-04T05:42:45.255Z"
+    },
+    {
+      "id": 6,
+      "course_id": 3,
+      "group_id": 3,
+      "title": "📝 Дедлайн отчёта по теме Жизнь Служения",
+      "event_type": "report_deadline",
+      "start_date": "2026-10-10T23:59:00",
+      "end_date": null,
+      "theme_id": 18,
+      "material_id": null,
+      "link_url": null,
+      "description": "Срок сдачи индивидуального отчёта.",
+      "created_by": 1,
+      "created_at": "2026-10-04T05:42:45.269Z"
+    },
+    {
+      "id": 7,
+      "course_id": 3,
+      "group_id": 3,
+      "title": "🎥 Онлайн-семинар с куратором",
+      "event_type": "webinar",
+      "start_date": "2026-10-14T19:00:00",
+      "end_date": "2026-10-14T20:30:00",
+      "theme_id": null,
+      "material_id": null,
+      "link_url": "https://telemost.yandex.ru/j/mku-meeting",
+      "description": "Разбор отчётов и консультация.",
+      "created_by": 1,
+      "created_at": "2026-10-04T05:42:45.274Z"
+    }
+  ],
   "nextId": {
-    "user": 6,
+    "user": 7,
     "course": 6,
     "group": 4,
     "theme": 19,
-    "material": 72,
+    "material": 73,
     "extraMaterial": 2,
-    "storageMaterial": 31,
+    "storageMaterial": 32,
     "test": 3,
     "question": 34,
     "answer": 137,
     "attempt": 3,
     "attemptAnswer": 55,
     "announcement": 3,
-    "chatMessage": 8,
+    "chatMessage": 11,
     "uploadedFile": 31,
     "phoneInvite": 4,
-    "notification": 12,
+    "notification": 23,
     "directMessage": 5,
-    "themeUnlock": 3
+    "themeUnlock": 3,
+    "materialCompletion": 2,
+    "scheduleEvent": 8
   }
 }

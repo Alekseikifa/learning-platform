@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { api, uploadFile } from "../api";
 import Modal from "./Modal";
+import SmartMediaViewer, { getPlatformBadge, parseVideoUrl } from "./SmartMediaViewer";
 
 export const MAT_FORMATS = [
   { v: "video", l: "🎬 Видео", badgeColor: "#1E3A5F", bg: "#EBF1F8" },
@@ -38,6 +39,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     new_playlist_name: "",
     type: "video",
     url: "",
+    sources: [],
+    synopsis: "",
+    audio_url: "",
+    attachments: [],
     description: "",
     order_index: 1,
   });
@@ -62,6 +67,8 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
 
   // Preview Note Modal
   const [previewNote, setPreviewNote] = useState(null);
+  // Full Lesson Preview Modal (SmartMediaViewer)
+  const [previewLesson, setPreviewLesson] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -97,6 +104,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       new_playlist_name: "",
       type: "video",
       url: "",
+      sources: [],
+      synopsis: "",
+      audio_url: "",
+      attachments: [],
       description: "",
       order_index: existingInTheme.length + 1,
     });
@@ -147,6 +158,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       playlist_name: finalTheme,
       type: form.type,
       url: form.url.trim(),
+      sources: form.sources || [],
+      synopsis: form.synopsis ? form.synopsis.trim() : null,
+      audio_url: form.audio_url ? form.audio_url.trim() : null,
+      attachments: form.attachments || [],
       description: form.description.trim(),
       order_index: Number(form.order_index) || 1,
     };
@@ -184,15 +199,144 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   const handleEditClick = (mat) => {
     setEditingMaterial(mat);
     setForm({
-      title: mat.title,
-      playlist_name: mat.playlist_name,
+      title: mat.title || "",
+      playlist_name: mat.playlist_name || "",
       new_playlist_name: "",
-      type: mat.type,
-      url: mat.url,
+      type: mat.type || "video",
+      url: mat.url || "",
+      sources: Array.isArray(mat.sources) ? JSON.parse(JSON.stringify(mat.sources)) : [],
+      synopsis: mat.synopsis || "",
+      audio_url: mat.audio_url || "",
+      attachments: Array.isArray(mat.attachments) ? JSON.parse(JSON.stringify(mat.attachments)) : [],
       description: mat.description || "",
       order_index: mat.order_index || 1,
     });
     setShowAddModal(true);
+  };
+
+  // Video sources management
+  const handleAddSource = () => {
+    setForm(f => ({
+      ...f,
+      sources: [
+        ...(f.sources || []),
+        { platform: "vk", url: "", label: "ВКонтакте (VK Видео)" }
+      ]
+    }));
+  };
+
+  const handleRemoveSource = (idx) => {
+    setForm(f => ({
+      ...f,
+      sources: (f.sources || []).filter((_, i) => i !== idx)
+    }));
+  };
+
+  const handleSourceChange = (idx, field, value) => {
+    setForm(f => {
+      const list = [...(f.sources || [])];
+      list[idx] = { ...list[idx], [field]: value };
+      if (field === "platform") {
+        const badge = getPlatformBadge(value);
+        if (!list[idx].label || list[idx].label.includes("VK") || list[idx].label.includes("YouTube") || list[idx].label.includes("RuTube")) {
+          list[idx].label = badge.label;
+        }
+      }
+      return { ...f, sources: list };
+    });
+  };
+
+  const handleSourceFileUpload = async (idx, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadFile(file);
+      const url = res.url || ("/api/files/" + res.id);
+      handleSourceChange(idx, "url", url);
+      handleSourceChange(idx, "platform", "file");
+      handleSourceChange(idx, "label", "Видеофайл (" + file.name.slice(0, 20) + ")");
+    } catch (err) {
+      alert("Ошибка загрузки видеофайла: " + (err.message || err));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  // Audio file upload
+  const handleAudioUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadFile(file);
+      setForm(f => ({ ...f, audio_url: res.url || ("/api/files/" + res.id) }));
+    } catch (err) {
+      alert("Ошибка загрузки аудиофайла: " + (err.message || err));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  // Attachments management
+  const handleAddAttachmentUrl = () => {
+    setForm(f => ({
+      ...f,
+      attachments: [
+        ...(f.attachments || []),
+        { title: "Документ к уроку", url: "", type: "document" }
+      ]
+    }));
+  };
+
+  const handleRemoveAttachment = (idx) => {
+    setForm(f => ({
+      ...f,
+      attachments: (f.attachments || []).filter((_, i) => i !== idx)
+    }));
+  };
+
+  const handleAttachmentChange = (idx, field, value) => {
+    setForm(f => {
+      const list = [...(f.attachments || [])];
+      list[idx] = { ...list[idx], [field]: value };
+      return { ...f, attachments: list };
+    });
+  };
+
+  const handleAttachmentFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadFile(file);
+      const url = res.url || ("/api/files/" + res.id);
+      const isDoc = file.name.endsWith(".doc") || file.name.endsWith(".docx") || file.name.endsWith(".pdf");
+      const isImg = file.type.startsWith("image");
+      const isAudio = file.type.startsWith("audio");
+      const attType = isDoc ? "document" : isImg ? "image" : isAudio ? "audio" : "document";
+
+      setForm(f => ({
+        ...f,
+        attachments: [
+          ...(f.attachments || []),
+          {
+            title: file.name.replace(/\.[^/.]+$/, ""),
+            url,
+            type: attType,
+            file_name: file.name,
+            file_size: file.size,
+          }
+        ]
+      }));
+    } catch (err) {
+      alert("Ошибка загрузки документа: " + (err.message || err));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
   };
 
   // Reorder material inside playlist
@@ -520,6 +664,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                   courseThemeId: "",
                 })}
                 onPreviewNote={setPreviewNote}
+                onPreviewLesson={setPreviewLesson}
               />
             ))
           )}
@@ -549,6 +694,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                   courseThemeId: "",
                 })}
                 onPreviewNote={() => setPreviewNote(mat)}
+                onPreviewLesson={() => setPreviewLesson(mat)}
               />
             ))}
           </div>
@@ -562,23 +708,29 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
           backdropClassName="modal-overlay"
           backdropStyle={overlayStyle}
           innerClassName="card modal-content"
-          innerStyle={modalContentStyle}
+          innerStyle={{ ...modalContentStyle, maxWidth: 760 }}
         >
             <div className="spread" style={{ marginBottom: 14, alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>
-                {editingMaterial ? "✏️ Редактирование материала" : "➕ Загрузить материал в накопитель"}
-              </h3>
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  {editingMaterial ? "✏️ Редактирование урока / материала" : "➕ Добавить урок / материал в накопитель"}
+                </h3>
+                <span className="small muted">
+                  Поддержка нескольких источников видео (VK, YouTube, RuTube), конспекта, аудио и документов
+                </span>
+              </div>
               <button
                 type="button"
                 className="btn ghost small"
                 onClick={() => setShowAddModal(false)}
+                aria-label="Закрыть"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveMaterial} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Theme selection */}
+            <form onSubmit={handleSaveMaterial} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Playlist selection */}
               <div>
                 <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: 13 }}>
                   Плейлист (раздел, объединяющий материалы): <span style={{ color: "var(--danger)" }}>*</span>
@@ -597,7 +749,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </div>
                 {(form.playlist_name === "__new__" || !form.playlist_name) && (
                   <input
-                    placeholder="Введите название нового плейлиста (например: 1. Призвание ученика)"
+                    placeholder="Введите название нового плейлиста (например: Библейские заветы)"
                     value={form.new_playlist_name}
                     onChange={e => setForm(f => ({ ...f, new_playlist_name: e.target.value }))}
                     required
@@ -613,7 +765,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                     Название материала / урока: <span style={{ color: "var(--danger)" }}>*</span>
                   </label>
                   <input
-                    placeholder="Например: Урок 1: Вводная лекция"
+                    placeholder="Например: Библейские заветы, урок первый, Дмитрий Бабков"
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                     required
@@ -638,7 +790,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
               {/* Format selection */}
               <div>
                 <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: 13 }}>
-                  Формат материала:
+                  Основной формат материала:
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 6 }}>
                   {MAT_FORMATS.map(f => (
@@ -664,10 +816,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </div>
               </div>
 
-              {/* Content / Upload Area */}
-              <div>
+              {/* Primary Content / Upload Area */}
+              <div style={{ background: "#F8FAFC", padding: 12, borderRadius: 8, border: "1px solid #E2E8F0" }}>
                 <label style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: 13 }}>
-                  {form.type === "note" ? "Текст заметки / конспекта:" : "Файл или ссылка (URL):"} <span style={{ color: "var(--danger)" }}>*</span>
+                  {form.type === "note" ? "Текст заметки / конспекта:" : "Основная ссылка на видео / файл (URL):"} <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
 
                 {form.type === "note" ? (
@@ -686,9 +838,9 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                       style={{
                         border: "2px dashed var(--border)",
                         borderRadius: 8,
-                        padding: "16px 20px",
+                        padding: "14px 16px",
                         textAlign: "center",
-                        background: uploading ? "var(--gold-soft)" : "var(--bg)",
+                        background: uploading ? "var(--gold-soft)" : "#FFFFFF",
                         cursor: "pointer",
                       }}
                       onClick={() => document.getElementById("repo-file-input")?.click()}
@@ -700,28 +852,335 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                         onChange={handleFileUpload}
                         disabled={uploading}
                       />
-                      <div style={{ fontSize: 24, marginBottom: 4 }}>
+                      <div style={{ fontSize: 22, marginBottom: 2 }}>
                         {uploading ? "⏳" : "📤"}
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
                         {uploading ? "Загрузка файла на сервер..." : "Нажмите для выбора файла или перетащите его сюда"}
                       </div>
-                      <div className="small muted" style={{ marginTop: 4 }}>
-                        Поддерживаются видео (MP4, WEBM), аудио (MP3, WAV), документы (PDF, DOCX), рисунки (JPG, PNG) до 500 МБ
+                      <div className="small muted" style={{ marginTop: 2 }}>
+                        Поддерживаются видео (MP4, WEBM), аудио, документы (PDF, DOCX)
                       </div>
                     </div>
 
-                    {/* Direct URL input fallback */}
+                    {/* Direct URL input */}
                     <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                      <span className="small muted" style={{ whiteSpace: "nowrap" }}>Либо прямая ссылка:</span>
+                      <span className="small muted" style={{ whiteSpace: "nowrap" }}>Ссылка:</span>
                       <input
-                        placeholder="https://... или /api/files/..."
+                        placeholder="https://vk.com/video... или https://youtube.com/watch?v=... или /api/files/..."
                         value={form.url}
                         onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                         required
                         style={{ flex: 1 }}
                       />
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION: ALTERNATIVE VIDEO SOURCES (ВКонтакте, YouTube, RuTube...) */}
+              <div style={{
+                background: "#EFF6FF",
+                padding: "14px",
+                borderRadius: 8,
+                border: "1px solid #BFDBFE",
+              }}>
+                <div className="spread" style={{ alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    <b style={{ color: "#1D4ED8", fontSize: 13 }}>
+                      📺 Альтернативные источники видео (ВКонтакте, YouTube, RuTube...)
+                    </b>
+                    <div className="small muted" style={{ color: "#3B82F6" }}>
+                      Ученик сможет в один клик переключиться на VK, если YouTube не загружается
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={handleAddSource}
+                    style={{
+                      background: "#2563EB",
+                      color: "#FFFFFF",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontWeight: 600,
+                    }}
+                  >
+                    ➕ Добавить источник видео
+                  </button>
+                </div>
+
+                {(!form.sources || form.sources.length === 0) ? (
+                  <div className="small muted" style={{ fontStyle: "italic", padding: "6px 0" }}>
+                    Альтернативные источники пока не добавлены. Нажмите «➕ Добавить источник видео», чтобы добавить ссылку на ВКонтакте, YouTube или RuTube.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                    {form.sources.map((src, sIdx) => {
+                      return (
+                        <div
+                          key={sIdx}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            background: "#FFFFFF",
+                            padding: "8px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #DBEAFE",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <select
+                            value={src.platform || "vk"}
+                            onChange={e => handleSourceChange(sIdx, "platform", e.target.value)}
+                            style={{ width: 140, fontSize: 12, padding: "4px 8px" }}
+                          >
+                            <option value="vk">🔷 ВКонтакте (VK)</option>
+                            <option value="youtube">▶️ YouTube</option>
+                            <option value="rutube">🔴 RuTube</option>
+                            <option value="ok">🟠 OK.ru</option>
+                            <option value="file">🎬 Видеофайл</option>
+                            <option value="other">🔗 Другой источник</option>
+                          </select>
+
+                          <input
+                            placeholder="Подпись кнопки (напр: ВКонтакте)"
+                            value={src.label || ""}
+                            onChange={e => handleSourceChange(sIdx, "label", e.target.value)}
+                            style={{ width: 150, fontSize: 12, padding: "4px 8px" }}
+                            title="Текст на кнопке переключения источника для учеников"
+                          />
+
+                          <input
+                            placeholder="URL видео (https://vk.com/... или https://youtube.com/...)"
+                            value={src.url || ""}
+                            onChange={e => handleSourceChange(sIdx, "url", e.target.value)}
+                            style={{ flex: 1, minWidth: 160, fontSize: 12, padding: "4px 8px" }}
+                          />
+
+                          <label
+                            className="btn small ghost"
+                            style={{
+                              fontSize: 11,
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Загрузить локальный видеофайл на сервер"
+                          >
+                            {uploading ? "⏳" : "📤 Файл"}
+                            <input
+                              type="file"
+                              accept="video/*"
+                              hidden
+                              onChange={e => handleSourceFileUpload(sIdx, e)}
+                              disabled={uploading}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            className="btn danger small"
+                            onClick={() => handleRemoveSource(sIdx)}
+                            style={{ padding: "3px 7px", fontSize: 11 }}
+                            title="Удалить этот источник"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION: TEXT SYNOPSIS (Конспект первого урока в текстовом варианте) */}
+              <div style={{
+                background: "#F0FDF4",
+                padding: "14px",
+                borderRadius: 8,
+                border: "1px solid #BBF7D0",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 16 }}>📝</span>
+                  <b style={{ color: "#166534", fontSize: 13 }}>
+                    Текстовый конспект урока (тезисы лекции, план, ключевые места Писания):
+                  </b>
+                </div>
+                <div className="small muted" style={{ color: "#15803D", marginBottom: 6 }}>
+                  Вы можете прикрепить к видеоуроку конспект в текстовом виде. Ученики смогут читать его прямо под видео или на сплит-экране.
+                </div>
+                <textarea
+                  placeholder="Введите или вставьте текст конспекта первого урока Дмитрия Бабкова, основные положения и тезисы..."
+                  value={form.synopsis || ""}
+                  onChange={e => setForm(f => ({ ...f, synopsis: e.target.value }))}
+                  rows={4}
+                  style={{ width: "100%", fontFamily: "inherit", fontSize: 13, background: "#FFFFFF" }}
+                />
+              </div>
+
+              {/* SECTION: AUDIO RECORDING (Аудио к первому уроку) */}
+              <div style={{
+                background: "#FAF5FF",
+                padding: "14px",
+                borderRadius: 8,
+                border: "1px solid #E9D5FF",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 16 }}>🎧</span>
+                  <b style={{ color: "#6B21A8", fontSize: 13 }}>
+                    Аудиозапись к уроку (MP3 / аудиоверсия лекции):
+                  </b>
+                </div>
+                <div className="small muted" style={{ color: "#7E22CE", marginBottom: 8 }}>
+                  Прикрепите аудиоверсию урока, чтобы ученики могли слушать лекцию в наушниках или в дороге.
+                </div>
+
+                <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <input
+                    placeholder="https://... или /api/files/... (ссылка на MP3/WAV)"
+                    value={form.audio_url || ""}
+                    onChange={e => setForm(f => ({ ...f, audio_url: e.target.value }))}
+                    style={{ flex: 1, fontSize: 13, background: "#FFFFFF" }}
+                  />
+                  <label
+                    className="btn small"
+                    style={{
+                      background: "#7E22CE",
+                      color: "#FFFFFF",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      padding: "6px 12px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {uploading ? "⏳ Загрузка..." : "📤 Загрузить MP3"}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      hidden
+                      onChange={handleAudioUpload}
+                      disabled={uploading}
+                    />
+                  </label>
+                  {form.audio_url && (
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      onClick={() => setForm(f => ({ ...f, audio_url: "" }))}
+                      title="Удалить аудио"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {form.audio_url && (
+                  <div style={{ marginTop: 8 }}>
+                    <audio controls src={form.audio_url} style={{ width: "100%", height: 36 }} />
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION: MULTIPLE ATTACHMENTS (Прикреплённые документы: PDF, Word, файлы) */}
+              <div style={{
+                background: "#FFFBEB",
+                padding: "14px",
+                borderRadius: 8,
+                border: "1px solid #FDE68A",
+              }}>
+                <div className="spread" style={{ alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    <b style={{ color: "#92400E", fontSize: 13 }}>
+                      📎 Прикреплённые документы и файлы к уроку
+                    </b>
+                    <div className="small muted" style={{ color: "#B45309" }}>
+                      Конспекты в PDF, рабочие тетради, схемы и презентации
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <label
+                      className="btn small"
+                      style={{
+                        background: "#D97706",
+                        color: "#FFFFFF",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        fontSize: 12,
+                        padding: "4px 10px",
+                      }}
+                    >
+                      {uploading ? "⏳ Загрузка..." : "📎 Загрузить файл/PDF"}
+                      <input
+                        type="file"
+                        hidden
+                        onChange={handleAttachmentFileUpload}
+                        disabled={uploading}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      onClick={handleAddAttachmentUrl}
+                      style={{ fontSize: 12, padding: "4px 8px" }}
+                    >
+                      ➕ По ссылке
+                    </button>
+                  </div>
+                </div>
+
+                {(!form.attachments || form.attachments.length === 0) ? (
+                  <div className="small muted" style={{ fontStyle: "italic", padding: "6px 0" }}>
+                    Документы к уроку пока не прикреплены. Нажмите «Загрузить файл/PDF» или «По ссылке».
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                    {form.attachments.map((att, aIdx) => (
+                      <div
+                        key={aIdx}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          background: "#FFFFFF",
+                          padding: "8px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #FDE68A",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span style={{ fontSize: 16 }}>📄</span>
+                        <input
+                          placeholder="Название документа (напр: Конспект урока №1 PDF)"
+                          value={att.title || ""}
+                          onChange={e => handleAttachmentChange(aIdx, "title", e.target.value)}
+                          style={{ flex: 2, minWidth: 150, fontSize: 12, padding: "4px 8px" }}
+                        />
+                        <input
+                          placeholder="URL / ссылка на документ"
+                          value={att.url || ""}
+                          onChange={e => handleAttachmentChange(aIdx, "url", e.target.value)}
+                          style={{ flex: 3, minWidth: 180, fontSize: 12, padding: "4px 8px" }}
+                        />
+                        {att.file_size ? (
+                          <span className="small muted" style={{ fontSize: 11 }}>
+                            {(att.file_size / (1024 * 1024)).toFixed(2)} МБ
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="btn danger small"
+                          onClick={() => handleRemoveAttachment(aIdx)}
+                          style={{ padding: "3px 7px", fontSize: 11 }}
+                          title="Удалить этот документ"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -752,9 +1211,9 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                   type="submit"
                   className="btn primary"
                   disabled={uploading}
-                  style={{ fontWeight: 600 }}
+                  style={{ fontWeight: 600, padding: "8px 20px" }}
                 >
-                  {editingMaterial ? "Сохранить изменения" : "💾 Добавить в накопитель"}
+                  {editingMaterial ? "💾 Сохранить изменения" : "💾 Добавить в накопитель"}
                 </button>
               </div>
             </form>
@@ -958,6 +1417,51 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
             </div>
         </Modal>
       )}
+
+      {/* MODAL: PREVIEW LESSON (SMART MEDIA VIEWER) */}
+      {previewLesson && (
+        <Modal
+          onClose={() => setPreviewLesson(null)}
+          backdropClassName="modal-overlay"
+          backdropStyle={overlayStyle}
+          innerClassName="card modal-content"
+          innerStyle={{ ...modalContentStyle, maxWidth: 840 }}
+        >
+          <div className="spread" style={{ marginBottom: 12, alignItems: "flex-start", borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
+            <div>
+              <span className="tag" style={{ fontSize: 11, marginBottom: 4, display: "inline-block" }}>
+                📚 Плейлист: {previewLesson.playlist_name}
+              </span>
+              <h3 style={{ margin: "2px 0 0", color: "var(--navy)" }}>{previewLesson.title}</h3>
+              {previewLesson.description && (
+                <div className="muted small" style={{ marginTop: 4 }}>
+                  {previewLesson.description}
+                </div>
+              )}
+            </div>
+            <button type="button" className="btn ghost small" onClick={() => setPreviewLesson(null)} aria-label="Закрыть">✕</button>
+          </div>
+
+          <SmartMediaViewer
+            url={previewLesson.url}
+            sources={previewLesson.sources || []}
+            title={previewLesson.title}
+            description={previewLesson.description}
+            audio_url={previewLesson.audio_url}
+            synopsis={previewLesson.synopsis}
+            attachments={previewLesson.attachments || []}
+          />
+
+          <div className="spread" style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border)", alignItems: "center" }}>
+            <span className="small muted">
+              Так этот урок увидят ученики в курсе при выборе источника видео, аудио и конспекта
+            </span>
+            <button type="button" className="btn ghost" onClick={() => setPreviewLesson(null)}>
+              Закрыть
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -975,6 +1479,7 @@ function PlaylistStorageCard({
   onAttachPlaylist,
   onAttachMaterial,
   onPreviewNote,
+  onPreviewLesson,
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -1068,6 +1573,8 @@ function PlaylistStorageCard({
         <div className="list" style={{ margin: 0 }}>
           {items.map((mat, idx) => {
             const fmt = getFormatInfo(mat.type);
+            const totalSources = 1 + (mat.sources?.length || 0);
+
             return (
               <div
                 key={mat.id}
@@ -1136,11 +1643,34 @@ function PlaylistStorageCard({
                     {fmt.l}
                   </span>
 
-                  {/* Title & description */}
+                  {/* Title & description & Badges */}
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
-                      {mat.title}
+                    <div style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{mat.title}</span>
+
+                      {/* Source & Attachment badges */}
+                      {mat.sources && mat.sources.length > 0 && (
+                        <span className="tag" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontSize: 11, padding: '1px 6px' }}>
+                          🎬 {totalSources} источника (VK/YouTube)
+                        </span>
+                      )}
+                      {mat.synopsis && (
+                        <span className="tag" style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', fontSize: 11, padding: '1px 6px' }}>
+                          📝 Конспект
+                        </span>
+                      )}
+                      {mat.audio_url && (
+                        <span className="tag" style={{ background: '#FAF5FF', color: '#7E22CE', border: '1px solid #E9D5FF', fontSize: 11, padding: '1px 6px' }}>
+                          🎧 Аудио
+                        </span>
+                      )}
+                      {mat.attachments && mat.attachments.length > 0 && (
+                        <span className="tag" style={{ background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontSize: 11, padding: '1px 6px' }}>
+                          📎 {mat.attachments.length} {mat.attachments.length === 1 ? 'док.' : 'док.'}
+                        </span>
+                      )}
                     </div>
+
                     {mat.description && (
                       <div className="small muted" style={{ marginTop: 2 }}>
                         {mat.description}
@@ -1151,27 +1681,16 @@ function PlaylistStorageCard({
 
                 {/* Right: Preview & Action Buttons */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {/* Preview action */}
-                  {mat.type === "note" ? (
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      onClick={() => onPreviewNote(mat)}
-                      style={{ fontSize: 12 }}
-                    >
-                      📖 Читать текст
-                    </button>
-                  ) : (
-                    <a
-                      href={mat.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn ghost small"
-                      style={{ fontSize: 12, textDecoration: "none" }}
-                    >
-                      ↗ Открыть файл
-                    </a>
-                  )}
+                  {/* Full preview action */}
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    onClick={() => onPreviewLesson(mat)}
+                    style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)", display: "inline-flex", alignItems: "center", gap: 4 }}
+                    title="Открыть урок со всеми источниками видео, аудио, конспектом и документами"
+                  >
+                    <span>👁️</span> Просмотр
+                  </button>
 
                   {/* Attach to course */}
                   <button
@@ -1214,8 +1733,9 @@ function PlaylistStorageCard({
 }
 
 // Subcomponent: Flat material row
-function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote }) {
+function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote, onPreviewLesson }) {
   const fmt = getFormatInfo(material.type);
+  const totalSources = 1 + (material.sources?.length || 0);
 
   return (
     <div
@@ -1242,8 +1762,29 @@ function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote }
         </span>
 
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>
-            {material.title}
+          <div style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span>{material.title}</span>
+
+            {material.sources && material.sources.length > 0 && (
+              <span className="tag" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontSize: 11, padding: '1px 6px' }}>
+                🎬 {totalSources} источника
+              </span>
+            )}
+            {material.synopsis && (
+              <span className="tag" style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0', fontSize: 11, padding: '1px 6px' }}>
+                📝 Конспект
+              </span>
+            )}
+            {material.audio_url && (
+              <span className="tag" style={{ background: '#FAF5FF', color: '#7E22CE', border: '1px solid #E9D5FF', fontSize: 11, padding: '1px 6px' }}>
+                🎧 Аудио
+              </span>
+            )}
+            {material.attachments && material.attachments.length > 0 && (
+              <span className="tag" style={{ background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontSize: 11, padding: '1px 6px' }}>
+                📎 {material.attachments.length} док.
+              </span>
+            )}
           </div>
           <div className="small muted">
             Плейлист: <b>{material.playlist_name}</b> · Порядок: #{material.order_index}
@@ -1253,15 +1794,15 @@ function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote }
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {material.type === "note" ? (
-          <button type="button" className="btn ghost small" onClick={onPreviewNote}>
-            📖 Текст
-          </button>
-        ) : (
-          <a href={material.url} target="_blank" rel="noreferrer" className="btn ghost small" style={{ textDecoration: "none" }}>
-            ↗ Файл
-          </a>
-        )}
+        <button
+          type="button"
+          className="btn ghost small"
+          onClick={onPreviewLesson}
+          style={{ fontWeight: 600, color: "var(--navy)" }}
+          title="Открыть полный интерактивный просмотр урока"
+        >
+          👁️ Просмотр
+        </button>
         <button type="button" className="btn ghost small" onClick={onAttach} style={{ fontWeight: 600, color: "var(--navy)" }}>
           📎 В курс
         </button>

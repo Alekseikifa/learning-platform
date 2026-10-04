@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: ['alekseikifa1.zapto.org', 'localhost', '127.0.0.1']
+    host: '0.0.0.0',
+    port: 3000,
+    allowedHosts: true
   }
 });

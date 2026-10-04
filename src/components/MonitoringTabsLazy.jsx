@@ -17,3 +17,4 @@ export const StudentsTab = withSuspense(named("StudentsTab"));
 export const ProgressTable = withSuspense(named("ProgressTable"));
 export const AttemptsTab = withSuspense(named("AttemptsTab"));
 export const AnalyticsTab = withSuspense(named("AnalyticsTab"));
+export const ReportsTab = withSuspense(named("ReportsTab"));

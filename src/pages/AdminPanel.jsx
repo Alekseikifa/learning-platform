@@ -14,12 +14,13 @@ import RepositoryPickerModal from "../components/RepositoryPickerModal";
 import WarningCard from "../components/WarningCard";
 import InvitesTab from "../components/InvitesTab";
 import WelcomeModal from "../components/WelcomeModal";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabsLazy";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
 import PasswordModal from "../components/PasswordModal";
 import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
 import UserImportModal from "../components/UserImportModal";
+import ScheduleCalendar from "../components/ScheduleCalendar";
 import { api, uploadFile, getToken } from "../api";
 
 const TABS = [
@@ -27,6 +28,7 @@ const TABS = [
   { id: "users",         label: "Пользователи" },
   { id: "courses",       label: "Курсы и темы" },  
   { id: "groups",        label: "Группы" },  
+  { id: "schedule",      label: "Учебный график" },  
   { id: "chats",         label: "Чаты" },  
   { id: "materials",     label: "Материалы" },  
   { id: "tests",         label: "Тесты" },  
@@ -39,6 +41,7 @@ const TABS = [
 const MONITORING_ITEMS = [
   { id: "students",  label: "Ученики" },
   { id: "progress",  label: "Таблица прогресса" },
+  { id: "reports",   label: "Отчёты по урокам" },
   { id: "attempts",  label: "Попытки" },
   { id: "analytics", label: "Аналитика" },
 ];
@@ -137,6 +140,7 @@ export default function AdminPanel() {
       )}
       {isMonitoring && groupId && tab === "students" && <StudentsTab groupId={+groupId} />}
       {isMonitoring && groupId && tab === "progress" && <ProgressTable groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "reports"  && <ReportsTab groupId={+groupId} />}
       {isMonitoring && groupId && tab === "attempts" && <AttemptsTab groupId={+groupId} />}
       {isMonitoring && groupId && tab === "analytics" && <AnalyticsTab groupId={+groupId} />}
 
@@ -144,6 +148,7 @@ export default function AdminPanel() {
       {tab === "users"         && <UsersTab users={users} loading={usersLoading} reload={reload} />}   
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/admin" />}
       {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} apiPrefix="/api/admin" />}      
+      {tab === "schedule"      && <ScheduleCalendar courses={courses} readOnly={false} />}
       {tab === "messages"      && <DirectMessages />}
       {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
       {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/admin" />}

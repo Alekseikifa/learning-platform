@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { api, getToken, getUser, setToken, setUser } from "./api";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ToastContainer from "./components/ToastContainer";
 
 // панели ролей грузим отдельными чанками — логин/регистрация открываются сразу
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
@@ -71,6 +72,7 @@ function ProtectedRoute({ role, children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <ToastContainer />
       <Suspense
         fallback={
           <div style={{ display: "flex", minHeight: "60vh", alignItems: "center", justifyContent: "center" }}>

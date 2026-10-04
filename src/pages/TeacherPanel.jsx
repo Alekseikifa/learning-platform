@@ -4,14 +4,18 @@ import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab } from "../components/MonitoringTabsLazy";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
 import Modal from "../components/Modal";
+import UnlockThemeModal from "../components/UnlockThemeModal";
 import { api } from "../api";
+import ScheduleCalendar from "../components/ScheduleCalendar";
 import { getIcon } from "../lib/materialIcons";
 
 const TABS = [
   { id: "students",      label: "Ученики" },
   { id: "progress",      label: "Таблица прогресса" },
+  { id: "reports",       label: "Отчёты по урокам" },
+  { id: "schedule",      label: "Учебный график" },
   { id: "materials",     label: "Доп. материалы" },
   { id: "attempts",      label: "Попытки" },
   { id: "analytics",     label: "Аналитика" },
@@ -31,13 +35,25 @@ export default function TeacherPanel() {
   const [groupId, setGroupId] = useState("");
   const [pendingTheme, setPendingTheme] = useState(null);
   const [pendingExtra, setPendingExtra] = useState(null);
+  const [unlockStudent, setUnlockStudent] = useState(null);
 
   // переключение таба пишем в URL — F5 и «назад» сохраняют место
   const changeTab = (id) => {
     setTabState(id);
     const next = new URLSearchParams(searchParams);
     next.set("tab", id);
+    if (id !== "students") {
+      next.delete("theme");
+    }
+    if (id !== "materials") {
+      next.delete("extra_material");
+    }
     setSearchParams(next);
+  };
+
+  const openChatWithStudent = (studentId) => {
+    setTabState("messages");
+    setSearchParams({ tab: "messages", user: String(studentId) });
   };
 
   // точечная очистка: убираем только использованные параметры, tab оставляем
@@ -60,20 +76,24 @@ export default function TeacherPanel() {
     if (!groupId && groups[0]) setGroupId(groups[0].id);
   }, [groups, groupId]);
 
-  // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению;
-  //    ссылка на тему/материал имеет приоритет над ?tab=
+  // 3. Реакция на URL — работает и при монтировании, и при клике по уведомлению
   useEffect(() => {
     const urlTheme = searchParams.get("theme");
     const urlExtra = searchParams.get("extra_material");
     const urlTab = searchParams.get("tab");
-    if (urlTheme) {
+    if (urlTab && TABS.some((x) => x.id === urlTab)) {
+      setTabState(urlTab);
+      if (urlTab === "students" && urlTheme) {
+        setPendingTheme(+urlTheme);
+      } else if (urlTab === "materials" && urlExtra) {
+        setPendingExtra(+urlExtra);
+      }
+    } else if (urlTheme) {
       setPendingTheme(+urlTheme);
       setTabState("students");
     } else if (urlExtra) {
       setPendingExtra(+urlExtra);
       setTabState("materials");
-    } else if (urlTab && TABS.some((x) => x.id === urlTab)) {
-      setTabState(urlTab);
     }
   }, [searchParams.toString()]);
 
@@ -154,9 +174,18 @@ export default function TeacherPanel() {
                      onThemeConsumed={() => {
                        setPendingTheme(null);
                        clearParams(["theme"]);
-                     }} />
+                     }}
+                     onDirectMessage={openChatWithStudent} />
       )}
       {groupId && tab === "progress"      && <ProgressTable groupId={+groupId} />}
+      {groupId && tab === "reports"       && <ReportsTab groupId={+groupId} />}
+      {groupId && tab === "schedule"      && (
+        <ScheduleCalendar
+          courseId={groups.find(g => g.id === +groupId)?.course_id}
+          groupId={+groupId}
+          readOnly={false}
+        />
+      )}
       {groupId && tab === "materials"     && (
         <TeacherMaterialsTab
           group={groups.find(g => g.id === +groupId)}

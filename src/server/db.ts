@@ -64,6 +64,22 @@ export interface Theme {
   order_index: number;
 }
 
+export interface MaterialSource {
+  platform: string; // "youtube" | "vk" | "rutube" | "file" | "other"
+  url: string;
+  label?: string;
+}
+
+export interface MaterialAttachment {
+  id?: string | number;
+  type: string; // "document" | "note" | "audio" | "image" | "file"
+  title: string;
+  url: string;
+  file_id?: number | null;
+  file_name?: string;
+  file_size?: number;
+}
+
 export interface Material {
   id: number;
   theme_id: number;
@@ -75,6 +91,14 @@ export interface Material {
   storage_id?: number | null;
   /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
   file_id?: number | null;
+  /** Альтернативные источники видео (YouTube, VK, RuTube и т.д.) */
+  sources?: MaterialSource[];
+  /** Прикреплённые документы и файлы к уроку */
+  attachments?: MaterialAttachment[];
+  /** Текстовый конспект урока */
+  synopsis?: string | null;
+  /** Аудиозапись урока */
+  audio_url?: string | null;
 }
 
 export interface Test {
@@ -150,6 +174,10 @@ export interface ExtraMaterial {
   created_at: string;
   /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
   file_id?: number | null;
+  sources?: MaterialSource[];
+  attachments?: MaterialAttachment[];
+  synopsis?: string | null;
+  audio_url?: string | null;
 }
 
 export interface StorageMaterial {
@@ -165,17 +193,37 @@ export interface StorageMaterial {
   created_at: string;
   /** ссылка на запись uploadedFiles (для файлов, загруженных через «Файлы») */
   file_id?: number | null;
+  sources?: MaterialSource[];
+  attachments?: MaterialAttachment[];
+  synopsis?: string | null;
+  audio_url?: string | null;
 }
 
 export interface ChatMessage {
   id: number;
   theme_id?: number | null;
   extra_material_id?: number | null;
+  /** конкретный урок темы, к которому привязан отчёт (null — отчёт ко всей теме или обычное сообщение) */
+  material_id?: number | null;
   /** группа, к которой относится обсуждение (null — старые/осиротевшие сообщения, видит только администрация) */
   group_id?: number | null;
   user_id: number;
   text: string;
   created_at: string;
+  /** Является ли сообщение отчётом по уроку */
+  is_report?: boolean;
+  /** Статус проверки отчёта куратором/администратором */
+  report_status?: "pending" | "accepted" | "rejected";
+  /** ID проверившего куратора */
+  report_reviewed_by?: number | null;
+  /** Дата проверки отчёта */
+  report_reviewed_at?: string | null;
+  /** Комментарий куратора к отчёту */
+  report_comment?: string | null;
+  /** Ссылка на цитируемое сообщение при ответе */
+  reply_to_id?: number | null;
+  /** Реакции: эмодзи -> массив user_id */
+  reactions?: Record<string, number[]>;
 }
 
 export interface Setting {
@@ -224,6 +272,32 @@ export interface DirectMessage {
   text: string;
   read_at: string | null;
   created_at: string;
+  reply_to_id?: number | null;
+  reactions?: Record<string, number[]>;
+}
+
+export interface MaterialCompletion {
+  id: number;
+  user_id: number;
+  material_id: number;
+  completed_at: string;
+}
+
+export interface ScheduleEvent {
+  id: number;
+  course_id: number;
+  group_id?: number | null; // null = для всех групп курса
+  title: string;
+  event_type: "theme_open" | "report_deadline" | "test_deadline" | "webinar" | "holiday" | "custom";
+  start_date: string; // ISO "YYYY-MM-DD" или "YYYY-MM-DDTHH:mm:ss"
+  end_date?: string | null;
+  theme_id?: number | null;
+  material_id?: number | null;
+  link_url?: string | null;
+  description?: string | null;
+  created_by?: number | null;
+  created_at: string;
+  updated_at?: string;
 }
 
 // In-Memory Database Store
@@ -251,6 +325,8 @@ class DatabaseStore {
   notifications: Notification[] = [];
   directMessages: DirectMessage[] = [];
   themeUnlocks: ThemeUnlock[] = [];
+  materialCompletions: MaterialCompletion[] = [];
+  scheduleEvents: ScheduleEvent[] = [];
 
   private nextId = {
     user: 1,
@@ -272,6 +348,8 @@ class DatabaseStore {
     notification: 1,
     directMessage: 1,
     themeUnlock: 1,
+    materialCompletion: 1,
+    scheduleEvent: 1,
   };
 
   getId(table: keyof typeof this.nextId): number {
@@ -311,6 +389,8 @@ class DatabaseStore {
         notifications: this.notifications,
         directMessages: this.directMessages,
         themeUnlocks: this.themeUnlocks,
+        materialCompletions: this.materialCompletions || [],
+        scheduleEvents: this.scheduleEvents || [],
         nextId: this.nextId,
       };
       fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf-8");
@@ -338,6 +418,146 @@ class DatabaseStore {
         }
         this.migrateUploadRefs();
         this.migrateChatGroups();
+        if (!Array.isArray(this.materialCompletions)) this.materialCompletions = [];
+        if (!Array.isArray(this.scheduleEvents)) this.scheduleEvents = [];
+
+        // Стартовые события графика обучения для первой группы/курса, если график пуст
+        if (this.scheduleEvents.length === 0 && this.courses.length > 0) {
+          const firstCourse = this.courses[0];
+          const firstGroup = this.groups.find(g => g.course_id === firstCourse.id) || this.groups[0];
+          const firstTheme = this.themes.find(t => t.course_id === firstCourse.id) || this.themes[0];
+          const firstMat = firstTheme ? this.materials.find(m => m.theme_id === firstTheme.id) : null;
+          const secondTheme = this.themes.filter(t => t.course_id === firstCourse.id)[1];
+
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, "0");
+
+          this.scheduleEvents.push(
+            {
+              id: this.getId("scheduleEvent"),
+              course_id: firstCourse.id,
+              group_id: firstGroup ? firstGroup.id : null,
+              title: "🚀 Старт темы 1: " + (firstTheme ? firstTheme.title : "Введение в курс"),
+              event_type: "theme_open",
+              start_date: `${y}-${m}-01`,
+              theme_id: firstTheme ? firstTheme.id : null,
+              description: "Начало изучения материалов темы. Рекомендуется посмотреть вводные видеоуроки и конспекты.",
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: this.getId("scheduleEvent"),
+              course_id: firstCourse.id,
+              group_id: firstGroup ? firstGroup.id : null,
+              title: "📝 Дедлайн сдачи отчёта: " + (firstMat ? firstMat.title : "Урок 1"),
+              event_type: "report_deadline",
+              start_date: `${y}-${m}-08T23:59:00`,
+              theme_id: firstTheme ? firstTheme.id : null,
+              material_id: firstMat ? firstMat.id : null,
+              description: "Срок сдачи индивидуального отчёта куратору на проверку.",
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: this.getId("scheduleEvent"),
+              course_id: firstCourse.id,
+              group_id: firstGroup ? firstGroup.id : null,
+              title: "🎥 Онлайн-встреча с куратором (вопросы и ответы)",
+              event_type: "webinar",
+              start_date: `${y}-${m}-12T19:00:00`,
+              end_date: `${y}-${m}-12T20:30:00`,
+              link_url: "https://telemost.yandex.ru/j/mku-covenants-meeting",
+              description: "Живой разбор сложных вопросов, комментарии по отчётам и рекомендации куратора.",
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: this.getId("scheduleEvent"),
+              course_id: firstCourse.id,
+              group_id: firstGroup ? firstGroup.id : null,
+              title: "✍️ Срок сдачи проверочного теста по теме 1",
+              event_type: "test_deadline",
+              start_date: `${y}-${m}-15T23:59:00`,
+              theme_id: firstTheme ? firstTheme.id : null,
+              description: "Необходимо сдать проверочный тест темы для перехода к следующему блоку.",
+              created_at: new Date().toISOString(),
+            }
+          );
+
+          if (secondTheme) {
+            this.scheduleEvents.push({
+              id: this.getId("scheduleEvent"),
+              course_id: firstCourse.id,
+              group_id: firstGroup ? firstGroup.id : null,
+              title: "🟢 Открытие темы 2: " + secondTheme.title,
+              event_type: "theme_open",
+              start_date: `${y}-${m}-16`,
+              theme_id: secondTheme.id,
+              description: "Открытие материалов второй темы для изучения.",
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+
+        // Гарантируем наличие примера урока с несколькими источниками (ВКонтакте + YouTube), аудио, конспектом и файлами
+        if (!this.storageMaterials.some((m) => m.title.includes("Бабков") || m.title.includes("Библейские заветы"))) {
+          this.storageMaterials.push({
+            id: this.getId("storageMaterial"),
+            title: "Библейские заветы, урок первый, Дмитрий Бабков",
+            playlist_name: "Библейские заветы (курс лекций)",
+            type: "video",
+            url: "https://vk.com/video-220754053_456239018",
+            description: "Лекция Дмитрия Бабкова о библейских заветах. Доступен выбор источника (ВКонтакте / YouTube / RuTube), аудиоверсия, краткий конспект и файлы.",
+            order_index: 1,
+            created_at: new Date().toISOString(),
+            sources: [
+              { platform: "vk", url: "https://vk.com/video-220754053_456239018", label: "ВКонтакте (VK Видео)" },
+              { platform: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", label: "YouTube" },
+              { platform: "rutube", url: "https://rutube.ru/video/e9d0d3f2ecba4d9396eb51faee7e6cb8/", label: "RuTube" }
+            ],
+            synopsis: "Конспект первого урока «Библейские заветы» (преп. Дмитрий Бабков):\n\n1. Понятие завета в Священном Писании (евр. בְּרִית — berith).\n2. Адамов завет и Завет с Ноем: знамение радуги и безусловная милость Творца.\n3. Завет с Авраамом: обетование земли, потомства и благословения всех народов.\n4. Синайский завет: Закон как детоводитель ко Христу.\n5. Новый Завет: исполнение обетований в Иисусе Христе через веру и благодать.",
+            audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            attachments: [
+              { title: "Конспект лекции №1 (PDF)", url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf", type: "document", file_name: "biblical_covenants_lesson_1.pdf", file_size: 145000 },
+              { title: "Рабочая тетрадь и вопросы к уроку (DOCX)", url: "https://example.com/workbook_lesson_1.docx", type: "document", file_name: "workbook_lesson_1.docx", file_size: 98000 }
+            ]
+          });
+        }
+
+        if (this.themes.length > 0 && !this.materials.some((m) => m.title.includes("Бабков"))) {
+          this.materials.push({
+            id: this.getId("material"),
+            theme_id: this.themes[0].id,
+            title: "Библейские заветы, урок первый, Дмитрий Бабков",
+            type: "video",
+            url: "https://vk.com/video-220754053_456239018",
+            order_index: 1,
+            sources: [
+              { platform: "vk", url: "https://vk.com/video-220754053_456239018", label: "ВКонтакте (VK Видео)" },
+              { platform: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", label: "YouTube" },
+              { platform: "rutube", url: "https://rutube.ru/video/e9d0d3f2ecba4d9396eb51faee7e6cb8/", label: "RuTube" }
+            ],
+            synopsis: "Конспект первого урока «Библейские заветы» (преп. Дмитрий Бабков):\n\n1. Понятие завета в Священном Писании (евр. בְּרִית — berith).\n2. Адамов завет и Завет с Ноем: знамение радуги и безусловная милость Творца.\n3. Завет с Авраамом: обетование земли, потомства и благословения всех народов.\n4. Синайский завет: Закон как детоводитель ко Христу.\n5. Новый Завет: исполнение обетований в Иисусе Христе через веру и благодать.",
+            audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            attachments: [
+              { title: "Конспект лекции №1 (PDF)", url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf", type: "document", file_name: "biblical_covenants_lesson_1.pdf", file_size: 145000 },
+              { title: "Рабочая тетрадь и вопросы к уроку (DOCX)", url: "https://example.com/workbook_lesson_1.docx", type: "document", file_name: "workbook_lesson_1.docx", file_size: 98000 }
+            ]
+          });
+        }
+        if (!this.users.some((u) => u.username === "teacher")) {
+          const teacherId = this.getId("user");
+          this.users.push({
+            id: teacherId,
+            role: "teacher",
+            extra_roles: "",
+            username: "teacher",
+            password_hash: bcrypt.hashSync("teacher123", 10),
+            name: "Александр Иванов (Куратор)",
+            is_active: true,
+          });
+          if (this.groups.length > 0 && !this.groupTeachers.some((gt) => gt.teacher_id === teacherId)) {
+            this.groupTeachers.push({ group_id: this.groups[0].id, teacher_id: teacherId });
+          }
+        }
         console.log("[DatabaseStore] База данных успешно загружена из файла database.json");
         return;
       }
@@ -556,14 +776,46 @@ class DatabaseStore {
     );
 
     // Seed Materials
+    const babkovLessonId = this.getId("material");
     this.materials.push(
+      {
+        id: babkovLessonId,
+        theme_id: theme1Id,
+        title: "Библейские заветы, урок первый, Дмитрий Бабков",
+        type: "video",
+        url: "https://vkvideo.ru/video-220754053_456239021",
+        order_index: 0,
+        sources: [
+          { platform: "vk", url: "https://vkvideo.ru/video-220754053_456239021", label: "ВКонтакте (VK Видео)" },
+          { platform: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", label: "YouTube (резервный плеер)" },
+          { platform: "rutube", url: "https://rutube.ru/play/embed/e12d2b5ffbb9c4a8cf052bfae1e0a294/", label: "RuTube" },
+        ],
+        synopsis: "Конспект первого урока: «Введение в Библейские заветы» (Преподаватель: Дмитрий Бабков)\n\nКлючевые тезисы лекции:\n1. Определение завета (евр. «берит» — священный союз, договор верности между Богом и человеком).\n2. Отличие библейского завета от юридического договора: завет зиждется на Божьей благодати, любви и безусловной верности Творца.\n3. Семь ключевых заветов Писания: Эдемский, Адамический, Ноев, Авраамов, Моисеев, Давидов и Новый Завет в Крови Иисуса Христа.\n4. Практическое значение: вхождение в Новый Завет требует веры, покаяния и послушания Духу Святому.",
+        audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        attachments: [
+          {
+            title: "Конспект первого урока — Дмитрий Бабков (PDF)",
+            url: "https://example.com/materials/babkov-lesson-1.pdf",
+            type: "document",
+            file_name: "babkov-lesson-1.pdf",
+            file_size: 1450000,
+          },
+          {
+            title: "Сравнительная таблица библейских заветов (DOCX)",
+            url: "https://example.com/materials/covenants-table.docx",
+            type: "document",
+            file_name: "covenants-table.docx",
+            file_size: 890000,
+          }
+        ],
+      },
       {
         id: this.getId("material"),
         theme_id: theme1Id,
         title: "Конспект лекции: Призвание ученика",
         type: "link",
         url: "https://example.com/materials/theme-1-notes",
-        order_index: 0,
+        order_index: 1,
       },
       {
         id: this.getId("material"),
@@ -571,7 +823,7 @@ class DatabaseStore {
         title: "Практическое задание и разбор мест Писания",
         type: "link",
         url: "https://example.com/materials/practical-guide",
-        order_index: 1,
+        order_index: 2,
       },
       {
         id: this.getId("material"),
@@ -720,6 +972,39 @@ class DatabaseStore {
 
     // Seed Storage Materials (Единый файловый накопитель всех материалов)
     this.storageMaterials.push(
+      {
+        id: this.getId("storageMaterial"),
+        title: "Библейские заветы, урок первый, Дмитрий Бабков",
+        playlist_name: "Библейские заветы (курс лекций)",
+        type: "video",
+        url: "https://vkvideo.ru/video-220754053_456239021",
+        description: "Вводная лекция Дмитрия Бабкова. Понятие завета, исторический контекст и духовное значение.",
+        order_index: 1,
+        sources: [
+          { platform: "vk", url: "https://vkvideo.ru/video-220754053_456239021", label: "ВКонтакте (VK Видео)" },
+          { platform: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", label: "YouTube (резервный плеер)" },
+          { platform: "rutube", url: "https://rutube.ru/play/embed/e12d2b5ffbb9c4a8cf052bfae1e0a294/", label: "RuTube" },
+        ],
+        synopsis: "Конспект первого урока: «Введение в Библейские заветы» (Преподаватель: Дмитрий Бабков)\n\nКлючевые тезисы лекции:\n1. Определение завета (евр. «берит» — священный союз, договор верности между Богом и человеком).\n2. Отличие библейского завета от юридического договора: завет зиждется на Божьей благодати, любви и безусловной верности Творца.\n3. Семь ключевых заветов Писания: Эдемский, Адамический, Ноев, Авраамов, Моисеев, Давидов и Новый Завет в Крови Иисуса Христа.\n4. Практическое значение: вхождение в Новый Завет требует веры, покаяния и послушания Духу Святому.",
+        audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        attachments: [
+          {
+            title: "Конспект первого урока — Дмитрий Бабков (PDF)",
+            url: "https://example.com/materials/babkov-lesson-1.pdf",
+            type: "document",
+            file_name: "babkov-lesson-1.pdf",
+            file_size: 1450000,
+          },
+          {
+            title: "Сравнительная таблица библейских заветов (DOCX)",
+            url: "https://example.com/materials/covenants-table.docx",
+            type: "document",
+            file_name: "covenants-table.docx",
+            file_size: 890000,
+          }
+        ],
+        created_at: now,
+      },
       {
         id: this.getId("storageMaterial"),
         title: "Вводный видеоурок: Путь и призвание ученика",

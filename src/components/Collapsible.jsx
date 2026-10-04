@@ -1,11 +1,17 @@
 import { useState } from "react";
 
-export default function Collapsible({ title, subtitle, defaultOpen = false, children }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+export default function Collapsible({ title, subtitle, defaultOpen = false, isOpen: controlledOpen, onToggle, children, id }) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+
+  const handleToggle = () => {
+    if (onToggle) onToggle(!isOpen);
+    else setInternalOpen(v => !v);
+  };
 
   return (
-    <div className={"collapsible " + (isOpen ? "open" : "")}>
-      <div className="collapsible-head" onClick={() => setIsOpen(v => !v)}>
+    <div id={id} className={"collapsible " + (isOpen ? "open" : "")}>
+      <div className="collapsible-head" onClick={handleToggle}>
         <span className="collapsible-arrow">{isOpen ? "▾" : "▸"}</span>
         <span className="collapsible-title">{title}</span>
         {subtitle && <span className="collapsible-subtitle">{subtitle}</span>}

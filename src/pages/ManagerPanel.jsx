@@ -14,12 +14,14 @@ import TestsTab from "../components/TestsTab";
 import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
+import ScheduleCalendar from "../components/ScheduleCalendar";
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
   { id: "users",         label: "Пользователи" },
   { id: "courses",       label: "Курсы и темы" },
   { id: "groups",        label: "Группы" },
+  { id: "schedule",      label: "Учебный график" },
   { id: "tests",         label: "Тесты" },
   { id: "materials",     label: "Материалы" },
   { id: "messages",      label: "Сообщения" },
@@ -87,6 +89,7 @@ export default function ManagerPanel() {
         {tab === "invites"       && <InvitesTab allowManagerRole={false} />}
       {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/manager" />}
       {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} apiPrefix="/api/manager" />}
+      {tab === "schedule"      && <ScheduleCalendar courses={courses} readOnly={false} />}
       {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/manager" />}
       {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
       {tab === "messages"      && <DirectMessages />}

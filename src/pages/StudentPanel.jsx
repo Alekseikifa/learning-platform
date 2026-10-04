@@ -1,4 +1,4 @@
-import SmartMediaViewer from "../components/SmartMediaViewer.jsx";
+import SmartMediaViewer, { parseVideoUrl } from "../components/SmartMediaViewer.jsx";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
@@ -6,12 +6,14 @@ import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
 import AttemptDetailsModal from "../components/AttemptDetailsModal";
 import Modal from "../components/Modal";
-import { api } from "../api";
+import { api, getUser } from "../api";
 import DirectMessages from "../components/DirectMessages";
+import ScheduleCalendar from "../components/ScheduleCalendar";
 import { getIcon } from "../lib/materialIcons";
 
 const TABS = [
   { id: "themes",        label: "Курс и материалы" },
+  { id: "schedule",      label: "Учебный график" },
   { id: "announcements", label: "Объявления" },
   { id: "messages",      label: "Сообщения" },
   { id: "history",       label: "История" },
@@ -36,6 +38,10 @@ export default function StudentPanel() {
     setTabState(id);
     const next = new URLSearchParams(searchParams);
     next.set("tab", id);
+    if (id !== "themes") {
+      next.delete("theme");
+      next.delete("extra_material");
+    }
     setSearchParams(next);
   };
 
@@ -66,17 +72,25 @@ export default function StudentPanel() {
     const urlExtra = searchParams.get("extra_material");
     const urlTab = searchParams.get("tab");
     if (urlCourse) setCourseId(+urlCourse);
-    if (urlTheme) {
+    if (urlTab && TABS.some((x) => x.id === urlTab)) {
+      setTabState(urlTab);
+      if (urlTab === "themes") {
+        if (urlTheme) {
+          setPendingTheme(+urlTheme);
+          setCourseSection("themes");
+        } else if (urlExtra) {
+          setPendingExtra(+urlExtra);
+          setCourseSection("extra");
+        }
+      }
+    } else if (urlTheme) {
       setPendingTheme(+urlTheme);
       setCourseSection("themes");
-      setTabState("themes"); // ссылка на тему всегда ведёт на таб курса
+      setTabState("themes");
     } else if (urlExtra) {
       setPendingExtra(+urlExtra);
       setCourseSection("extra");
       setTabState("themes");
-    }
-    if (urlTab && !urlTheme && !urlExtra && TABS.some((x) => x.id === urlTab)) {
-      setTabState(urlTab);
     }
   }, [searchParams.toString()]);
 
@@ -100,7 +114,7 @@ export default function StudentPanel() {
           </div>
 
           {courseId && (
-            <div className="row" style={{ gap: 8, margin: "12px 0" }}>
+            <div className="row student-section-toggle" style={{ gap: 8, margin: "12px 0" }}>
               <button
                 type="button"
                 className={"btn " + (courseSection === "themes" ? "primary" : "ghost")}
@@ -163,6 +177,19 @@ export default function StudentPanel() {
           )}
         </div>
       )}
+      {tab === "schedule" && (
+        <ScheduleCalendar
+          courseId={courseId}
+          groupId={myGroups[0]?.id}
+          studentCourses={courses}
+          courses={courses}
+          onNavigateToTheme={(tId) => {
+            setPendingTheme(tId);
+            setCourseSection("themes");
+            changeTab("themes");
+          }}
+        />
+      )}
       {tab === "announcements" && <Announcements />}
       {tab === "messages" && <DirectMessages />}
       {tab === "history" && <History />}
@@ -175,19 +202,34 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [chatFor, setChatFor] = useState(null);
+  const [completedIds, setCompletedIds] = useState([]);
+  const [splitModes, setSplitModes] = useState({});
+  const [expandedThemes, setExpandedThemes] = useState({});
 
   // загрузка тем
-  const load = () =>
+  const load = () => {
     api(`/api/student/course/${courseId}/themes`)
-      .then(setThemes)
+      .then((data) => {
+        setThemes(data);
+        // открываем первую незавершённую тему
+        const activeTheme = data.find((th) => th.unlocked && (!th.test || !th.test.passed)) || data[0];
+        if (activeTheme) {
+          setExpandedThemes((prev) => (Object.keys(prev).length === 0 ? { [activeTheme.id]: true } : prev));
+        }
+      })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
+  };
+
   useEffect(() => {
     if (!courseId) return;
     load();
+    api("/api/student/materials/completed")
+      .then((res) => setCompletedIds(res.material_ids || []))
+      .catch(() => {});
   }, [courseId]);
 
-  // обновляем список при возврате на вкладку (например, после открытия темы методистом)
+  // обновляем список при возврате на вкладку
   useEffect(() => {
     if (!courseId) return;
     const onFocus = () => load();
@@ -203,9 +245,33 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
         chatThemeId: initialTheme,
         chatTitle: found?.title || "",
       });
+      setExpandedThemes(prev => ({ ...prev, [initialTheme]: true }));
       if (onThemeConsumed) onThemeConsumed();
     }
   }, [initialTheme, themes]);
+
+  const handleToggleCompleted = async (materialId) => {
+    try {
+      const res = await api(`/api/student/materials/${materialId}/toggle-completed`, { method: "POST" });
+      setCompletedIds((prev) => (res.completed ? [...prev, materialId] : prev.filter((id) => id !== materialId)));
+    } catch (e) {
+      alert("Не удалось обновить статус: " + e.message);
+    }
+  };
+
+  const switchTheme = (targetId) => {
+    setExpandedThemes({ [targetId]: true });
+    setTimeout(() => {
+      const el = document.getElementById("theme-card-" + targetId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+
+  const [themeTabs, setThemeTabs] = useState({});
+
+  const totalThemes = themes.length;
+  const completedThemes = themes.filter(t => t.test ? t.test.passed : false).length;
+  const progressPercent = totalThemes > 0 ? Math.round((completedThemes / totalThemes) * 100) : 0;
 
   return (
     <div className="list">
@@ -215,64 +281,496 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
           Не удалось загрузить темы: {err}
         </div>
       )}
-      {themes.map(th => (
-        <Collapsible
-          key={th.id}
-          defaultOpen={false}
-          title={
-            <span>
-              Тема {th.order_index}. {th.title}{" "}
-              {th.test && (th.test.passed
-                ? <span className="tag ok">Тест сдан</span>
-                : <span className="tag no">Тест не сдан</span>)}
-              {!th.unlocked && <span className="muted small"> 🔒 заблокировано</span>}
-              {th.unlock_granted && (
-                <span className="tag ok" title="Тема открыта куратором/администратором">
-                  🔓 открыто вручную
-                </span>
-              )}
-            </span>
-          }
-        >
-          {th.unlocked ? (
-            <>
-              <MaterialsBlock materials={th.materials} />
-              {th.test && (
-                <div style={{ marginTop: 12 }}>
-                  {th.test.passed ? (
-                    <div className="muted small">
-                      Тест сдан. Попыток: {th.test.attempts_used}
-                      {th.test.max_attempts ? ` / ${th.test.max_attempts}` : ""}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="muted small">
-                        Попыток использовано: {th.test.attempts_used}
-                        {th.test.max_attempts ? ` / ${th.test.max_attempts}` : " (без ограничений)"}
-                        {th.test.attempts_left !== null && ` · осталось: ${th.test.attempts_left}`}
-                      </div>
-                      <button className="btn primary"
-                              disabled={th.test.attempts_left === 0}
-                              onClick={() => setChatFor({ test: th.test })}>
-                        {th.test.attempts_left === 0 ? "Лимит попыток исчерпан" : `Пройти тест`}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
 
-              <div style={{ marginTop: 12 }}>
-                <button className="btn"
-                        onClick={() => setChatFor({ chatThemeId: th.id, chatTitle: th.title })}>
-                  💬 Обсуждение темы
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы или обратитесь к куратору.</div>
-          )}
-        </Collapsible>
-      ))}
+      {!loading && totalThemes > 0 && (
+        <div className="card" style={{ marginBottom: 14, background: "linear-gradient(135deg, #ffffff 0%, var(--bg-soft) 100%)", border: "1px solid var(--border)" }}>
+          <div className="spread" style={{ marginBottom: 8 }}>
+            <span style={{ fontWeight: 600, color: "var(--navy)", fontSize: 14 }}>
+              📊 Прогресс прохождения курса
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: progressPercent === 100 ? "var(--olive)" : "var(--navy)" }}>
+              {completedThemes} из {totalThemes} тем завершено ({progressPercent}%)
+            </span>
+          </div>
+          <div className="bar" style={{ height: 10, background: "#e2e8f0", borderRadius: 999 }}>
+            <div style={{ width: `${progressPercent}%`, transition: "width 0.4s ease", background: "var(--olive)", borderRadius: 999 }} />
+          </div>
+        </div>
+      )}
+
+      {themes.map((th, index) => {
+        const isOpen = !!expandedThemes[th.id];
+        const prevTheme = index > 0 ? themes[index - 1] : null;
+        const nextTheme = index < themes.length - 1 ? themes[index + 1] : null;
+
+        const hasVideo = th.materials.some(m => m.type === "video" || (m.type === "link" && parseVideoUrl(m.url)));
+        const hasTextDoc = th.materials.some(m => ["note", "document", "text"].includes(m.type) || (m.type === "link" && !parseVideoUrl(m.url)));
+        const canSplit = hasVideo && hasTextDoc;
+        const isSplit = !!splitModes[th.id];
+
+        const studiedCount = th.materials.filter(m => completedIds.includes(m.id)).length;
+
+        return (
+          <Collapsible
+            key={th.id}
+            id={"theme-card-" + th.id}
+            isOpen={isOpen}
+            onToggle={(openState) => setExpandedThemes(prev => ({ ...prev, [th.id]: openState }))}
+            title={
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>Тема {th.order_index}. {th.title}</span>
+                {th.test && (th.test.passed
+                  ? <span className="tag ok">✓ Тест сдан</span>
+                  : <span className="tag no">Тест не сдан</span>)}
+                {th.reports_stats ? (
+                  <span className={"tag " + (th.reports_stats.accepted === th.reports_stats.total_materials && th.reports_stats.total_materials > 0 ? "ok" : th.reports_stats.submitted > 0 ? "warn" : "")} style={{ fontSize: 12 }}>
+                    📝 Отчёты: {th.reports_stats.accepted}/{th.reports_stats.total_materials} зачтено
+                  </span>
+                ) : th.report ? (
+                  <span className={"tag " + (th.report.status === "accepted" ? "ok" : th.report.status === "rejected" ? "no" : "warn")}>
+                    {th.report.status === "accepted" ? "📝 Отчёт зачтён" : th.report.status === "rejected" ? "📝 Отчёт: доработка" : "📝 Отчёт: на проверке"}
+                  </span>
+                ) : (
+                  <span className="muted small" style={{ fontSize: 12 }}>📝 Отчёт не сдан</span>
+                )}
+                {th.materials.length > 0 && (
+                  <span className="muted small" style={{ fontSize: 12 }}>
+                    · {studiedCount}/{th.materials.length} изучено
+                  </span>
+                )}
+                {!th.unlocked && <span className="muted small"> 🔒 заблокировано</span>}
+                {th.unlock_granted && (
+                  <span className="tag ok" title="Тема открыта куратором/администратором">
+                    🔓 открыто вручную
+                  </span>
+                )}
+              </span>
+            }
+          >
+            {th.unlocked ? (
+              (() => {
+                const activeTab = themeTabs[th.id] || "lessons";
+                const setTab = (tab) => setThemeTabs((prev) => ({ ...prev, [th.id]: tab }));
+
+                return (
+                  <>
+                    {/* Вкладки темы: Уроки / Чат по урокам / Пройти проверочный тест / Сделать отчёт по уроку */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        margin: "4px 0 14px",
+                        padding: "6px 8px",
+                        background: "var(--bg-soft)",
+                        borderRadius: 10,
+                        border: "1px solid var(--border)",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={"btn small " + (activeTab === "lessons" ? "primary" : "ghost")}
+                        style={{
+                          fontSize: 13,
+                          padding: "6px 14px",
+                          fontWeight: activeTab === "lessons" ? 600 : 500,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                        onClick={() => setTab("lessons")}
+                      >
+                        <span>📚 Уроки темы</span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "1px 6px",
+                            borderRadius: 8,
+                            background: activeTab === "lessons" ? "rgba(255,255,255,0.25)" : "var(--surface)",
+                            border: activeTab === "lessons" ? "none" : "1px solid var(--border)",
+                          }}
+                        >
+                          {th.materials.length}
+                        </span>
+                      </button>
+
+                      {/* ЧАТ И ВОПРОСЫ ПО ТЕМЕ — ОСОБО ВЫДЕЛЕННАЯ ВКЛАДКА */}
+                      <button
+                        type="button"
+                        className={"btn small " + (activeTab === "chat" ? "primary" : "ghost")}
+                        style={{
+                          fontSize: 13,
+                          padding: "6px 14px",
+                          fontWeight: 600,
+                          background: activeTab === "chat" ? "#2563eb" : "rgba(37, 99, 235, 0.08)",
+                          color: activeTab === "chat" ? "#ffffff" : "#1d4ed8",
+                          borderColor: activeTab === "chat" ? "#2563eb" : "#93c5fd",
+                          boxShadow: activeTab === "chat" ? "0 2px 6px rgba(37, 99, 235, 0.25)" : "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                        onClick={() => setTab("chat")}
+                      >
+                        <span>💬 Чат по урокам</span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: "1px 6px",
+                            borderRadius: 8,
+                            background: activeTab === "chat" ? "rgba(255,255,255,0.25)" : "#dbeafe",
+                            color: activeTab === "chat" ? "#ffffff" : "#1e40af",
+                          }}
+                        >
+                          Вопросы куратору
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={"btn small " + (activeTab === "test" ? "primary" : "ghost")}
+                        style={{
+                          fontSize: 13,
+                          padding: "6px 14px",
+                          fontWeight: activeTab === "test" ? 600 : 500,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                        onClick={() => setTab("test")}
+                      >
+                        <span>✍️ Пройти проверочный тест</span>
+                        {th.test ? (
+                          <span
+                            className={"tag small " + (th.test.passed ? "ok" : "warn")}
+                            style={{ fontSize: 10, padding: "1px 6px" }}
+                          >
+                            {th.test.passed ? "✓ Сдан" : "Тест"}
+                          </span>
+                        ) : (
+                          <span className="muted small" style={{ fontSize: 10 }}>—</span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* СОДЕРЖИМОЕ ВКЛАДКИ 1: УРОКИ ТЕМЫ */}
+                    {activeTab === "lessons" && (
+                      <div>
+                        {canSplit && (
+                          <div
+                            className="spread"
+                            style={{
+                              margin: "4px 0 10px",
+                              padding: "6px 10px",
+                              background: "var(--bg-soft)",
+                              borderRadius: 8,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: "var(--navy)", fontWeight: 500 }}>
+                              {isSplit
+                                ? "Режим одновременного просмотра (видео + конспект)"
+                                : "Доступен двухоконный режим для изучения"}
+                            </span>
+                            <button
+                              type="button"
+                              className={"btn small " + (isSplit ? "primary" : "ghost")}
+                              style={{ fontSize: 12, padding: "3px 10px" }}
+                              onClick={() => setSplitModes((prev) => ({ ...prev, [th.id]: !prev[th.id] }))}
+                            >
+                              {isSplit ? "📋 Обычный список" : "🖥️ Сплит-экран (Видео + Конспект)"}
+                            </button>
+                          </div>
+                        )}
+
+                        {isSplit ? (
+                          <ThemeSplitView
+                            materials={th.materials}
+                            themeId={th.id}
+                            completedIds={completedIds}
+                            onToggleCompleted={handleToggleCompleted}
+                            onOpenReport={(matId) =>
+                              setChatFor({
+                                chatThemeId: th.id,
+                                chatTitle: th.title,
+                                initialIsReport: true,
+                                initialMaterialId: matId,
+                                materials: th.materials,
+                              })
+                            }
+                          />
+                        ) : (
+                          <MaterialsBlock
+                            materials={th.materials}
+                            themeId={th.id}
+                            completedIds={completedIds}
+                            onToggleCompleted={handleToggleCompleted}
+                            onOpenReport={(matId) =>
+                              setChatFor({
+                                chatThemeId: th.id,
+                                chatTitle: th.title,
+                                initialIsReport: true,
+                                initialMaterialId: matId,
+                                materials: th.materials,
+                              })
+                            }
+                          />
+                        )}
+
+                        {/* Быстрые переходы и навигация */}
+                        <div
+                          className="spread"
+                          style={{
+                            marginTop: 14,
+                            paddingTop: 10,
+                            borderTop: "1px solid var(--border)",
+                            flexWrap: "wrap",
+                            gap: 8,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              style={{
+                                background: "rgba(37, 99, 235, 0.08)",
+                                color: "#1d4ed8",
+                                borderColor: "#93c5fd",
+                                fontWeight: 600,
+                              }}
+                              onClick={() => setTab("chat")}
+                            >
+                              💬 Задать вопрос в чат по урокам
+                            </button>
+                            {th.test && (
+                              <button
+                                type="button"
+                                className="btn small ghost"
+                                onClick={() => setTab("test")}
+                              >
+                                ✍️ Проверочный тест {th.test.passed ? "✓" : ""}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
+                            {prevTheme && (
+                              <button
+                                type="button"
+                                className="btn small ghost"
+                                onClick={() => switchTheme(prevTheme.id)}
+                                title={`Перейти к теме ${prevTheme.order_index}: ${prevTheme.title}`}
+                              >
+                                ← Тема {prevTheme.order_index}
+                              </button>
+                            )}
+                            {nextTheme &&
+                              (nextTheme.unlocked ? (
+                                <button
+                                  type="button"
+                                  className="btn small primary"
+                                  onClick={() => switchTheme(nextTheme.id)}
+                                  title={`Перейти к теме ${nextTheme.order_index}: ${nextTheme.title}`}
+                                >
+                                  Тема {nextTheme.order_index} →
+                                </button>
+                              ) : (
+                                <span
+                                  className="muted small"
+                                  style={{ padding: "4px 8px" }}
+                                  title="Сдайте проверочный тест для открытия следующей темы"
+                                >
+                                  🔒 Тема {nextTheme.order_index} (после теста)
+                                </span>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* СОДЕРЖИМОЕ ВКЛАДКИ 2: ВЫДЕЛЕННЫЙ ЧАТ ПО УРОКАМ */}
+                    {activeTab === "chat" && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          padding: "14px 16px",
+                          background: "var(--bg-soft)",
+                          borderRadius: 10,
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        <div
+                          className="spread"
+                          style={{ marginBottom: 12, flexWrap: "wrap", gap: 8, alignItems: "center" }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 18 }}>💬</span>
+                              <b style={{ fontSize: 15, color: "var(--navy)" }}>
+                                Чат и вопросы по теме: {th.title}
+                              </b>
+                            </div>
+                            <div className="muted small" style={{ marginTop: 2 }}>
+                              Здесь вы можете задавать любые вопросы куратору и преподавателю по урокам этой темы.
+                            </div>
+                          </div>
+                          <div className="row" style={{ gap: 6 }}>
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              onClick={() =>
+                                setChatFor({
+                                  chatThemeId: th.id,
+                                  chatTitle: th.title,
+                                  initialIsReport: false,
+                                  materials: th.materials,
+                                })
+                              }
+                              title="Открыть чат в отдельном модальном окне"
+                            >
+                              ⛶ В отдельном окне
+                            </button>
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              onClick={() => setTab("lessons")}
+                            >
+                              ← К урокам
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            background: "var(--surface)",
+                            borderRadius: 8,
+                            padding: 12,
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          <ChatPanel
+                            themeId={th.id}
+                            apiBase="/api/student"
+                            initialIsReport={false}
+                            materials={th.materials}
+                            onReportSubmitted={() => load()}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* СОДЕРЖИМОЕ ВКЛАДКИ 3: ПРОЙТИ ПРОВЕРОЧНЫЙ ТЕСТ */}
+                    {activeTab === "test" && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          padding: "16px 18px",
+                          background: "var(--bg-soft)",
+                          borderRadius: 10,
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        <div
+                          className="spread"
+                          style={{ marginBottom: 12, flexWrap: "wrap", gap: 8, alignItems: "center" }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 18 }}>✍️</span>
+                              <b style={{ fontSize: 15, color: "var(--navy)" }}>
+                                Проверочный тест по теме: {th.title}
+                              </b>
+                            </div>
+                            <div className="muted small" style={{ marginTop: 2 }}>
+                              Проверка усвоения материала по всем урокам темы {th.order_index}.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn small ghost"
+                            onClick={() => setTab("lessons")}
+                          >
+                            ← К урокам
+                          </button>
+                        </div>
+
+                        {th.test ? (
+                          <div
+                            style={{
+                              background: "var(--surface)",
+                              padding: 16,
+                              borderRadius: 8,
+                              border: "1px solid var(--border)",
+                            }}
+                          >
+                            {th.test.passed ? (
+                              <div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    marginBottom: 12,
+                                  }}
+                                >
+                                  <span style={{ fontSize: 28 }}>✅</span>
+                                  <div>
+                                    <b style={{ fontSize: 15, color: "var(--olive)" }}>Тест успешно пройден!</b>
+                                    <div className="muted small" style={{ marginTop: 2 }}>
+                                      Использовано попыток: {th.test.attempts_used}{" "}
+                                      {th.test.max_attempts ? `/ ${th.test.max_attempts}` : ""}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn ghost"
+                                  onClick={() => setChatFor({ test: th.test })}
+                                >
+                                  Посмотреть тест / пройти повторно
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <p style={{ margin: "0 0 10px", fontSize: 14, color: "var(--navy)" }}>
+                                  Для открытия следующей темы и закрепления знаний необходимо успешно сдать этот тест.
+                                </p>
+                                <div className="muted small" style={{ marginBottom: 14 }}>
+                                  Попыток использовано: {th.test.attempts_used}
+                                  {th.test.max_attempts ? ` / ${th.test.max_attempts}` : " (без ограничений)"}
+                                  {th.test.attempts_left !== null && ` · осталось: ${th.test.attempts_left}`}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn primary"
+                                  disabled={th.test.attempts_left === 0}
+                                  onClick={() => setChatFor({ test: th.test })}
+                                  style={{ fontSize: 14, padding: "8px 20px" }}
+                                >
+                                  {th.test.attempts_left === 0
+                                    ? "Лимит попыток исчерпан"
+                                    : "✍️ Начать проверочный тест"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="card muted" style={{ textAlign: "center", padding: 20 }}>
+                            Для этой темы проверочный тест не требуется.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            ) : (
+              <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы или обратитесь к куратору.</div>
+            )}
+          </Collapsible>
+        );
+      })}
 
       {chatFor?.test && (
         <TestModal testId={chatFor.test.id} onClose={() => setChatFor(null)}
@@ -289,26 +787,255 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
             </div>
             <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
           </div>
-          <ChatPanel themeId={chatFor.chatThemeId} apiBase="/api/student" />
+          <ChatPanel
+            themeId={chatFor.chatThemeId}
+            apiBase="/api/student"
+            initialIsReport={!!chatFor.initialIsReport}
+            initialMaterialId={chatFor.initialMaterialId || null}
+            materials={chatFor.materials || []}
+            onReportSubmitted={() => {
+              load();
+            }}
+          />
         </Modal>
       )}
     </div>
   );
 }
 
-function MaterialsBlock({ materials }) {
-  const [open, setOpen] = useState({});
+function ThemeSplitView({ materials, themeId, completedIds = [], onToggleCompleted, onOpenReport }) {
+  const videoMats = materials.filter(m => m.type === "video" || (m.type === "link" && parseVideoUrl(m.url)));
+  const textMats = materials.filter(m => !videoMats.includes(m));
+
+  const me = getUser();
+  const videoStorageKey = `student_last_opened_video_${me?.id || "me"}_${themeId}`;
+
+  const [activeVideoId, setActiveVideoId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(videoStorageKey);
+      if (saved && videoMats.some(vm => String(vm.id) === String(saved))) {
+        return Number(saved);
+      }
+    } catch (_) {}
+    return videoMats[0]?.id;
+  });
+  const [activeTextId, setActiveTextId] = useState(textMats[0]?.id);
+
+  const handleSelectVideo = (vid) => {
+    setActiveVideoId(vid);
+    try {
+      localStorage.setItem(videoStorageKey, String(vid));
+      localStorage.setItem(`student_last_opened_mat_${me?.id || "me"}_${themeId}`, String(vid));
+    } catch (_) {}
+  };
+
+  const currentVideo = videoMats.find(m => m.id === activeVideoId) || videoMats[0];
+  const currentText = textMats.find(m => m.id === activeTextId) || textMats[0];
+
+  return (
+    <div className="theme-split-container">
+      {/* Левая колонка: Видео */}
+      <div className="theme-split-pane">
+        <div className="spread" style={{ marginBottom: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>
+            🎬 Видеоматериал
+          </span>
+          {videoMats.length > 1 && (
+            <div className="row" style={{ gap: 4 }}>
+              {videoMats.map((vm, idx) => (
+                <button
+                  key={vm.id}
+                  type="button"
+                  className={"btn small " + (vm.id === currentVideo?.id ? "primary" : "ghost")}
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                  onClick={() => handleSelectVideo(vm.id)}
+                >
+                  Урок {idx + 1}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {currentVideo && (
+          <div style={{ background: "#000", borderRadius: 8, overflow: "hidden" }}>
+            <SmartMediaViewer
+              url={currentVideo.url}
+              title={currentVideo.title}
+              sources={currentVideo.sources}
+              synopsis={currentVideo.synopsis}
+              audio_url={currentVideo.audio_url}
+              attachments={currentVideo.attachments}
+              materialType={currentVideo.type}
+            />
+          </div>
+        )}
+        {currentVideo && (
+          <div className="spread" style={{ marginTop: 8, flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>{currentVideo.title}</span>
+            <div className="row" style={{ gap: 6, alignItems: "center" }}>
+              <button
+                type="button"
+                className={"btn small " + (completedIds.includes(currentVideo.id) ? "ok" : "ghost")}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 8px",
+                  color: completedIds.includes(currentVideo.id) ? "var(--olive)" : "var(--text-soft)",
+                  borderColor: completedIds.includes(currentVideo.id) ? "var(--olive)" : "var(--border)",
+                }}
+                onClick={() => onToggleCompleted(currentVideo.id)}
+              >
+                {completedIds.includes(currentVideo.id) ? "✓ Видео изучено" : "Отметить изученным"}
+              </button>
+              {onOpenReport && (
+                <button
+                  type="button"
+                  className={"btn small " + (currentVideo.report?.status === "accepted" ? "ok" : currentVideo.report?.status === "pending" ? "warn" : currentVideo.report?.status === "rejected" ? "danger" : "primary")}
+                  style={{ fontSize: 11, padding: "3px 8px" }}
+                  onClick={() => onOpenReport(currentVideo.id)}
+                >
+                  {currentVideo.report?.status === "accepted"
+                    ? "✅ Отчёт зачтён"
+                    : currentVideo.report?.status === "pending"
+                    ? "⏳ Отчёт на проверке"
+                    : currentVideo.report?.status === "rejected"
+                    ? "🔄 Отчёт: доработка"
+                    : "📝 Сдать отчёт по уроку"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Правая колонка: Конспект / Документ */}
+      <div className="theme-split-pane">
+        <div className="spread" style={{ marginBottom: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>
+            📝 Конспект и тезисы
+          </span>
+          {textMats.length > 1 && (
+            <div className="row" style={{ gap: 4 }}>
+              {textMats.map((tm, idx) => (
+                <button
+                  key={tm.id}
+                  type="button"
+                  className={"btn small " + (tm.id === currentText?.id ? "primary" : "ghost")}
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                  onClick={() => setActiveTextId(tm.id)}
+                >
+                  Материал {idx + 1}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {currentText && (
+          <div className="theme-split-text-body">
+            <h4 style={{ margin: "0 0 8px", fontSize: 15, color: "var(--navy)" }}>
+              {currentText.title}
+            </h4>
+            {currentText.type === "note" && (
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6, color: "var(--text)" }}>
+                {currentText.url}
+              </div>
+            )}
+            {currentText.type === "document" && (
+              <div style={{ padding: "16px", background: "var(--bg-soft)", borderRadius: 8, textAlign: "center" }}>
+                <p style={{ margin: "0 0 10px", fontSize: 14 }}>Документ для самостоятельного изучения</p>
+                <a
+                  href={currentText.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn primary small"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  📄 Открыть документ в новой вкладке
+                </a>
+              </div>
+            )}
+            {currentText.type === "image" && (
+              <img
+                src={currentText.url}
+                alt={currentText.title}
+                referrerPolicy="no-referrer"
+                style={{ maxWidth: "100%", maxHeight: 360, borderRadius: 8, display: "block" }}
+              />
+            )}
+            {currentText.type === "link" && (
+              <a href={currentText.url} target="_blank" rel="noreferrer" className="btn small primary">
+                🔗 Перейти по ссылке
+              </a>
+            )}
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className={"btn small " + (completedIds.includes(currentText.id) ? "ok" : "ghost")}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 8px",
+                  color: completedIds.includes(currentText.id) ? "var(--olive)" : "var(--text-soft)",
+                  borderColor: completedIds.includes(currentText.id) ? "var(--olive)" : "var(--border)",
+                }}
+                onClick={() => onToggleCompleted(currentText.id)}
+              >
+                {completedIds.includes(currentText.id) ? "✓ Конспект изучен" : "Отметить изученным"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MaterialsBlock({ materials, themeId, completedIds = [], onToggleCompleted, onOpenReport }) {
+  const me = getUser();
+  const storageKey = `student_last_opened_mat_${me?.id || "me"}_${themeId}`;
+
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved && materials && materials.some((m) => String(m.id) === String(saved))) {
+        return { [saved]: true };
+      }
+    } catch (_) {}
+    // If not saved previously, do NOT auto-open lesson 1!
+    // Start collapsed so the student cleanly sees all lessons in the theme
+    return {};
+  });
+
+  const handleToggle = (matId) => {
+    setOpen((prev) => {
+      const willOpen = !prev[matId];
+      // Компактный режим: открыт только 1 урок, остальные свернуты
+      const next = willOpen ? { [matId]: true } : {};
+      try {
+        if (willOpen) {
+          localStorage.setItem(storageKey, String(matId));
+          const m = materials.find((x) => x.id === matId);
+          if (m && (m.type === "video" || (m.type === "link" && parseVideoUrl(m.url)))) {
+            localStorage.setItem(`student_last_opened_video_${me?.id || "me"}_${themeId}`, String(matId));
+          }
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch (_) {}
+      return next;
+    });
+  };
 
   return (
     <div>
       {materials.map(m => {
         const isOpen = open[m.id];
+        const isCompleted = completedIds.includes(m.id);
+        const isLastOpened = localStorage.getItem(storageKey) === String(m.id);
         return (
           <div key={m.id} className="material-block">
-            <div className="material-head spread" onClick={() => setOpen(o => ({ ...o, [m.id]: !o[m.id] }))}>
-              <div>
+            <div className="material-head spread" onClick={() => handleToggle(m.id)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span className="collapsible-arrow">{isOpen ? "▾" : "▸"}</span>{" "}
-                <b>
+                <b style={{ color: isCompleted ? "var(--olive)" : "var(--navy)" }}>
                   {m.type === "video" ? "🎬"
                    : m.type === "audio" ? "🎧"
                    : m.type === "image" ? "🖼"
@@ -316,11 +1043,64 @@ function MaterialsBlock({ materials }) {
                    : m.type === "link" ? "🔗"
                    : "📝"} {m.title}
                 </b>
+                {isCompleted && (
+                  <span className="tag ok" style={{ fontSize: 11, padding: "1px 6px" }}>✓ Изучено</span>
+                )}
+                {isLastOpened && !isOpen && (
+                  <span className="tag small" style={{ fontSize: 10, padding: "1px 6px", background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}>
+                    📌 Последний открытый
+                  </span>
+                )}
+              </div>
+              <div className="row" style={{ gap: 6, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className={"btn small " + (isCompleted ? "ok" : "ghost")}
+                  style={{
+                    fontSize: 12,
+                    padding: "3px 8px",
+                    background: isCompleted ? "var(--olive-soft)" : "transparent",
+                    color: isCompleted ? "var(--olive)" : "var(--text-soft)",
+                    borderColor: isCompleted ? "var(--olive)" : "var(--border)",
+                  }}
+                  onClick={() => {
+                    if (onToggleCompleted) onToggleCompleted(m.id);
+                  }}
+                  title={isCompleted ? "Нажмите, чтобы снять отметку" : "Отметить материал как изученный"}
+                >
+                  {isCompleted ? "✓ Изучено" : "Отметить изученным"}
+                </button>
+                {onOpenReport && (
+                  <button
+                    type="button"
+                    className={"btn small " + (m.report?.status === "accepted" ? "ok" : m.report?.status === "pending" ? "warn" : m.report?.status === "rejected" ? "danger" : "primary")}
+                    style={{ fontSize: 11, padding: "3px 8px" }}
+                    onClick={() => onOpenReport(m.id)}
+                  >
+                    {m.report?.status === "accepted"
+                      ? "✅ Отчёт зачтён"
+                      : m.report?.status === "pending"
+                      ? "⏳ Отчёт на проверке"
+                      : m.report?.status === "rejected"
+                      ? "🔄 Отчёт: доработка"
+                      : "📝 Сдать отчёт"}
+                  </button>
+                )}
               </div>
             </div>
             {isOpen && (
               <div className="material-body">
-                {(m.type === "video" || m.type === "link") && <SmartMediaViewer url={m.url} title={m.title} />}
+                {(m.type === "video" || m.type === "link" || (m.sources && m.sources.length > 0)) && (
+                  <SmartMediaViewer
+                    url={m.url}
+                    title={m.title}
+                    sources={m.sources}
+                    synopsis={m.synopsis}
+                    audio_url={m.audio_url}
+                    attachments={m.attachments}
+                    materialType={m.type}
+                  />
+                )}
                 {m.type === "audio" && <audio controls src={m.url} style={{ width: "100%" }} />}
                 {m.type === "image" && (
                   <img
@@ -392,9 +1172,25 @@ function TestModal({ testId, onClose, onDone }) {
     );
   }
 
+  const answeredCount = Object.keys(answers).length;
+  const totalCount = data.questions.length;
+  const progressPct = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+
+  const scrollToQuestion = (qId) => {
+    const el = document.getElementById("q-card-" + qId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const submit = async () => {
-    for (const q of data.questions) {
-      if (!answers[q.id]) return alert("Ответьте на все вопросы");
+    const missing = data.questions.filter((q) => !answers[q.id]);
+    if (missing.length > 0) {
+      const first = missing[0];
+      const idx = data.questions.indexOf(first) + 1;
+      scrollToQuestion(first.id);
+      if (typeof window !== "undefined" && window.appToast) {
+        window.appToast.warning(`Осталось ответить на ${missing.length} вопр. Перейдите к вопросу №${idx}`);
+      }
+      return;
     }
     setBusy(true);
     try {
@@ -402,58 +1198,149 @@ function TestModal({ testId, onClose, onDone }) {
         method: "POST", body: JSON.stringify({ answers }),
       });
       setResult(r);
-    } catch (e) { alert(e.message); }
+      if (r.passed && typeof window !== "undefined" && window.appToast) {
+        window.appToast.success(`Поздравляем! Тест сдан с результатом ${r.score}%!`);
+      }
+    } catch (e) {
+      if (typeof window !== "undefined" && window.appToast) {
+        window.appToast.error(e.message);
+      }
+    }
     finally { setBusy(false); }
   };
 
+  const handleRetry = () => {
+    setResult(null);
+    setAnswers({});
+    setDetails(null);
+  };
+
   const viewDetails = async () => {
-    const d = await api(`/api/student/attempts/${result.attempt_id}/details`);
-    setDetails(d);
+    try {
+      const d = await api(`/api/student/attempts/${result.attempt_id}/details`);
+      setDetails(d);
+    } catch (e) {
+      if (typeof window !== "undefined" && window.appToast) window.appToast.error(e.message);
+    }
   };
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} innerStyle={{ maxWidth: 740 }}>
       <div className="spread">
-        <h3>{data.test.title}</h3>
+        <div>
+          <h3 style={{ margin: 0 }}>{data.test.title}</h3>
+          <div className="muted small" style={{ marginTop: 2 }}>Проходной балл: {data.test.passing_score}%</div>
+        </div>
         <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
       </div>
-      <div className="muted small">Проходной балл: {data.test.passing_score}%</div>
+
+      {!result && (
+        <div className="test-nav-box" style={{ marginTop: 12 }}>
+          <div className="spread" style={{ fontSize: 13, marginBottom: 4 }}>
+            <span>
+              Отвечено: <b>{answeredCount}</b> из <b>{totalCount}</b> ({progressPct}%)
+            </span>
+            <span className="muted small">Нажмите на номер для перехода</span>
+          </div>
+          <div className="bar" style={{ height: 6, background: "#e2e8f0", borderRadius: 999, marginBottom: 8 }}>
+            <div
+              style={{
+                width: `${progressPct}%`,
+                transition: "width 0.3s ease",
+                background: progressPct === 100 ? "var(--olive)" : "var(--navy)",
+                borderRadius: 999,
+                height: "100%",
+              }}
+            />
+          </div>
+          <div className="test-nav-pills">
+            {data.questions.map((q, i) => (
+              <button
+                type="button"
+                key={q.id}
+                className={"test-pill " + (answers[q.id] ? "answered" : "")}
+                onClick={() => scrollToQuestion(q.id)}
+                title={`Вопрос ${i + 1}${answers[q.id] ? " (отвечен)" : " (не отвечен)"}`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!result && data.questions.map((q, i) => (
-        <div className="q" key={q.id}>
-          <b>{i + 1}. {q.text}</b>
-          {q.answers.map(a => (
-            <label className="ans" key={a.id}>
-              <input type="radio" name={"q" + q.id}
-                     checked={answers[q.id] === a.id}
-                     onChange={() => setAnswers({ ...answers, [q.id]: a.id })} />
-              {a.text}
-            </label>
-          ))}
+        <div className="q" id={"q-card-" + q.id} key={q.id} style={{ scrollMarginTop: 140 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+            <b style={{ color: "var(--navy)" }}>{i + 1}. {q.text}</b>
+            {answers[q.id] ? (
+              <span className="tag ok" style={{ fontSize: 11, padding: "2px 8px" }}>Отвечен</span>
+            ) : (
+              <span className="muted small" style={{ fontSize: 11 }}>Ожидает ответа</span>
+            )}
+          </div>
+          {q.answers.map(a => {
+            const isSelected = answers[q.id] === a.id;
+            return (
+              <label
+                className={"test-answer-label " + (isSelected ? "selected" : "")}
+                key={a.id}
+              >
+                <input
+                  type="radio"
+                  name={"q" + q.id}
+                  checked={isSelected}
+                  onChange={() => setAnswers({ ...answers, [q.id]: a.id })}
+                />
+                <span style={{ fontSize: 14 }}>{a.text}</span>
+              </label>
+            );
+          })}
         </div>
       ))}
 
       {result && (
-        <>
-          <div className={"result " + (result.passed ? "ok" : "no")}>
-            Результат: <b>{result.score}%</b> ({result.correct}/{result.total}).
-            {" "}{result.passed ? "Тест сдан!" : `Нужно минимум ${result.passing_score}%`}
+        <div style={{ margin: "16px 0" }}>
+          <div
+            className={"result " + (result.passed ? "ok" : "no")}
+            style={{ padding: 18, borderRadius: 12, textAlign: "center" }}
+          >
+            <div style={{ fontSize: 24, marginBottom: 6 }}>{result.passed ? "🎉" : "📚"}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+              {result.passed ? "Тест успешно пройден!" : "Тест не пройден"}
+            </div>
+            <div>
+              Результат: <b>{result.score}%</b> ({result.correct} из {result.total} верных ответов).
+            </div>
+            <div className="muted small" style={{ marginTop: 4 }}>
+              {result.passed
+                ? "Вы можете перейти к следующей теме курса."
+                : `Для зачета требуется минимум ${result.passing_score}%. Повторите материал и попробуйте снова.`}
+            </div>
           </div>
-          <div className="row" style={{ marginTop: 8, justifyContent: "flex-end" }}>
-            <button className="btn" onClick={viewDetails}>Посмотреть мои ответы</button>
+          <div className="row" style={{ marginTop: 12, justifyContent: "center", gap: 10 }}>
+            <button className="btn" onClick={viewDetails}>🔍 Посмотреть свои ответы</button>
+            {!result.passed && (
+              <button className="btn primary" onClick={handleRetry}>🔄 Попробовать снова</button>
+            )}
           </div>
-        </>
+        </div>
       )}
 
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14, gap: 8 }}>
         <button className="btn ghost" onClick={onClose}>Закрыть</button>
         {!result && (
-          <button className="btn primary" disabled={busy} onClick={submit}>
-            {busy ? "..." : "Отправить"}
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={submit}
+            style={{ minWidth: 120 }}
+          >
+            {busy ? "Отправка..." : progressPct === 100 ? "✓ Завершить и отправить" : "Отправить ответы"}
           </button>
         )}
         {result && result.passed && (
-          <button className="btn primary" onClick={onDone}>Продолжить</button>
+          <button className="btn primary" onClick={onDone}>Продолжить обучение ➔</button>
         )}
       </div>
       {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
@@ -501,6 +1388,7 @@ function Announcements() {
 }
 
 function History() {
+  const [subTab, setSubTab] = useState("tests"); // "tests" | "reports"
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -508,12 +1396,31 @@ function History() {
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
 
+  const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsErr, setReportsErr] = useState(null);
+
   useEffect(() => {
     api("/api/student/history")
       .then(setList)
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const loadReports = () => {
+    setReportsLoading(true);
+    setReportsErr(null);
+    api("/api/student/reports")
+      .then(setReports)
+      .catch((e) => setReportsErr(e.message))
+      .finally(() => setReportsLoading(false));
+  };
+
+  useEffect(() => {
+    if (subTab === "reports") {
+      loadReports();
+    }
+  }, [subTab]);
 
   const openDetails = async (id) => {
     try {
@@ -550,32 +1457,133 @@ function History() {
 
   return (
     <div className="card">
-      <h3>История попыток</h3>
-      {loading && <div className="muted">Загрузка истории…</div>}
-      {err && <div style={{ color: "#dc2626" }}>Не удалось загрузить историю: {err}</div>}
-      {!loading && !err && !rows.length && <div className="muted">Попыток пока нет</div>}
-      <div className="table-wrap"><table className="table">
-        <thead>
-          <tr>
-            {th("date", "Дата")}
-            {th("test", "Тест")}
-            {th("score", "%")}
-            {th("result", "Результат")}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(a => (
-            <tr key={a.id}>
-              <td className="muted small">{new Date(a.created_at).toLocaleString()}</td>
-              <td>{a.test}</td><td>{a.score}%</td>
-              <td>{a.passed ? <span className="tag ok">сдан</span> : <span className="tag no">не сдан</span>}</td>
-              <td><button className="btn small" onClick={() => openDetails(a.id)}>Мои ответы</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table></div>
-      {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
+      <div className="spread" style={{ marginBottom: 14, flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+        <h3 style={{ margin: 0 }}>История и успеваемость</h3>
+        <div className="row" style={{ gap: 6 }}>
+          <button
+            type="button"
+            className={"btn small " + (subTab === "tests" ? "primary" : "ghost")}
+            onClick={() => setSubTab("tests")}
+          >
+            📊 Попытки тестов ({list.length})
+          </button>
+          <button
+            type="button"
+            className={"btn small " + (subTab === "reports" ? "primary" : "ghost")}
+            onClick={() => setSubTab("reports")}
+          >
+            📝 Сданные отчёты по урокам ({reports.length || "..."})
+          </button>
+        </div>
+      </div>
+
+      {subTab === "tests" && (
+        <>
+          {loading && <div className="muted">Загрузка истории…</div>}
+          {err && <div style={{ color: "#dc2626" }}>Не удалось загрузить историю: {err}</div>}
+          {!loading && !err && !rows.length && <div className="muted">Попыток пока нет</div>}
+          {rows.length > 0 && (
+            <div className="table-wrap"><table className="table">
+              <thead>
+                <tr>
+                  {th("date", "Дата")}
+                  {th("test", "Тест")}
+                  {th("score", "%")}
+                  {th("result", "Результат")}
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(a => (
+                  <tr key={a.id}>
+                    <td className="muted small">{new Date(a.created_at).toLocaleString()}</td>
+                    <td>{a.test}</td><td>{a.score}%</td>
+                    <td>{a.passed ? <span className="tag ok">сдан</span> : <span className="tag no">не сдан</span>}</td>
+                    <td><button className="btn small" onClick={() => openDetails(a.id)}>Мои ответы</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+          {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
+        </>
+      )}
+
+      {subTab === "reports" && (
+        <>
+          {reportsLoading && <div className="muted">Загрузка отчётов…</div>}
+          {reportsErr && <div style={{ color: "#dc2626" }}>Не удалось загрузить отчёты: {reportsErr}</div>}
+          {!reportsLoading && !reportsErr && reports.length === 0 && (
+            <div className="muted" style={{ padding: "16px 0" }}>
+              Вы пока не отправили ни одного отчёта по урокам. Перейдите во вкладку «Курс и материалы» и в обсуждении любого урока отправьте отчёт, отметив галочку «Сдать как отчёт по уроку».
+            </div>
+          )}
+          {reports.length > 0 && (
+            <div className="table-wrap"><table className="table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Курс / Урок</th>
+                  <th>Текст отчёта</th>
+                  <th>Статус</th>
+                  <th>Замечания куратора</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <tr key={r.id}>
+                    <td className="muted small" style={{ whiteSpace: "nowrap" }}>
+                      {new Date(r.created_at).toLocaleString("ru-RU")}
+                    </td>
+                    <td>
+                      <div>
+                        <b>{r.theme_order_index ? `${r.theme_order_index}. ` : ""}{r.theme_title}</b>
+                      </div>
+                      {r.material_title && (
+                        <div style={{ fontSize: 12, color: "var(--navy)", fontWeight: 600, marginTop: 2 }}>
+                          🎯 Урок {r.material_order_index ? `№${r.material_order_index} ` : ""}: {r.material_title}
+                        </div>
+                      )}
+                      {r.course_title && <div className="muted small">{r.course_title}</div>}
+                    </td>
+                    <td style={{ maxWidth: 320 }}>
+                      <div style={{ maxHeight: 70, overflowY: "auto", whiteSpace: "pre-wrap", fontSize: 13 }}>
+                        {r.text}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={"tag " + (r.status === "accepted" ? "ok" : r.status === "rejected" ? "no" : "warn")}>
+                        {r.status === "accepted" ? "✅ Зачтено" : r.status === "rejected" ? "🔄 На доработке" : "⏳ На проверке"}
+                      </span>
+                    </td>
+                    <td>
+                      {r.comment ? (
+                        <div style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "4px 8px", borderRadius: 4 }}>
+                          {r.comment}
+                          {r.reviewer_name && <span className="muted small"> ({r.reviewer_name})</span>}
+                        </div>
+                      ) : (
+                        <span className="muted small">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.course_id && r.theme_id && (
+                        <a
+                          href={`/student?course=${r.course_id}&theme=${r.theme_id}`}
+                          className="btn small ghost"
+                        >
+                          Перейти к уроку
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -657,7 +1665,18 @@ function ExtraMaterialsStudentList({ courseId, groups, initialExtra, onExtraCons
           )}
 
           <div style={{ marginTop: 8, marginBottom: 12 }}>
-            {(em.type === "video" || em.type === "link") && <SmartMediaViewer url={em.url} title={em.title} description={em.description} />}
+            {(em.type === "video" || em.type === "link" || (em.sources && em.sources.length > 0)) && (
+              <SmartMediaViewer
+                url={em.url}
+                title={em.title}
+                description={em.description}
+                sources={em.sources}
+                synopsis={em.synopsis}
+                audio_url={em.audio_url}
+                attachments={em.attachments}
+                materialType={em.type}
+              />
+            )}
             {em.type === "audio" && <audio controls src={em.url} style={{ width: "100%" }} />}
             {em.type === "image" && (
               <img
