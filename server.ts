@@ -1058,16 +1058,17 @@ type ImportRow = {
 };
 
 // каноническая роль по коду, алиасу или пользовательскому названию из настроек
-function canonicalRole(raw: unknown): "teacher" | "student" | "manager" | null {
+function canonicalRole(raw: unknown): "teacher" | "student" | "manager" | "admin" | null {
   const s = String(raw || "").trim().toLowerCase().replace(/ё/g, "е");
   if (!s) return null;
-  const direct: Record<string, "teacher" | "student" | "manager"> = {
+  const direct: Record<string, "teacher" | "student" | "manager" | "admin"> = {
     student: "student", ученик: "student", ученица: "student", ученики: "student",
     teacher: "teacher", куратор: "teacher", учитель: "teacher", преподаватель: "teacher",
     manager: "manager", методист: "manager",
+    admin: "admin", администратор: "admin", админ: "admin", administrator: "admin",
   };
   if (direct[s]) return direct[s];
-  for (const key of ["student", "teacher", "manager"] as const) {
+  for (const key of ["student", "teacher", "manager", "admin"] as const) {
     const custom = String(db.settings["role_" + key + "_name"] || "").trim().toLowerCase();
     if (custom && custom === s) return key;
   }
@@ -1091,7 +1092,7 @@ function generateImportPassword(): string {
   return out;
 }
 
-app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, res) => {
+app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const rows: ImportRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
   if (!rows.length) return res.status(400).json({ detail: "Не переданы строки для импорта" });
   if (rows.length > 2000) return res.status(400).json({ detail: "Слишком много строк (максимум 2000 за раз)" });
@@ -1139,14 +1140,22 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
     if (!username) errs.push("не указан логин, email или телефон");
 
     const roleRaw = String(row.role ?? "").trim();
-    let role: "teacher" | "student" | "manager" | null = null;
+    let role: "teacher" | "student" | "manager" | "admin" | null = null;
     if (!roleRaw) {
       role = "student"; // По умолчанию роль Ученик
-    } else if (["admin", "админ", "администратор"].includes(roleRaw.toLowerCase())) {
-      errs.push("роль администратора импортировать нельзя");
+    } else if (["admin", "админ", "администратор", "administrator"].includes(roleRaw.toLowerCase())) {
+      if (!isRootAdmin(req.user)) {
+        errs.push("роль администратора может назначать только главный администратор");
+      } else {
+        role = "admin";
+      }
     } else {
       role = canonicalRole(roleRaw);
-      if (!role) errs.push(`неизвестная роль «${roleRaw}»`);
+      if (!role) {
+        errs.push(`неизвестная роль «${roleRaw}»`);
+      } else if (role === "admin" && !isRootAdmin(req.user)) {
+        errs.push("роль администратора может назначать только главный администратор");
+      }
     }
 
     let password = String(row.password ?? "").trim() || defaultPassword;
@@ -1165,8 +1174,13 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
     const extraCanonical: string[] = [];
     for (const p of extraParts) {
       const r = canonicalRole(p);
-      if (r && r !== role) extraCanonical.push(r);
-      else if (!r) warns.push(`неизвестная доп. роль «${p}» — пропущена`);
+      if (r && r === "admin" && !isRootAdmin(req.user)) {
+        errs.push("доп. роль администратора может назначать только главный администратор");
+      } else if (r && r !== role) {
+        extraCanonical.push(r);
+      } else if (!r) {
+        warns.push(`неизвестная доп. роль «${p}» — пропущена`);
+      }
     }
 
     const resolveGroups = (value: unknown, label: string): number[] => {
@@ -1352,15 +1366,44 @@ app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, require
   res.json(inv);
 });
 
-// Импорт пользователей из Tilda в виде приглашений (только Администратор)
+// Импорт пользователей из Tilda в виде приглашений
 app.post(
-  "/api/admin/invites/import-tilda",
+  ["/api/admin/invites/import-tilda", "/api/manager/invites/import-tilda"],
   authMiddleware,
-  requireRole("admin"),
+  requireRole("admin", "manager"),
   (req: AuthRequest, res: Response) => {
     const { items, update_existing = true, skip_disabled = true } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ detail: "Передан пустой список записей для импорта" });
+    }
+
+    const activeRole = req.tokenPayload?.role || req.user?.role;
+    const isRoot = isRootAdmin(req.user);
+
+    // Проверка полномочий: методист и не-главный администратор не могут назначать администратора
+    for (const item of items) {
+      const itemRole = String(item.role || "").trim().toLowerCase();
+      const itemExtra = String(item.extra_roles || "").toLowerCase();
+      const touchesAdmin =
+        ["admin", "администратор", "админ", "administrator"].includes(itemRole) ||
+        itemExtra.split(",").some((r) => ["admin", "администратор", "админ", "administrator"].includes(r.trim()));
+
+      if (touchesAdmin && !isRoot) {
+        return res.status(403).json({
+          detail: "Только главный администратор может назначать роль администратора",
+        });
+      }
+
+      if (activeRole === "manager") {
+        const touchesManager =
+          ["manager", "методист", "methodist"].includes(itemRole) ||
+          itemExtra.split(",").some((r) => ["manager", "методист", "methodist"].includes(r.trim()));
+        if (touchesManager) {
+          return res.status(403).json({
+            detail: "Методист не может приглашать методистов или администраторов",
+          });
+        }
+      }
     }
 
     let created = 0;
@@ -1402,14 +1445,19 @@ app.post(
         continue;
       }
 
-      let role = item.role || "student";
-      if (!["student", "teacher", "manager"].includes(role)) {
+      let role = String(item.role || "student").trim().toLowerCase();
+      if (role === "methodist" || role === "методист") role = "manager";
+      else if (role === "admin" || role === "админ" || role === "администратор" || role === "administrator") role = "admin";
+      else if (role === "curator" || role === "куратор" || role === "учитель" || role === "преподаватель" || role === "teacher") role = "teacher";
+      else if (role === "student" || role === "ученик") role = "student";
+
+      if (!["student", "teacher", "manager", "admin"].includes(role)) {
         role = "student";
       }
 
       const group_ids = cleanGroupIds(item.group_ids);
       const curator_group_ids = cleanGroupIds(item.curator_group_ids);
-      const extra_roles = item.extra_roles || "";
+      const extra_roles = item.extra_roles ? normalizeExtraRoles(role, item.extra_roles) : "";
 
       // Проверяем наличие уже созданного приглашения
       const existingInvite = db.phoneInvites.find(

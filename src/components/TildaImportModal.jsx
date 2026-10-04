@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { api } from "../api";
+import { api, getUser } from "../api";
+
+export const TILDA_ROLE_CONFIG = {
+  student: { value: "student", label: "Ученик", icon: "👤", color: "#475569", bg: "#f1f5f9" },
+  teacher: { value: "teacher", label: "Куратор", icon: "🎓", color: "#0891b2", bg: "#ecfeff" },
+  manager: { value: "manager", label: "Методист", icon: "📋", color: "#7c3aed", bg: "#f5f3ff" },
+  admin:   { value: "admin",   label: "Администратор", icon: "👑", color: "#b45309", bg: "#fffbeb", border: "#fde68a" },
+};
 
 /**
  * Парсер CSV с поддержкой кавычек, переносов и экранирования (\N)
@@ -90,6 +97,9 @@ function parseTildaCsv(text) {
 }
 
 export default function TildaImportModal({ allGroups = [], onClose, onSuccess }) {
+  const currentUser = getUser();
+  const isCurrentUserRoot = !!currentUser?.is_root_admin;
+
   const [rawText, setRawText] = useState("");
   const [parsedRows, setParsedRows] = useState([]);
   const [fileName, setFileName] = useState("");
@@ -121,10 +131,13 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
       let targetGroupId = "";
       let targetRole = "student";
 
-      // Определение роли
-      if (lower.includes("админ")) {
-        targetRole = "teacher"; // для безопасности импорта ставим куратора с правами
-      } else if (lower.includes("команда мку") || lower.includes("преподавател") || lower.includes("куратор")) {
+      // Определение роли с поддержкой всех 4 ролей
+      if (lower.includes("админ") || lower.includes("admin")) {
+        // Назначать администратора может только главный администратор
+        targetRole = isCurrentUserRoot ? "admin" : "teacher";
+      } else if (lower.includes("методист") || lower.includes("метод") || lower.includes("manager")) {
+        targetRole = "manager";
+      } else if (lower.includes("команда мку") || lower.includes("преподавател") || lower.includes("учител") || lower.includes("куратор") || lower.includes("teacher")) {
         targetRole = "teacher";
       }
 
@@ -196,6 +209,11 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
   };
 
   const updateMapping = (tildaGroup, field, val) => {
+    // Безопасность: обычный администратор или методист не может назначить роль администратора
+    if (field === "role" && val === "admin" && !isCurrentUserRoot) {
+      setError("Только главный администратор может назначать роль администратора");
+      return;
+    }
     setGroupMappings((prev) => ({
       ...prev,
       [tildaGroup]: {
@@ -203,6 +221,48 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
         [field]: val,
       },
     }));
+  };
+
+  // Расчёт ролей и групп для отдельной строки из Tilda
+  const getRowComputedRoles = (row) => {
+    const studentGroupIds = new Set();
+    const curatorGroupIds = new Set();
+    const assignedRoles = new Set();
+
+    for (const tg of row.groups_array) {
+      const mapping = groupMappings[tg];
+      if (!mapping || mapping.skip) continue;
+
+      if (mapping.role) {
+        assignedRoles.add(mapping.role);
+      }
+      if (mapping.role === "teacher") {
+        if (mapping.groupId) curatorGroupIds.add(Number(mapping.groupId));
+      } else if (mapping.role === "student") {
+        if (mapping.groupId) studentGroupIds.add(Number(mapping.groupId));
+      } else {
+        // manager или admin
+        if (mapping.groupId) studentGroupIds.add(Number(mapping.groupId));
+      }
+    }
+
+    let primaryRole = defaultRole;
+    if (assignedRoles.size > 0) {
+      // Иерархия основных ролей: admin > manager > teacher > student
+      if (assignedRoles.has("admin")) primaryRole = "admin";
+      else if (assignedRoles.has("manager")) primaryRole = "manager";
+      else if (assignedRoles.has("teacher")) primaryRole = "teacher";
+      else primaryRole = "student";
+    }
+
+    const extraRoles = Array.from(assignedRoles).filter((r) => r !== primaryRole);
+
+    return {
+      role: primaryRole,
+      extra_roles: extraRoles.join(","),
+      group_ids: Array.from(studentGroupIds),
+      curator_group_ids: Array.from(curatorGroupIds),
+    };
   };
 
   // Выполнение импорта
@@ -219,20 +279,12 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
           continue;
         }
 
-        const studentGroupIds = new Set();
-        const curatorGroupIds = new Set();
-        let userRole = defaultRole;
+        const comp = getRowComputedRoles(row);
 
-        for (const tg of row.groups_array) {
-          const mapping = groupMappings[tg];
-          if (!mapping || mapping.skip) continue;
-
-          if (mapping.role === "teacher") {
-            userRole = "teacher";
-            if (mapping.groupId) curatorGroupIds.add(Number(mapping.groupId));
-          } else {
-            if (mapping.groupId) studentGroupIds.add(Number(mapping.groupId));
-          }
+        if ((comp.role === "admin" || comp.extra_roles.includes("admin")) && !isCurrentUserRoot) {
+          setError("Только главный администратор может назначать роль администратора");
+          setIsSubmitting(false);
+          return;
         }
 
         itemsToImport.push({
@@ -240,9 +292,10 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
           name: row.name,
           phone: row.phone,
           status: row.status,
-          role: userRole,
-          group_ids: Array.from(studentGroupIds),
-          curator_group_ids: Array.from(curatorGroupIds),
+          role: comp.role,
+          extra_roles: comp.extra_roles,
+          group_ids: comp.group_ids,
+          curator_group_ids: comp.curator_group_ids,
           tilda_groups: row.tilda_groups,
           note: row.tilda_groups ? `Tilda: ${row.tilda_groups}` : "Импорт из Tilda",
         });
@@ -403,6 +456,46 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                   </button>
                 </div>
 
+                {/* Роль по умолчанию */}
+                <div
+                  className="card"
+                  style={{
+                    background: "var(--bg-soft)",
+                    border: "1px solid var(--border)",
+                    marginBottom: 14,
+                    padding: "10px 14px",
+                  }}
+                >
+                  <div className="spread" style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>
+                        ⚙️ Роль по умолчанию:
+                      </div>
+                      <div className="muted small">
+                        Назначается пользователям, у которых в Tilda нет групп или группа не сопоставлена
+                      </div>
+                    </div>
+                    <div className="row" style={{ alignItems: "center", gap: 6 }}>
+                      <select
+                        value={defaultRole}
+                        onChange={(e) => setDefaultRole(e.target.value)}
+                        style={{ padding: "6px 12px", fontSize: 13, borderRadius: 6, fontWeight: 500 }}
+                      >
+                        <option value="student">👤 Ученик</option>
+                        <option value="teacher">🎓 Куратор</option>
+                        <option value="manager">📋 Методист</option>
+                        {isCurrentUserRoot ? (
+                          <option value="admin">👑 Администратор</option>
+                        ) : (
+                          <option value="admin" disabled title="Только главный администратор">
+                            👑 Администратор (только главный админ)
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Настройка сопоставления групп */}
                 <div
                   className="card"
@@ -412,7 +505,7 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                     🔗 Сопоставление групп из Tilda с курсами платформы:
                   </h4>
                   <div className="muted small" style={{ marginBottom: 10 }}>
-                    Укажите, в какую группу нашего курса зачислять учеников при регистрации:
+                    Укажите роль и группу в нашей LMS для каждой группы пользователей из Tilda:
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -443,10 +536,18 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                             <select
                               value={m.role}
                               onChange={(e) => updateMapping(tg, "role", e.target.value)}
-                              style={{ padding: "4px 8px", fontSize: 12 }}
+                              style={{ padding: "4px 8px", fontSize: 12, borderRadius: 6 }}
                             >
-                              <option value="student">Ученик</option>
-                              <option value="teacher">Куратор</option>
+                              <option value="student">👤 Ученик</option>
+                              <option value="teacher">🎓 Куратор</option>
+                              <option value="manager">📋 Методист</option>
+                              {isCurrentUserRoot ? (
+                                <option value="admin">👑 Администратор</option>
+                              ) : (
+                                <option value="admin" disabled title="Только главный администратор">
+                                  👑 Администратор (недоступно)
+                                </option>
+                              )}
                             </select>
 
                             <label style={{ fontSize: 12, marginLeft: 4 }}>Группа в LMS:</label>
@@ -503,9 +604,9 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                 {/* Предпросмотр списка */}
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", marginBottom: 6 }}>
-                    Предпросмотр первых 15 записей:
+                    Предпросмотр первых 15 записей (с рассчитанной ролью):
                   </div>
-                  <div className="table-wrap" style={{ maxHeight: 220, overflowY: "auto" }}>
+                  <div className="table-wrap" style={{ maxHeight: 240, overflowY: "auto" }}>
                     <table className="table small">
                       <thead>
                         <tr>
@@ -514,22 +615,52 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                           <th>Телефон</th>
                           <th>Статус в Tilda</th>
                           <th>Группы в Tilda</th>
+                          <th>Роль в LMS</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {parsedRows.slice(0, 15).map((r, i) => (
-                          <tr key={i} style={{ opacity: skipDisabled && r.status.toLowerCase() === "disabled" ? 0.45 : 1 }}>
-                            <td><b>{r.email}</b></td>
-                            <td>{r.name || "—"}</td>
-                            <td>{r.phone || <span className="muted">нет</span>}</td>
-                            <td>
-                              <span className={`tag small ${r.status.toLowerCase() === "active" ? "ok" : "no"}`}>
-                                {r.status}
-                              </span>
-                            </td>
-                            <td className="muted small">{r.tilda_groups || "—"}</td>
-                          </tr>
-                        ))}
+                        {parsedRows.slice(0, 15).map((r, i) => {
+                          const comp = getRowComputedRoles(r);
+                          const cfg = TILDA_ROLE_CONFIG[comp.role] || TILDA_ROLE_CONFIG.student;
+                          return (
+                            <tr key={i} style={{ opacity: skipDisabled && r.status.toLowerCase() === "disabled" ? 0.45 : 1 }}>
+                              <td><b>{r.email}</b></td>
+                              <td>{r.name || "—"}</td>
+                              <td>{r.phone || <span className="muted">нет</span>}</td>
+                              <td>
+                                <span className={`tag small ${r.status.toLowerCase() === "active" ? "ok" : "no"}`}>
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="muted small">{r.tilda_groups || "—"}</td>
+                              <td>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "2px 8px",
+                                    borderRadius: 6,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    background: cfg.bg,
+                                    color: cfg.color,
+                                    border: cfg.border ? `1px solid ${cfg.border}` : "1px solid rgba(0,0,0,0.08)",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <span>{cfg.icon}</span>
+                                  <span>{cfg.label}</span>
+                                </span>
+                                {comp.extra_roles && (
+                                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
+                                    + {comp.extra_roles.split(",").map((er) => TILDA_ROLE_CONFIG[er]?.label || er).join(", ")}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

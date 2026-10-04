@@ -4,6 +4,13 @@ import { api, setToken, setUser } from "../api";
 
 const APP_NAME = "МКУ — Международные Курсы Ученичества";
 
+const ROLE_LABELS = {
+  admin: "Администратор",
+  manager: "Методист",
+  teacher: "Куратор",
+  student: "Ученик",
+};
+
 export default function Register() {
   const [form, setForm] = useState({
     email: "",
@@ -90,7 +97,7 @@ export default function Register() {
         body: JSON.stringify(form),
       });
       setToken(res.access_token);
-      setUser({ role: res.role, roles: res.roles || [res.role], name: res.name });
+      setUser({ role: res.role, roles: res.roles || [res.role], name: res.name, is_root_admin: res.is_root_admin });
       const target =
         res.role === "admin"
           ? "/admin"
@@ -151,7 +158,10 @@ export default function Register() {
             }}
           >
             <b>✓ Приглашение подтверждено!</b>
-            {inviteData.name && <div>Ученик: <b>{inviteData.name}</b></div>}
+            {inviteData.name && <div>ФИО: <b>{inviteData.name}</b></div>}
+            {inviteData.role && (
+              <div>Роль: <b>{ROLE_LABELS[inviteData.role] || inviteData.role}</b></div>
+            )}
             {inviteData.group_names && inviteData.group_names.length > 0 && (
               <div>Курс: <b>{inviteData.group_names.join(", ")}</b></div>
             )}
