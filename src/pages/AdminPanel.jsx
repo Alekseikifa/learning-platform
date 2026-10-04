@@ -20,8 +20,16 @@ import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
 import UserImportModal from "../components/UserImportModal";
+import TildaImportModal from "../components/TildaImportModal";
 import ScheduleCalendar from "../components/ScheduleCalendar";
-import { api, uploadFile, getToken } from "../api";
+import { api, uploadFile, getToken, getUser } from "../api";
+
+const ROLE_LABELS = {
+  admin: "Администратор",
+  manager: "Методист",
+  teacher: "Куратор",
+  student: "Ученик",
+};
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
@@ -155,13 +163,16 @@ export default function AdminPanel() {
       {tab === "announcements" && <AnnouncementsPanel initialGroups={groups} />}
       {tab === "chats"         && <StaffChatsPanel />}
       {tab === "uploads"       && <UploadsTab apiPrefix="/api/admin" showMimetype />}
-      {tab === "settings"      && <SettingsTab />}
+      {tab === "settings"      && <SettingsTab groups={groups} />}
     </Layout>
   );
 }
 
 /* ---------- USERS ---------- */
 function UsersTab({ users, loading, reload }) {
+  const currentUser = getUser();
+  const isCurrentUserRoot = !!currentUser?.is_root_admin;
+
   const [form, setForm] = useState({ name: "", username: "", password: "", role: "student", is_active: true });
   const [editing, setEditing] = useState(null);
   const [resetting, setResetting] = useState(null);
@@ -186,7 +197,7 @@ function UsersTab({ users, loading, reload }) {
   const needle = q.trim().toLowerCase();
   const filtered = needle
     ? users.filter(u =>
-        `${u.name} ${u.username} ${u.role} ${u.extra_roles || ""}`.toLowerCase().includes(needle))
+        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${u.role} ${u.extra_roles || ""}`.toLowerCase().includes(needle))
     : users;
 
   return (
@@ -202,6 +213,7 @@ function UsersTab({ users, loading, reload }) {
           <option value="student">Ученик</option>
           <option value="teacher">Куратор</option>
           <option value="manager">Методист</option>
+          {isCurrentUserRoot && <option value="admin">🛡️ Администратор</option>}
         </select>
         <label className="chip" style={{ cursor: "pointer" }} title="Разрешить пользоваться курсами">
           <input type="checkbox" checked={form.is_active}
@@ -212,41 +224,91 @@ function UsersTab({ users, loading, reload }) {
       </form>
       <div className="card row" style={{ alignItems: "center", gap: 8 }}>
         <label>Поиск:</label>
-        <input placeholder="ФИО, логин или роль…" value={q}
+        <input placeholder="ФИО, логин, email, телефон или роль…" value={q}
                onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
         <span className="muted small">{filtered.length} / {users.length}</span>
       </div>
       <div className="table-wrap"><table className="table">
-        <thead><tr><th>ID</th><th>ФИО</th><th>Логин</th><th>Роль</th><th>Курсы</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>ФИО</th><th>Логин / Контакты</th><th>Пароль</th><th>Роль</th><th>Курсы</th><th></th></tr></thead>
         <tbody>
-          {filtered.map(u => (
-            <tr key={u.id}>
-               <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td>
-              <td>
-                {u.role}
-                {u.extra_roles && (
-                  <span className="muted small"> + {u.extra_roles}</span>
-                )}
-              </td>
-              <td>
-                {u.is_active !== false ? (
-                  <span className="tag ok" title="Доступ к курсам включён">✓ есть</span>
-                ) : (
-                  <span className="tag no" title="Доступ к курсам выключен">✖ нет</span>
-                )}
-              </td>
-              <td>
-                <button className="btn small" onClick={() => setEditing(u)}>Изм.</button>{" "}
-                <button className="btn small" onClick={() => setResetting({ id: u.id, name: u.name })}>
-                  Пароль
-                </button>{" "}
-                <button className="btn danger small" onClick={() => del(u.id)}>Уд.</button>
-              </td>
-            </tr>
-          ))}
+          {filtered.map(u => {
+            const isTargetAdmin = u.role === "admin" || (u.extra_roles && u.extra_roles.includes("admin"));
+            return (
+              <tr key={u.id}>
+                <td>{u.id}</td>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{u.name}</div>
+                  {u.phone && <div className="muted small">{u.phone}</div>}
+                </td>
+                <td>
+                  <div>{u.username}</div>
+                  {u.email && u.email.toLowerCase() !== u.username.toLowerCase() && (
+                    <div className="muted small" style={{ color: "#2563eb" }}>{u.email}</div>
+                  )}
+                </td>
+                <td>
+                  {u.password_plain ? (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <code style={{ fontSize: 13, fontWeight: 700, background: "#f1f5f9", padding: "2px 7px", borderRadius: 4, letterSpacing: "0.5px", color: "#1e293b" }}>
+                        {u.password_plain}
+                      </code>
+                      <button
+                        type="button"
+                        className="btn ghost small"
+                        onClick={() => {
+                          navigator.clipboard.writeText(u.password_plain);
+                          alert("Пароль скопирован: " + u.password_plain);
+                        }}
+                        title="Скопировать пароль"
+                        style={{ padding: "2px 6px", fontSize: 12, lineHeight: 1 }}
+                      >
+                        📋
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="muted small" title="Пароль зашифрован">—</span>
+                  )}
+                </td>
+                <td>
+                  {u.role === "admin" ? (
+                    <span className="tag" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 700, border: "1px solid #fde68a" }}>
+                      🛡️ Администратор
+                    </span>
+                  ) : (
+                    <span>{ROLE_LABELS[u.role] || u.role}</span>
+                  )}
+                  {u.extra_roles && (
+                    <span className="muted small"> + {u.extra_roles.split(",").map(r => ROLE_LABELS[r] || r).join(", ")}</span>
+                  )}
+                </td>
+                <td>
+                  {u.is_active !== false ? (
+                    <span className="tag ok" title="Доступ к курсам включён">✓ есть</span>
+                  ) : (
+                    <span className="tag no" title="Доступ к курсам выключен">✖ нет</span>
+                  )}
+                </td>
+                <td>
+                  {isTargetAdmin && !isCurrentUserRoot ? (
+                    <span className="muted small" title="Только главный администратор может изменять администратора" style={{ fontStyle: "italic" }}>
+                      🔒 Только гл. админ
+                    </span>
+                  ) : (
+                    <>
+                      <button className="btn small" onClick={() => setEditing(u)}>Изм.</button>{" "}
+                      <button className="btn small" onClick={() => setResetting({ id: u.id, name: u.name, currentPassword: u.password_plain })}>
+                        Пароль
+                      </button>{" "}
+                      <button className="btn danger small" onClick={() => del(u.id)}>Уд.</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
           {!filtered.length && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 {loading
                   ? "Загрузка пользователей…"
                   : needle
@@ -258,13 +320,14 @@ function UsersTab({ users, loading, reload }) {
         </tbody>
       </table></div>
       {editing && <UserEditModal user={editing} variant="admin" onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
-      {resetting && <PasswordModal name={resetting.name} onClose={() => setResetting(null)}
+      {resetting && <PasswordModal name={resetting.name} currentPassword={resetting.currentPassword} onClose={() => setResetting(null)}
                                     onSubmit={async (pw) => {
                                       try {
                                         await api(`/api/admin/users/${resetting.id}/password`,
                                                    { method: "PUT", body: JSON.stringify({ password: pw }) });
-                                        alert("Пароль изменён");
+                                        alert("Пароль успешно обновлён");
                                         setResetting(null);
+                                        reload();
                                       } catch (e) { alert(e.message); }
                                     }} />}
     </div>
@@ -309,7 +372,7 @@ function MaterialsTab({ courses, groups = [] }) {
 
 /* ---------- UPLOADS ---------- */
 /* ---------- SETTINGS ---------- */
-function SettingsTab() {
+function SettingsTab({ groups = [] }) {
   const [names, setNames] = useState({ admin: "", teacher: "", student: "", manager: "" });
   const [platform, setPlatform] = useState({
     college_name: "МКУ — Международные Курсы Ученичества",
@@ -333,6 +396,16 @@ function SettingsTab() {
   const [restoreFile, setRestoreFile] = useState(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [usersCsvOpen, setUsersCsvOpen] = useState(false);
+  const [tildaModalOpen, setTildaModalOpen] = useState(false);
+  const [allGroups, setAllGroups] = useState(groups || []);
+
+  useEffect(() => {
+    if (groups && groups.length > 0) {
+      setAllGroups(groups);
+    } else {
+      api("/api/staff/groups").then(setAllGroups).catch(() => setAllGroups([]));
+    }
+  }, [groups]);
 
   const loadSettings = async () => {
     try {
@@ -709,40 +782,49 @@ function SettingsTab() {
       </div>
 
       {/* 6. Учётные данные администратора */}
-      <div className="card">
-        <h3 style={{ margin: "0 0 4px" }}>🔑 Учётные данные администратора</h3>
-        <div className="muted small">Изменение логина и пароля входа в систему</div>
+      {getUser()?.is_root_admin ? (
+        <div className="card">
+          <h3 style={{ margin: "0 0 4px" }}>🔑 Учётные данные главного администратора</h3>
+          <div className="muted small">Изменение логина и пароля входа в систему (доступно только Главному администратору)</div>
 
-        <div style={{ marginTop: 10 }}>
-          <label>Логин</label>
-          <input
-            value={creds.username}
-            onChange={e => setCreds({ ...creds, username: e.target.value })}
-            style={{ width: "100%", marginTop: 4 }}
-          />
+          <div style={{ marginTop: 10 }}>
+            <label>Логин</label>
+            <input
+              value={creds.username}
+              onChange={e => setCreds({ ...creds, username: e.target.value })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label>Новый пароль (оставьте пустым, если не меняете)</label>
+            <input
+              type="password"
+              value={creds.password}
+              onChange={e => setCreds({ ...creds, password: e.target.value })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label>Текущий пароль (обязательно для подтверждения)</label>
+            <input
+              type="password"
+              value={creds.old_password}
+              onChange={e => setCreds({ ...creds, old_password: e.target.value })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <button className="btn primary" onClick={saveCreds} style={{ marginTop: 12 }}>
+            Обновить данные главного администратора
+          </button>
         </div>
-        <div style={{ marginTop: 8 }}>
-          <label>Новый пароль (оставьте пустым, если не меняете)</label>
-          <input
-            type="password"
-            value={creds.password}
-            onChange={e => setCreds({ ...creds, password: e.target.value })}
-            style={{ width: "100%", marginTop: 4 }}
-          />
+      ) : (
+        <div className="card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
+          <h3 style={{ margin: "0 0 4px" }}>🔒 Учётные данные главного администратора</h3>
+          <div className="muted small">
+            Учётные данные главного администратора защищены. Их изменение доступно исключительно Главному администратору платформы.
+          </div>
         </div>
-        <div style={{ marginTop: 8 }}>
-          <label>Текущий пароль (обязательно для подтверждения)</label>
-          <input
-            type="password"
-            value={creds.old_password}
-            onChange={e => setCreds({ ...creds, old_password: e.target.value })}
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </div>
-        <button className="btn primary" onClick={saveCreds} style={{ marginTop: 12 }}>
-          Обновить данные администратора
-        </button>
-      </div>
+      )}
 
       {/* 7. Резервное копирование и статистика */}
       <div className="card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
@@ -843,8 +925,8 @@ function SettingsTab() {
             <div>
               <h3 style={{ margin: 0 }}>Пользователи: импорт и экспорт (CSV)</h3>
               <div className="muted small">
-                Выгрузка всех пользователей (кроме администраторов) и импорт из CSV любого формата
-                с выбором соответствия колонок файла полям платформы: ФИО, логин, телефон, роль, группы и т.д.
+                Выгрузка всех пользователей в CSV, стандартный импорт CSV с сопоставлением колонок,
+                а также специализированный импорт базы пользователей из Tilda в виде приглашений.
               </div>
             </div>
           </div>
@@ -859,6 +941,13 @@ function SettingsTab() {
             <button className="btn primary" onClick={() => setUsersCsvOpen(true)}>
               ⬆ Импорт CSV
             </button>
+            <button
+              className="btn"
+              onClick={() => setTildaModalOpen(true)}
+              style={{ background: "#059669", color: "#fff", fontWeight: 600 }}
+            >
+              📥 Импорт из Tilda (CSV)
+            </button>
           </div>
         </div>
       </div>
@@ -870,6 +959,12 @@ function SettingsTab() {
         settings={platform}
       />
       {usersCsvOpen && <UserImportModal onClose={() => setUsersCsvOpen(false)} />}
+      {tildaModalOpen && (
+        <TildaImportModal
+          allGroups={allGroups}
+          onClose={() => setTildaModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

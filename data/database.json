@@ -5,30 +5,35 @@
       "role": "admin",
       "extra_roles": "manager,teacher,student",
       "username": "admin",
-      "password_hash": "$2a$10$X1fXeiAYUJcIaXWZkXiVleCGDHphWHwQgnhWt/GLwIowyou4uhn0m",
+      "password_hash": "$2a$10$v0UueJBoUFmibUatjWsvsuYw8k4moeU6JjDM9EoeDkuUyjPEooPsm",
       "name": "Администратор",
-      "last_login_at": "2026-10-04T05:34:21.186Z"
+      "last_login_at": "2026-10-04T13:02:51.782Z",
+      "password_plain": "admin123",
+      "is_root_admin": true
     },
     {
       "id": 2,
       "role": "student",
       "extra_roles": "teacher,manager",
       "username": "kifa",
-      "password_hash": "$2a$10$PhE2DoLTlIuF/msfma.UM.DRNO1VcOfVLfI69GDz4IwzsatuTkRdu",
+      "password_hash": "$2a$10$U04PvWZcUs7fucFqiGRNguTeGQ3DVm1Ij.WZrk30A3lTNcYRwJrn6",
       "name": "Волков Алексей",
       "phone": "",
       "is_active": true,
-      "last_login_at": "2026-09-28T15:21:44.989Z"
+      "last_login_at": "2026-09-28T15:21:44.989Z",
+      "password_plain": "kifa123"
     },
     {
       "id": 3,
       "role": "teacher",
       "extra_roles": "",
       "username": "manager",
-      "password_hash": "$2a$10$Bni19PGNoYKnNFJgZ9d20.8ZPgUJsjR7Cp2GJxesuX4uMkv4AVzLW",
+      "password_hash": "$2a$10$KBN5ofRPrhwPLFN9u/YmN.hgmHlMQNDifdayS6sq/XGuN9vLZZZ.u",
       "name": "Мария Смирнова (Методист)",
       "is_active": true,
-      "last_login_at": "2026-10-04T05:32:42.484Z"
+      "last_login_at": "2026-10-04T05:32:42.484Z",
+      "phone": "",
+      "password_plain": "manager123"
     },
     {
       "id": 4,
@@ -37,26 +42,43 @@
       "username": "student",
       "password_hash": "$2a$10$PWLiaMVznPi1vAHJZp3KJeUwZuCZJZyS0sVir9znrqbMJJmHBVBIa",
       "name": "Даниил Петров (Ученик)",
-      "last_login_at": "2026-10-04T05:33:24.320Z"
+      "last_login_at": "2026-10-04T05:33:24.320Z",
+      "password_plain": "student123"
     },
     {
       "id": 5,
       "role": "student",
       "extra_roles": "",
       "username": "1",
-      "password_hash": "$2a$10$2qtWOR/4RIGrUyy4c.16AeA/L2ygI1Tdj0lqI1MxUCuxBsCfbv.Q6",
+      "password_hash": "$2a$10$1tjN6wudfJtgAizWC/.lfOAx8otKno3HEONZxHYQwbEBYLbHL.EjO",
       "name": "Петров Денис",
-      "is_active": true
+      "is_active": true,
+      "password_plain": "1"
     },
     {
       "id": 6,
       "role": "teacher",
       "extra_roles": "",
       "username": "teacher",
-      "password_hash": "$2a$10$XR2YRKTsdi1qEV1ymYP6j.7VXsvEmjnKZQuNWFhDrceuoAynLDGyy",
+      "password_hash": "$2a$10$hWwpRHThUzMjHlaQ88QoS.Jm3yqTKWRqT5inB0xJ53Z/0IwpcOYRu",
       "name": "Александр Иванов (Куратор)",
       "is_active": true,
-      "last_login_at": "2026-10-04T05:32:42.676Z"
+      "last_login_at": "2026-10-04T05:32:42.676Z",
+      "phone": "",
+      "password_plain": "teacher123"
+    },
+    {
+      "id": 7,
+      "role": "student",
+      "extra_roles": "",
+      "username": "tilda_no_phone@mail.ru",
+      "email": "tilda_no_phone@mail.ru",
+      "phone": "+79998887766",
+      "password_hash": "$2a$10$nC0cZ5KCx8OxmwNVWs1OeeqmN4L8A2tbcESE61Ke0nRSn/8TjUOsu",
+      "name": "Ученик Без Телефона (Заполнил)",
+      "created_at": "2026-10-04T11:44:58.489Z",
+      "last_login_at": "2026-10-04T11:44:58.962Z",
+      "password_plain": "password123"
     }
   ],
   "courses": [
@@ -106,15 +128,15 @@
   "groupTeachers": [
     {
       "group_id": 3,
+      "teacher_id": 2
+    },
+    {
+      "group_id": 3,
       "teacher_id": 3
     },
     {
       "group_id": 2,
       "teacher_id": 3
-    },
-    {
-      "group_id": 3,
-      "teacher_id": 2
     },
     {
       "group_id": 2,
@@ -141,6 +163,10 @@
     {
       "group_id": 2,
       "user_id": 2
+    },
+    {
+      "group_id": 2,
+      "user_id": 7
     }
   ],
   "themes": [
@@ -1784,6 +1810,22 @@
       "role": "teacher",
       "note": "Приглашение для куратора группы",
       "created_at": "2026-09-21T13:28:00.402Z"
+    },
+    {
+      "id": 4,
+      "email": "tilda_student_test@mail.ru",
+      "phone": "+79991112233",
+      "name": "Тестовый Ученик Тильда",
+      "role": "student",
+      "note": "Tilda: 1курс 26-27 онлайн",
+      "created_at": "2026-10-04T11:44:58.470Z",
+      "extra_roles": "",
+      "group_ids": [
+        2
+      ],
+      "curator_group_ids": [],
+      "tilda_groups": "1курс 26-27 онлайн",
+      "status": "Active"
     }
   ],
   "notifications": [
@@ -2153,7 +2195,7 @@
     }
   ],
   "nextId": {
-    "user": 7,
+    "user": 9,
     "course": 6,
     "group": 4,
     "theme": 19,
@@ -2168,7 +2210,7 @@
     "announcement": 3,
     "chatMessage": 11,
     "uploadedFile": 31,
-    "phoneInvite": 4,
+    "phoneInvite": 6,
     "notification": 23,
     "directMessage": 5,
     "themeUnlock": 3,

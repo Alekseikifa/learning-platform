@@ -5,9 +5,10 @@ import { readFileAsText, parseCsv, toCsv, downloadText, describeDelimiter } from
 
 const FIELDS = [
   { key: "name", label: "ФИО", required: true, aliases: ["name", "фио", "имя", "полное имя", "full name", "fullname", "фамилия имя отчество", "пользователь"] },
-  { key: "username", label: "Логин", aliases: ["username", "login", "логин", "user name", "email", "e-mail", "почта", "эл. почта", "адрес эл. почты", "id"] },
+  { key: "username", label: "Логин", aliases: ["username", "login", "логин", "user name", "id"] },
+  { key: "email", label: "Email", aliases: ["email", "e-mail", "почта", "эл. почта", "эл почта", "адрес эл. почты", "mail"] },
   { key: "phone", label: "Телефон", aliases: ["phone", "телефон", "mobile", "мобильный", "tel", "телефонный номер", "номер телефона"] },
-  { key: "role", label: "Роль", required: true, aliases: ["role", "роль", "роли", "roles", "тип"] },
+  { key: "role", label: "Роль", aliases: ["role", "роль", "роли", "roles", "тип"] },
   { key: "extra_roles", label: "Доп. роли", aliases: ["extra_roles", "доп. роли", "дополнительные роли", "additional roles"] },
   { key: "password", label: "Пароль", aliases: ["password", "пароль", "pass"] },
   { key: "groups", label: "Группы", aliases: ["groups", "group", "группы", "группа", "класс"] },
@@ -54,10 +55,8 @@ export default function UserImportModal({ onClose }) {
       ? null
       : !mapping.name
       ? "Сопоставьте колонку файла с полем «ФИО»"
-      : !mapping.role
-      ? "Сопоставьте колонку файла с полем «Роль»"
-      : !mapping.username && !mapping.phone
-      ? "Сопоставьте хотя бы «Логин» или «Телефон»"
+      : !mapping.username && !mapping.email && !mapping.phone
+      ? "Сопоставьте хотя бы «Логин», «Email» или «Телефон»"
       : null;
 
   const onFile = async (e) => {
@@ -96,6 +95,7 @@ export default function UserImportModal({ onClose }) {
     return fileInfo.rows.map((r) => ({
       name: val(r, "name"),
       username: val(r, "username"),
+      email: val(r, "email"),
       phone: val(r, "phone"),
       role: val(r, "role"),
       extra_roles: val(r, "extra_roles"),
@@ -254,7 +254,7 @@ export default function UserImportModal({ onClose }) {
           </label>
           <div className="small muted" style={{ marginBottom: 10 }}>
             Сгенерированные пароли попадут в итоговый отчёт после импорта (кнопка «Скачать отчёт CSV»).
-            Роль можно указывать как код (student/teacher/manager), так и словом (ученик, куратор, методист).
+            Если колонка «Роль» не заполнена, по умолчанию назначается «Ученик».
           </div>
 
           {mappingProblem && <div style={{ color: "#b45309", marginBottom: 8 }}>⚠ {mappingProblem}</div>}

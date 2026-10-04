@@ -141,7 +141,7 @@ function UsersTab({ groups, users, usersLoading, reload }) {
   const needle = q.trim().toLowerCase();
   const filtered = needle
     ? users.filter(u =>
-        `${u.name} ${u.username} ${u.role} ${u.extra_roles || ""} ${(u.groups || []).map(g => `${g.course} ${g.name}`).join(" ")}`
+        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${u.role} ${u.extra_roles || ""} ${(u.groups || []).map(g => `${g.course} ${g.name}`).join(" ")}`
           .toLowerCase().includes(needle))
     : users;
 
@@ -155,7 +155,7 @@ function UsersTab({ groups, users, usersLoading, reload }) {
         <input type="password" placeholder="Пароль" value={form.password}
                onChange={e => setForm({ ...form, password: e.target.value })} required />
         <select value={form.role}
-                onChange={e => setForm({ ...form, role: e.target.value, group_ids: [] })}>
+                 onChange={e => setForm({ ...form, role: e.target.value, group_ids: [] })}>
           <option value="student">Ученик</option>
           <option value="teacher">Куратор</option>
         </select>
@@ -189,7 +189,7 @@ function UsersTab({ groups, users, usersLoading, reload }) {
 
       <div className="card row" style={{ alignItems: "center", gap: 8 }}>
         <label>Поиск:</label>
-        <input placeholder="ФИО, логин, роль или группа…" value={q}
+        <input placeholder="ФИО, логин, email, телефон, роль или группа…" value={q}
                onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
         <span className="muted small">{filtered.length} / {users.length}</span>
       </div>
@@ -197,13 +197,23 @@ function UsersTab({ groups, users, usersLoading, reload }) {
       <div className="table-wrap"><table className="table">
         <thead>
           <tr>
-            <th>ID</th><th>ФИО</th><th>Логин</th><th>Роль</th><th>Курсы</th><th>Группы</th><th></th>
+            <th>ID</th><th>ФИО</th><th>Логин / Контакты</th><th>Роль</th><th>Курсы</th><th>Группы</th><th></th>
           </tr>
         </thead>
         <tbody>
           {filtered.map(u => (
             <tr key={u.id}>
-              <td>{u.id}</td><td>{u.name}</td><td>{u.username}</td>
+              <td>{u.id}</td>
+              <td>
+                <div style={{ fontWeight: 600 }}>{u.name}</div>
+                {u.phone && <div className="muted small">{u.phone}</div>}
+              </td>
+              <td>
+                <div>{u.username}</div>
+                {u.email && u.email.toLowerCase() !== u.username.toLowerCase() && (
+                  <div className="muted small" style={{ color: "#2563eb" }}>{u.email}</div>
+                )}
+              </td>
               <td>
                 {u.role}
                 {u.extra_roles && (

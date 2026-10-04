@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { api } from "../api";
+import { api, getUser } from "../api";
 
-const ROLE_LABELS = { student: "Ученик", teacher: "Куратор", manager: "Методист" };
+const ROLE_LABELS = { admin: "Администратор", student: "Ученик", teacher: "Куратор", manager: "Методист" };
 const roleLabel = (r) => ROLE_LABELS[r] || r;
 
 export default function InvitesTab({ allowManagerRole = true }) {
+  const currentUser = getUser();
+  const isCurrentUserRoot = !!currentUser?.is_root_admin;
+
   const [list, setList] = useState([]);
   const [loadErr, setLoadErr] = useState(null);
-  const [form, setForm] = useState({ phone: "", role: "student", note: "" });
+  const [form, setForm] = useState({ email: "", phone: "", name: "", role: "student", note: "" });
   const [extra, setExtra] = useState([]);
   const [groupIds, setGroupIds] = useState([]);
   const [curatorGroupIds, setCuratorGroupIds] = useState([]);
@@ -17,7 +20,7 @@ export default function InvitesTab({ allowManagerRole = true }) {
   const [loading, setLoading] = useState(true);
 
   const roleOptions = allowManagerRole
-    ? ["student", "teacher", "manager"]
+    ? (isCurrentUserRoot ? ["student", "teacher", "manager", "admin"] : ["student", "teacher", "manager"])
     : ["student", "teacher"];
 
   const load = () =>
@@ -42,7 +45,7 @@ export default function InvitesTab({ allowManagerRole = true }) {
   };
 
   const resetForm = () => {
-    setForm({ phone: "", role: "student", note: "" });
+    setForm({ email: "", phone: "", name: "", role: "student", note: "" });
     setExtra([]);
     setGroupIds([]);
     setCuratorGroupIds([]);
@@ -50,7 +53,9 @@ export default function InvitesTab({ allowManagerRole = true }) {
 
   const add = async (e) => {
     e.preventDefault();
-    if (!form.phone.trim()) return alert("Введите номер телефона");
+    if (!form.email.trim() && !form.phone.trim()) {
+      return alert("Укажите Email или номер телефона");
+    }
     setBusy(true);
     try {
       const role = allowManagerRole || form.role !== "manager" ? form.role : "student";
@@ -101,26 +106,36 @@ export default function InvitesTab({ allowManagerRole = true }) {
   return (
     <div>
       <div className="card">
-        <h3>Приглашения по номеру телефона</h3>
+        <h3 style={{ margin: "0 0 4px" }}>Приглашения пользователей</h3>
         <div className="muted small">
-          Внесите номер телефона, роли и группы. После этого человек сможет зарегистрироваться сам
+          Внесите Email, номер телефона, роли и группы. После этого человек сможет зарегистрироваться сам
           на странице «Регистрация» — указанные роли и группы установятся автоматически.
         </div>
-        <form onSubmit={add} style={{ marginTop: 12 }}>
-          <div className="row">
-            <input placeholder="Номер телефона (например, +79261234567)"
+
+        <form onSubmit={add} style={{ marginTop: 14 }}>
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <input placeholder="Email (например, ivanova@mail.ru)"
+                   value={form.email}
+                   onChange={e => setForm({ ...form, email: e.target.value })}
+                   style={{ flex: 1, minWidth: 180 }} />
+            <input placeholder="Номер телефона (+79261234567)"
                    value={form.phone}
                    onChange={e => setForm({ ...form, phone: e.target.value })}
-                   style={{ flex: 1 }} />
+                   style={{ flex: 1, minWidth: 160 }} />
+            <input placeholder="ФИО (необязательно)"
+                   value={form.name}
+                   onChange={e => setForm({ ...form, name: e.target.value })}
+                   style={{ flex: 1, minWidth: 160 }} />
             <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
               <option value="student">Ученик</option>
               <option value="teacher">Куратор</option>
               {allowManagerRole && <option value="manager">Методист</option>}
+              {allowManagerRole && isCurrentUserRoot && <option value="admin">🛡️ Администратор</option>}
             </select>
-            <input placeholder="Комментарий (кто это)"
+            <input placeholder="Комментарий / Заметка"
                    value={form.note}
                    onChange={e => setForm({ ...form, note: e.target.value })}
-                   style={{ flex: 1 }} />
+                   style={{ flex: 1, minWidth: 160 }} />
             <button className="btn primary" disabled={busy}>
               {busy ? "..." : "Добавить приглашение"}
             </button>
@@ -164,21 +179,23 @@ export default function InvitesTab({ allowManagerRole = true }) {
       </div>
 
       <div className="card">
-        <h3>Ожидают регистрации ({list.length})</h3>
+        <h3 style={{ margin: "0 0 8px" }}>Ожидают регистрации ({list.length})</h3>
         {loadErr && (
           <div style={{ color: "#dc2626" }}>Не удалось загрузить приглашения: {loadErr}</div>
         )}
         <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
           <label>Поиск:</label>
-          <input placeholder="Телефон, роль или комментарий…" value={q}
+          <input placeholder="Email, телефон, имя, роль или группа…" value={q}
                  onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
         </div>
         <div className="table-wrap"><table className="table">
           <thead>
             <tr>
-              <th>Телефон</th>
+              <th>Email / Телефон</th>
+              <th>ФИО</th>
               <th>Роль</th>
-              <th>Группы</th>
+              <th>Группы в LMS</th>
+              <th>Tilda группы</th>
               <th>Комментарий</th>
               <th>Добавлено</th>
               <th></th>
@@ -189,20 +206,20 @@ export default function InvitesTab({ allowManagerRole = true }) {
               const needle = q.trim().toLowerCase();
               const rows = needle
                 ? list.filter(inv =>
-                    `${inv.phone} ${roleLabel(inv.role)} ${inv.extra_roles || ""} ${inv.note || ""}`
+                    `${inv.email || ""} ${inv.phone || ""} ${inv.name || ""} ${roleLabel(inv.role)} ${inv.extra_roles || ""} ${inv.tilda_groups || ""} ${inv.note || ""}`
                       .toLowerCase().includes(needle))
                 : list;
               if (!rows.length) {
                 return (
                   <tr>
-                    <td colSpan={6} className="muted">
+                    <td colSpan={8} className="muted">
                       {loading
                         ? "Загрузка приглашений…"
                         : loadErr
                           ? "Список не загрузился — попробуйте обновить страницу"
                           : needle
                             ? "Ничего не найдено по запросу «" + q + "»"
-                            : "Приглашений пока нет. Добавьте первое выше."}
+                            : "Приглашений пока нет. Добавьте вручную или нажмите «Импорт из Tilda (CSV)»."}
                     </td>
                   </tr>
                 );
@@ -212,7 +229,12 @@ export default function InvitesTab({ allowManagerRole = true }) {
                 const curatorGroups = groupNames(inv.curator_group_ids);
                 return (
                 <tr key={inv.id}>
-                  <td><b>{inv.phone}</b></td>
+                  <td>
+                    {inv.email && <div style={{ fontWeight: 600, color: "var(--navy)" }}>{inv.email}</div>}
+                    {inv.phone && <div className="muted small">{inv.phone}</div>}
+                    {!inv.email && !inv.phone && <span className="muted">—</span>}
+                  </td>
+                  <td>{inv.name || <span className="muted">—</span>}</td>
                   <td>
                     {roleLabel(inv.role)}
                     {inv.extra_roles && (
@@ -229,6 +251,9 @@ export default function InvitesTab({ allowManagerRole = true }) {
                       <div>Куратор: {curatorGroups.join(", ")}</div>
                     )}
                     {!studentGroups.length && !curatorGroups.length && <span className="muted">—</span>}
+                  </td>
+                  <td className="small muted" style={{ maxWidth: 180 }}>
+                    {inv.tilda_groups || "—"}
                   </td>
                   <td className="muted small">{inv.note || "—"}</td>
                   <td className="muted small">

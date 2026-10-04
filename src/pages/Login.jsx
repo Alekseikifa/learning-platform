@@ -46,7 +46,7 @@ export default function Login() {
           <div className="sub">Вход в систему</div>
         </div>
         <input
-          placeholder="Логин"
+          placeholder="Email, телефон или логин"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoFocus
@@ -63,7 +63,7 @@ export default function Login() {
         </button>
 
         <div className="muted small" style={{ textAlign: "center", marginTop: 4 }}>
-          Нет аккаунта? <Link to="/register">Зарегистрироваться по номеру телефона</Link>
+          Первый вход или регистрация? <Link to="/register">Активировать приглашение</Link>
         </div>
       </form>
     </div>

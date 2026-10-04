@@ -23,7 +23,11 @@ export interface User {
   extra_roles: string;
   username: string;
   password_hash: string;
+  /** исходный пароль для просмотра администратором */
+  password_plain?: string;
   name: string;
+  /** email пользователя */
+  email?: string;
   /** доступ к курсам; отсутствие поля = активен (обратная совместимость) */
   is_active?: boolean;
   /** телефон, указанный при регистрации (у старых пользователей может отсутствовать) */
@@ -32,6 +36,13 @@ export interface User {
   created_at?: string;
   /** последняя авторизация (ISO); null/отсутствие = ещё не входил после обновления */
   last_login_at?: string | null;
+  /** флаг главного системного администратора (аккаунт из Настроек) */
+  is_root_admin?: boolean;
+}
+
+export function isRootAdmin(u: { id?: number; role?: string; is_root_admin?: boolean } | undefined | null): boolean {
+  if (!u) return false;
+  return Boolean(u.is_root_admin || (u.id === 1 && u.role === "admin"));
 }
 
 export interface Course {
@@ -243,6 +254,8 @@ export interface UploadedFile {
 export interface PhoneInvite {
   id: number;
   phone: string;
+  email?: string;
+  name?: string;
   role: string;
   note: string;
   created_at: string;
@@ -252,6 +265,10 @@ export interface PhoneInvite {
   group_ids?: number[];
   /** группы, в которых пользователь станет куратором */
   curator_group_ids?: number[];
+  /** Исходные группы из Tilda */
+  tilda_groups?: string;
+  /** Статус из Tilda (Active / Disabled) */
+  status?: string;
 }
 
 export interface Notification {
@@ -411,10 +428,42 @@ class DatabaseStore {
         // старые файлы базы не содержат новые ключи счётчиков — дополняем дефолтами
         this.nextId = { ...nextIdDefaults, ...this.nextId };
         // миграция старых баз: телефон = логин у пользователей, зарегистрированных по номеру
+        let dbChanged = false;
         for (const u of this.users) {
+          if (u.id === 1 || u.username === "admin") {
+            if (!u.is_root_admin) {
+              u.is_root_admin = true;
+              dbChanged = true;
+            }
+          }
           if (!u.phone && u.username && /^\+?\d{7,15}$/.test(u.username)) {
             u.phone = u.username;
+            dbChanged = true;
           }
+          if (!u.password_plain) {
+            dbChanged = true;
+            if (u.username === "admin") u.password_plain = "admin123";
+            else if (u.username === "manager") u.password_plain = "manager123";
+            else if (u.username === "teacher") u.password_plain = "teacher123";
+            else if (u.username === "student") u.password_plain = "student123";
+            else if (u.username === "kifa") {
+              u.password_plain = "kifa123";
+              u.password_hash = bcrypt.hashSync("kifa123", 10);
+            } else if (u.username === "1") {
+              u.password_plain = "1";
+              u.password_hash = bcrypt.hashSync("1", 10);
+            } else if (u.username === "tilda_no_phone@mail.ru") {
+              u.password_plain = "password123";
+              u.password_hash = bcrypt.hashSync("password123", 10);
+            } else {
+              const genPass = "mku" + Math.floor(1000 + Math.random() * 9000);
+              u.password_plain = genPass;
+              u.password_hash = bcrypt.hashSync(genPass, 10);
+            }
+          }
+        }
+        if (dbChanged) {
+          this.save();
         }
         this.migrateUploadRefs();
         this.migrateChatGroups();
@@ -1124,4 +1173,9 @@ export function normalizePhone(raw: string): string {
   const plus = s.startsWith("+");
   const digits = s.replace(/\D/g, "");
   return (plus ? "+" : "") + digits;
+}
+
+export function normalizeEmail(raw: string | null | undefined): string {
+  if (!raw || typeof raw !== "string") return "";
+  return raw.trim().toLowerCase();
 }

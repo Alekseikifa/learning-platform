@@ -21,8 +21,10 @@ import {
   ScheduleEvent,
   getAllRolesOf,
   normalizePhone,
+  normalizeEmail,
   notifyUsers,
   fixMojibake,
+  isRootAdmin,
 } from "./src/server/db.js";
 
 const app = express();
@@ -193,7 +195,7 @@ function isCurator(u: User): boolean {
   return u.role !== "admin" && hasRole(u, "teacher");
 }
 
-const ALLOWED_EXTRA_ROLES = ["teacher", "student", "manager"];
+const ALLOWED_EXTRA_ROLES = ["teacher", "student", "manager", "admin"];
 
 function normalizeExtraRoles(primaryRole: string, value: unknown): string {
   const raw = Array.isArray(value)
@@ -269,7 +271,7 @@ function curatorGroupsOf(u: User) {
 }
 
 // пользователь для админских/методистских списков: новые поля + группы
-function userInfo(u: User) {
+function userInfo(u: User, isAdmin: boolean = false) {
   return {
     ...publicUser(u),
     phone: u.phone || "",
@@ -277,6 +279,8 @@ function userInfo(u: User) {
     last_login_at: u.last_login_at || null,
     groups: studentGroupsOf(u),
     teacher_groups: curatorGroupsOf(u),
+    password_plain: isAdmin ? (u.password_plain || "") : undefined,
+    is_root_admin: isRootAdmin(u),
   };
 }
 
@@ -419,7 +423,17 @@ app.get("/api/public/extra-material/:id", (req, res) => {
 // -------------------------------------------------------------
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body;
-  const user = db.users.find((u) => u.username === username);
+  const loginStr = (username || "").trim();
+  const cleanEmail = normalizeEmail(loginStr);
+  const cleanPhone = normalizePhone(loginStr);
+
+  const user = db.users.find((u) => {
+    if (u.username === loginStr) return true;
+    if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
+    if (cleanPhone && u.phone && u.phone === cleanPhone) return true;
+    return false;
+  });
+
   if (!user) {
     return res.status(400).json({ detail: "Неверный логин или пароль" });
   }
@@ -433,6 +447,9 @@ app.post("/api/auth/login", (req, res) => {
   if (!isMatch) {
     return res.status(400).json({ detail: "Неверный логин или пароль" });
   }
+  if (password) {
+    user.password_plain = password;
+  }
   if (!bcrypt.compareSync(password, user.password_hash)) {
     user.password_hash = bcrypt.hashSync(password, 10);
     db.save();
@@ -444,57 +461,111 @@ app.post("/api/auth/login", (req, res) => {
     role: user.role,
     roles,
     name: user.name,
+    is_root_admin: isRootAdmin(user),
   });
 });
 
-app.get("/api/auth/check-phone", (req, res) => {
-  const phoneParam = req.query.phone as string;
-  const phone = normalizePhone(phoneParam);
-  if (!phone) {
-    return res.status(400).json({ detail: "Введите номер телефона" });
+app.get(["/api/auth/check-invite", "/api/auth/check-phone"], (req, res) => {
+  const queryParam = ((req.query.query || req.query.email || req.query.phone || "") as string).trim();
+  const cleanEmail = normalizeEmail(queryParam);
+  const cleanPhone = normalizePhone(queryParam);
+
+  if (!cleanEmail && !cleanPhone) {
+    return res.status(400).json({ detail: "Введите Email или номер телефона" });
   }
-  const used = db.users.find((u) => u.username === phone);
+
+  // Проверяем, зарегистрирован ли уже такой пользователь
+  const used = db.users.find((u) => {
+    if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
+    if (cleanEmail && u.username && u.username.toLowerCase() === cleanEmail) return true;
+    if (cleanPhone && u.phone && u.phone === cleanPhone) return true;
+    if (cleanPhone && u.username && u.username === cleanPhone) return true;
+    return false;
+  });
   if (used) {
     return res.json({ available: false, reason: "already_registered" });
   }
-  const invite = db.phoneInvites.find((i) => i.phone === phone);
+
+  // Ищем приглашение в db.phoneInvites
+  const invite = db.phoneInvites.find((i) => {
+    if (cleanEmail && i.email && i.email.toLowerCase() === cleanEmail) return true;
+    if (cleanPhone && i.phone && i.phone === cleanPhone) return true;
+    return false;
+  });
+
   if (!invite) {
     return res.json({ available: false, reason: "no_invite" });
   }
-  res.json({ available: true, role: invite.role });
+
+  const groupNames = (invite.group_ids || [])
+    .map((gid) => {
+      const g = db.groups.find((x) => x.id === gid);
+      const c = g ? db.courses.find((x) => x.id === g.course_id) : null;
+      return g ? `${c ? c.title + " · " : ""}${g.name}` : null;
+    })
+    .filter(Boolean);
+
+  res.json({
+    available: true,
+    role: invite.role,
+    extra_roles: invite.extra_roles || "",
+    name: invite.name || "",
+    phone: invite.phone || "",
+    email: invite.email || "",
+    group_ids: invite.group_ids || [],
+    curator_group_ids: invite.curator_group_ids || [],
+    group_names: groupNames,
+    tilda_groups: invite.tilda_groups || "",
+  });
 });
 
 app.post("/api/auth/register", (req, res) => {
-  const { name, password, password_confirm, phone: rawPhone } = req.body;
+  const { name, password, password_confirm, email: rawEmail, phone: rawPhone } = req.body;
+  const cleanEmail = normalizeEmail(rawEmail);
+  const cleanPhone = normalizePhone(rawPhone);
   const cleanName = (name || "").trim();
-  if (!cleanName) return res.status(400).json({ detail: "Введите ФИО" });
+
+  if (!cleanEmail && !cleanPhone) {
+    return res.status(400).json({ detail: "Введите Email или номер телефона" });
+  }
   if (password !== password_confirm) return res.status(400).json({ detail: "Пароли не совпадают" });
-  if ((password || "").length < 4) return res.status(400).json({ detail: "Пароль слишком короткий" });
+  if ((password || "").length < 4) return res.status(400).json({ detail: "Пароль слишком короткий (минимум 4 символа)" });
 
-  const phone = normalizePhone(rawPhone);
-  if (!phone) return res.status(400).json({ detail: "Введите номер телефона" });
-
-  if (db.users.find((u) => u.username === phone)) {
-    return res.status(400).json({ detail: "Этот номер уже зарегистрирован" });
+  // Проверка уникальности
+  if (cleanEmail && db.users.find((u) => (u.email && u.email.toLowerCase() === cleanEmail) || u.username.toLowerCase() === cleanEmail)) {
+    return res.status(400).json({ detail: "Пользователь с таким Email уже зарегистрирован" });
+  }
+  if (cleanPhone && db.users.find((u) => (u.phone && u.phone === cleanPhone) || u.username === cleanPhone)) {
+    return res.status(400).json({ detail: "Этот номер телефона уже зарегистрирован" });
   }
 
-  const inviteIdx = db.phoneInvites.findIndex((i) => i.phone === phone);
+  const inviteIdx = db.phoneInvites.findIndex((i) => {
+    if (cleanEmail && i.email && i.email.toLowerCase() === cleanEmail) return true;
+    if (cleanPhone && i.phone && i.phone === cleanPhone) return true;
+    return false;
+  });
+
   if (inviteIdx === -1) {
-    return res.status(400).json({ detail: "Номер не найден в списке приглашений. Обратитесь к администратору." });
+    return res.status(400).json({ detail: "Приглашение не найдено в списке. Обратитесь к администратору или куратору." });
   }
 
   const invite = db.phoneInvites[inviteIdx];
   db.phoneInvites.splice(inviteIdx, 1);
 
   const now = new Date().toISOString();
+  const finalUsername = cleanEmail || cleanPhone;
+  const finalName = cleanName || invite.name || (cleanEmail ? cleanEmail.split("@")[0] : "Ученик");
+
   const newUser: User = {
     id: db.getId("user"),
     role: invite.role,
     extra_roles: normalizeExtraRoles(invite.role, invite.extra_roles || ""),
-    username: phone,
+    username: finalUsername,
+    email: cleanEmail || invite.email || undefined,
+    phone: cleanPhone || invite.phone || undefined,
     password_hash: bcrypt.hashSync(password, 10),
-    name: cleanName,
-    phone,
+    password_plain: password,
+    name: finalName,
     created_at: now,
     last_login_at: now,
   };
@@ -519,6 +590,8 @@ app.post("/api/auth/register", (req, res) => {
     }
   }
 
+  db.save();
+
   res.json({
     access_token: createToken(newUser.id, newUser.role, roles),
     role: newUser.role,
@@ -537,6 +610,7 @@ app.get("/api/auth/me", authMiddleware, (req: AuthRequest, res: Response) => {
     role: payload.role || user.role,
     roles: getAllRolesOf(user),
     extra_roles: user.extra_roles || "",
+    is_root_admin: isRootAdmin(user),
   });
 });
 
@@ -552,6 +626,7 @@ app.post("/api/auth/switch-role", authMiddleware, (req: AuthRequest, res: Respon
     role,
     roles,
     name: user.name,
+    is_root_admin: isRootAdmin(user),
   });
 });
 
@@ -787,13 +862,17 @@ app.post("/api/messages/:id/react", authMiddleware, (req: AuthRequest, res: Resp
 // ADMIN
 // -------------------------------------------------------------
 app.get("/api/admin/users", authMiddleware, requireRole("admin"), (_req, res) => {
-  res.json(db.users.filter((u) => u.role !== "admin").map(userInfo));
+  res.json(db.users.filter((u) => !isRootAdmin(u)).map((u) => userInfo(u, true)));
 });
 
-app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req, res) => {
+app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const { role, extra_roles, username, password, name, is_active } = req.body;
-  if (!["teacher", "student", "manager"].includes(role)) {
-    return res.status(400).json({ detail: "role must be teacher, student or manager" });
+  if (!["teacher", "student", "manager", "admin"].includes(role)) {
+    return res.status(400).json({ detail: "role must be teacher, student, manager or admin" });
+  }
+  const isAssigningAdmin = role === "admin" || (extra_roles && String(extra_roles).includes("admin"));
+  if (isAssigningAdmin && !isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может назначать администратора" });
   }
   if (db.users.find((u) => u.username === username)) {
     return res.status(400).json({ detail: "Логин занят" });
@@ -804,26 +883,55 @@ app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req, res) =>
     extra_roles: normalizeExtraRoles(role, extra_roles),
     username,
     password_hash: bcrypt.hashSync(password, 10),
+    password_plain: password,
     name,
     is_active: is_active !== false,
     created_at: new Date().toISOString(),
+    is_root_admin: false,
   };
   db.users.push(u);
-  res.json(userInfo(u));
+  res.json(userInfo(u, true));
 });
 
-app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u) return res.status(404).json({ detail: "Пользователь не найден" });
+  if (isRootAdmin(u)) {
+    return res.status(400).json({ detail: "Учётные данные главного администратора изменяются только в Настройках" });
+  }
 
-  const { name, username, role, extra_roles, is_active, phone, group_ids, curator_group_ids } = req.body;
+  const { name, username, email, password, role, extra_roles, is_active, phone, group_ids, curator_group_ids } = req.body;
+  const isTargetAdmin = u.role === "admin" || (u.extra_roles && u.extra_roles.includes("admin"));
+  const isAssigningAdmin = role === "admin" || (extra_roles !== undefined && String(extra_roles).includes("admin"));
+
+  if ((isTargetAdmin || isAssigningAdmin) && !isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может назначать, изменять или снимать права администратора" });
+  }
+
   if (name !== undefined) u.name = name;
   if (username !== undefined) {
     if (db.users.find((x) => x.username === username && x.id !== userId)) {
       return res.status(400).json({ detail: "Логин занят" });
     }
     u.username = username;
+  }
+  if (password && String(password).trim().length >= 4) {
+    const pw = String(password).trim();
+    u.password_hash = bcrypt.hashSync(pw, 10);
+    u.password_plain = pw;
+  }
+  if (email !== undefined) {
+    const raw = String(email).trim();
+    if (!raw) {
+      u.email = undefined;
+    } else {
+      const norm = normalizeEmail(raw);
+      if (db.users.find((x) => x.id !== userId && x.email && x.email.toLowerCase() === norm)) {
+        return res.status(400).json({ detail: "Этот Email уже используется другим пользователем" });
+      }
+      u.email = norm;
+    }
   }
   if (phone !== undefined) {
     const raw = String(phone).trim();
@@ -838,8 +946,8 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req,
       u.phone = norm;
     }
   }
-  if (role !== undefined && u.role !== "admin") {
-    if (!["teacher", "student", "manager"].includes(role)) {
+  if (role !== undefined) {
+    if (!["teacher", "student", "manager", "admin"].includes(role)) {
       return res.status(400).json({ detail: "Недопустимая роль" });
     }
     u.role = role;
@@ -850,24 +958,35 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req,
   if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
   if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
 
-  res.json(userInfo(u));
+  res.json(userInfo(u, true));
 });
 
 app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin"), (req, res) => {
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u) return res.status(404).json({ detail: "Пользователь не найден" });
-  u.password_hash = bcrypt.hashSync(req.body.password, 10);
+  const newPassword = String(req.body.password || "").trim();
+  if (newPassword.length < 4) return res.status(400).json({ detail: "Пароль должен содержать минимум 4 символа" });
+  u.password_hash = bcrypt.hashSync(newPassword, 10);
+  u.password_plain = newPassword;
   if (typeof (db as any).save === "function") (db as any).save();
   console.log("[Auth] Пароль пользователя ID " + userId + " успешно изменён и сохранён в базу");
-  res.json({ ok: true });
+  res.json({ ok: true, password_plain: newPassword });
 });
 
-app.delete("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req, res) => {
+app.delete("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const userId = parseInt(req.params.user_id, 10);
   const idx = db.users.findIndex((x) => x.id === userId);
-  if (idx === -1 || db.users[idx].role === "admin") {
+  if (idx === -1) {
     return res.status(404).json({ detail: "Пользователь не найден" });
+  }
+  const target = db.users[idx];
+  if (isRootAdmin(target)) {
+    return res.status(400).json({ detail: "Главного администратора удалить нельзя" });
+  }
+  const isTargetAdmin = target.role === "admin" || (target.extra_roles && target.extra_roles.includes("admin"));
+  if (isTargetAdmin && !isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может удалять администраторов" });
   }
   db.users.splice(idx, 1);
   // cleanup attempts & answers
@@ -884,7 +1003,7 @@ app.delete("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (r
 // ADMIN: ЭКСПОРТ / ИМПОРТ ПОЛЬЗОВАТЕЛЕЙ (CSV)
 // -------------------------------------------------------------
 const CSV_USER_HEADERS = [
-  "id", "username", "name", "phone", "role", "extra_roles",
+  "id", "username", "email", "name", "phone", "role", "extra_roles",
   "is_active", "groups", "curator_groups", "created_at", "last_login_at",
 ];
 
@@ -907,6 +1026,7 @@ app.get("/api/admin/users/export.csv", authMiddleware, requireRole("admin"), (_r
   const rows = users.map((u) => [
     u.id,
     u.username,
+    u.email || "",
     u.name,
     u.phone || "",
     u.role,
@@ -927,6 +1047,7 @@ app.get("/api/admin/users/export.csv", authMiddleware, requireRole("admin"), (_r
 type ImportRow = {
   name?: unknown;
   username?: unknown;
+  email?: unknown;
   phone?: unknown;
   role?: unknown;
   extra_roles?: unknown;
@@ -986,6 +1107,7 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
     detail: string;
   }[] = [];
   const seenUsernames = new Set<string>();
+  const seenEmails = new Set<string>();
   let created = 0;
   let skipped = 0;
   let errorsCount = 0;
@@ -1003,14 +1125,23 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
       phone = normalizePhone(phoneRaw);
       if (!/^\+?\d{7,15}$/.test(phone)) errs.push("некорректный номер телефона");
     }
+
+    const emailRaw = String(row.email ?? "").trim();
+    let email = "";
+    if (emailRaw) {
+      email = normalizeEmail(emailRaw);
+      if (!email.includes("@")) errs.push("некорректный email");
+    }
+
+    if (!username && email) username = email;
     if (!username && phone) username = phone;
     if (!name) errs.push("не указано ФИО");
-    if (!username) errs.push("не указан логин (и телефон)");
+    if (!username) errs.push("не указан логин, email или телефон");
 
     const roleRaw = String(row.role ?? "").trim();
     let role: "teacher" | "student" | "manager" | null = null;
     if (!roleRaw) {
-      errs.push("не указана роль");
+      role = "student"; // По умолчанию роль Ученик
     } else if (["admin", "админ", "администратор"].includes(roleRaw.toLowerCase())) {
       errs.push("роль администратора импортировать нельзя");
     } else {
@@ -1059,9 +1190,18 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
     if (username && seenUsernames.has(unameKey)) errs.push("дубликат логина внутри файла");
     if (username) seenUsernames.add(unameKey);
 
-    const existing = username ? db.users.find((u) => u.username === username) : undefined;
+    if (email && seenEmails.has(email)) errs.push("дубликат email внутри файла");
+    if (email) seenEmails.add(email);
+
+    const existing =
+      (username ? db.users.find((u) => u.username === username || (u.email && u.email.toLowerCase() === unameKey)) : undefined) ||
+      (email ? db.users.find((u) => (u.email && u.email.toLowerCase() === email) || u.username.toLowerCase() === email) : undefined);
+
     const phoneConflict =
       phone && db.users.find((u) => u.id !== existing?.id && (u.phone === phone || u.username === phone));
+
+    const emailConflict =
+      email && db.users.find((u) => u.id !== existing?.id && u.email && u.email.toLowerCase() === email);
 
     let status: "ok" | "skip" | "error" = "ok";
     let detail = warns.join("; ");
@@ -1078,6 +1218,10 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
       status = "error";
       detail = "телефон уже используется другим пользователем" + (detail ? "; " + detail : "");
       errorsCount++;
+    } else if (emailConflict) {
+      status = "error";
+      detail = "email уже используется другим пользователем" + (detail ? "; " + detail : "");
+      errorsCount++;
     }
 
     warningsCount += warns.length;
@@ -1092,11 +1236,13 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
           extra_roles: normalizeExtraRoles(role!, extraCanonical),
           username,
           password_hash: bcrypt.hashSync(password, 10),
+          password_plain: password,
           name,
           is_active: parseImportBool(row.is_active),
           created_at: new Date().toISOString(),
         };
         if (phone) u.phone = phone;
+        if (email) u.email = email;
         db.users.push(u);
         for (const gid of groupIds) db.groupStudents.push({ group_id: gid, user_id: u.id });
         for (const gid of curatorIds) db.groupTeachers.push({ group_id: gid, teacher_id: u.id });
@@ -1119,7 +1265,10 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req, 
 });
 
 app.put(["/api/admin/credentials", "/api/admin/admin/credentials"], authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
-  const targetUser = db.users.find((x) => x.id === req.user?.id) || db.users.find((x) => x.role === "admin");
+  if (!isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может изменять системные учётные данные" });
+  }
+  const targetUser = db.users.find((x) => isRootAdmin(x)) || db.users.find((x) => x.id === 1);
   if (!targetUser) return res.status(404).json({ detail: "Пользователь не найден" });
   const { old_password, username, password } = req.body;
   if (!bcrypt.compareSync(old_password, targetUser.password_hash)) {
@@ -1133,6 +1282,7 @@ app.put(["/api/admin/credentials", "/api/admin/admin/credentials"], authMiddlewa
   }
   if (password && password.trim()) {
     targetUser.password_hash = bcrypt.hashSync(password.trim(), 10);
+    targetUser.password_plain = password.trim();
   }
   if (typeof (db as any).save === "function") (db as any).save();
   console.log("[Auth] Пароль администратора (" + targetUser.username + ") успешно обновлён и записан на диск!");
@@ -1144,30 +1294,52 @@ app.get(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireR
 });
 
 app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
-  const { phone: rawPhone, role, note, extra_roles, group_ids, curator_group_ids } = req.body;
-  if (!["teacher", "student", "manager"].includes(role)) {
-    return res.status(400).json({ detail: "role must be teacher, student or manager" });
+  const { phone: rawPhone, email: rawEmail, name: rawName, role, note, extra_roles, group_ids, curator_group_ids } = req.body;
+  const isAssigningAdmin = role === "admin" || (extra_roles && String(extra_roles).includes("admin"));
+  if (isAssigningAdmin) {
+    if (!isRootAdmin(req.user)) {
+      return res.status(403).json({ detail: "Только главный администратор может приглашать администраторов" });
+    }
+  } else if (!["teacher", "student", "manager"].includes(role)) {
+    return res.status(400).json({ detail: "role must be teacher, student, manager or admin" });
   }
   const activeRole = req.tokenPayload!.role || req.user!.role;
   const cleanedExtras = normalizeExtraRoles(role, extra_roles);
-  if (activeRole === "manager" && (role === "manager" || cleanedExtras.split(",").includes("manager"))) {
-    return res.status(400).json({ detail: "Методист не может приглашать методистов" });
+  if (activeRole === "manager" && (role === "manager" || role === "admin" || cleanedExtras.split(",").includes("manager") || cleanedExtras.split(",").includes("admin"))) {
+    return res.status(400).json({ detail: "Методист не может приглашать администраторов или методистов" });
   }
+
   const phone = normalizePhone(rawPhone);
-  if (!phone) return res.status(400).json({ detail: "Введите номер телефона" });
-  if (db.phoneInvites.find((i) => i.phone === phone)) {
-    return res.status(400).json({ detail: "Этот номер уже приглашён" });
+  const email = normalizeEmail(rawEmail);
+  const name = (rawName || "").trim();
+
+  if (!phone && !email) {
+    return res.status(400).json({ detail: "Укажите Email или номер телефона" });
   }
-  if (db.users.find((u) => u.username === phone)) {
-    return res.status(400).json({ detail: "Этот номер уже зарегистрирован" });
+
+  if (phone && db.phoneInvites.find((i) => i.phone && i.phone === phone)) {
+    return res.status(400).json({ detail: "Этот номер телефона уже приглашён" });
   }
+  if (email && db.phoneInvites.find((i) => i.email && i.email.toLowerCase() === email)) {
+    return res.status(400).json({ detail: "Этот Email уже приглашён" });
+  }
+  if (phone && db.users.find((u) => u.phone === phone || u.username === phone)) {
+    return res.status(400).json({ detail: "Этот номер телефона уже зарегистрирован" });
+  }
+  if (email && db.users.find((u) => (u.email && u.email.toLowerCase() === email) || u.username.toLowerCase() === email)) {
+    return res.status(400).json({ detail: "Этот Email уже зарегистрирован" });
+  }
+
   const cleanGroupIds = (ids: unknown): number[] =>
     Array.isArray(ids)
       ? [...new Set(ids.map((x) => parseInt(String(x), 10)).filter((gid) => db.groups.find((g) => g.id === gid)))]
       : [];
+
   const inv: PhoneInvite = {
     id: db.getId("phoneInvite"),
-    phone,
+    phone: phone || "",
+    email: email || undefined,
+    name: name || undefined,
     role,
     note: note || "",
     created_at: new Date().toISOString(),
@@ -1179,6 +1351,114 @@ app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, require
   if (typeof (db as any).save === "function") (db as any).save();
   res.json(inv);
 });
+
+// Импорт пользователей из Tilda в виде приглашений (только Администратор)
+app.post(
+  "/api/admin/invites/import-tilda",
+  authMiddleware,
+  requireRole("admin"),
+  (req: AuthRequest, res: Response) => {
+    const { items, update_existing = true, skip_disabled = true } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ detail: "Передан пустой список записей для импорта" });
+    }
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const now = new Date().toISOString();
+
+    const cleanGroupIds = (ids: unknown): number[] =>
+      Array.isArray(ids)
+        ? [...new Set(ids.map((x) => parseInt(String(x), 10)).filter((gid) => db.groups.find((g) => g.id === gid)))]
+        : [];
+
+    for (const item of items) {
+      const email = normalizeEmail(item.email);
+      const phone = normalizePhone(item.phone);
+      const name = (item.name || "").trim();
+      const status = String(item.status || "Active").trim();
+      const tildaGroups = String(item.tilda_groups || "").trim();
+
+      if (!email && !phone) {
+        skipped++;
+        continue;
+      }
+
+      // Пропуск заблокированных в Tilda (если включена опция)
+      if (skip_disabled && status.toLowerCase() === "disabled") {
+        skipped++;
+        continue;
+      }
+
+      // Проверяем, существует ли уже зарегистрированный пользователь
+      const existingUser = db.users.find(
+        (u) =>
+          (email && ((u.email && u.email.toLowerCase() === email) || u.username.toLowerCase() === email)) ||
+          (phone && ((u.phone && u.phone === phone) || u.username === phone))
+      );
+      if (existingUser) {
+        skipped++;
+        continue;
+      }
+
+      let role = item.role || "student";
+      if (!["student", "teacher", "manager"].includes(role)) {
+        role = "student";
+      }
+
+      const group_ids = cleanGroupIds(item.group_ids);
+      const curator_group_ids = cleanGroupIds(item.curator_group_ids);
+      const extra_roles = item.extra_roles || "";
+
+      // Проверяем наличие уже созданного приглашения
+      const existingInvite = db.phoneInvites.find(
+        (i) => (email && i.email && i.email.toLowerCase() === email) || (phone && i.phone && i.phone === phone)
+      );
+
+      if (existingInvite) {
+        if (update_existing) {
+          if (name) existingInvite.name = name;
+          if (phone && !existingInvite.phone) existingInvite.phone = phone;
+          if (email && !existingInvite.email) existingInvite.email = email;
+          if (role) existingInvite.role = role;
+          if (extra_roles) existingInvite.extra_roles = extra_roles;
+          if (group_ids.length > 0) {
+            existingInvite.group_ids = [...new Set([...(existingInvite.group_ids || []), ...group_ids])];
+          }
+          if (curator_group_ids.length > 0) {
+            existingInvite.curator_group_ids = [...new Set([...(existingInvite.curator_group_ids || []), ...curator_group_ids])];
+          }
+          if (tildaGroups) existingInvite.tilda_groups = tildaGroups;
+          existingInvite.status = status;
+          updated++;
+        } else {
+          skipped++;
+        }
+      } else {
+        const newInv: PhoneInvite = {
+          id: db.getId("phoneInvite"),
+          email: email || undefined,
+          phone: phone || "",
+          name: name || undefined,
+          role,
+          note: item.note || (tildaGroups ? `Tilda: ${tildaGroups}` : "Импорт из Tilda"),
+          created_at: now,
+          extra_roles,
+          group_ids,
+          curator_group_ids,
+          tilda_groups: tildaGroups,
+          status,
+        };
+        db.phoneInvites.push(newInv);
+        created++;
+      }
+    }
+
+    if (typeof (db as any).save === "function") (db as any).save();
+    res.json({ ok: true, total: items.length, created, updated, skipped });
+  }
+);
 
 app.delete(["/api/admin/invites/:invite_id", "/api/manager/invites/:invite_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const inviteId = parseInt(req.params.invite_id, 10);
@@ -2167,7 +2447,7 @@ app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u || u.role === "admin") return res.status(404).json({ detail: "Пользователь не найден" });
-  const { name, username, role, extra_roles, is_active, group_ids, curator_group_ids } = req.body;
+  const { name, username, email, phone, role, extra_roles, is_active, group_ids, curator_group_ids } = req.body;
   if (name !== undefined && String(name).trim()) u.name = String(name).trim();
   if (username !== undefined) {
     const cleanUser = String(username).trim();
@@ -2176,6 +2456,31 @@ app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (
       return res.status(400).json({ detail: "Логин занят" });
     }
     u.username = cleanUser;
+  }
+  if (email !== undefined) {
+    const raw = String(email).trim();
+    if (!raw) {
+      u.email = undefined;
+    } else {
+      const norm = normalizeEmail(raw);
+      if (db.users.find((x) => x.id !== userId && x.email && x.email.toLowerCase() === norm)) {
+        return res.status(400).json({ detail: "Этот Email уже используется другим пользователем" });
+      }
+      u.email = norm;
+    }
+  }
+  if (phone !== undefined) {
+    const raw = String(phone).trim();
+    if (!raw) {
+      u.phone = "";
+    } else {
+      const norm = normalizePhone(raw);
+      if (!norm) return res.status(400).json({ detail: "Некорректный номер телефона" });
+      if (db.users.find((x) => x.id !== userId && (x.phone === norm || x.username === norm))) {
+        return res.status(400).json({ detail: "Этот телефон уже используется" });
+      }
+      u.phone = norm;
+    }
   }
   if (is_active !== undefined) u.is_active = !!is_active;
   if (u.role !== "manager") {
