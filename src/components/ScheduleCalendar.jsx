@@ -481,13 +481,15 @@ export default function ScheduleCalendar({
             border: "1px solid var(--border)",
             overflow: "hidden",
             boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            width: "100%",
           }}
         >
           {/* Дни недели */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              width: "100%",
               background: "var(--bg-soft)",
               borderBottom: "1px solid var(--border)",
               textAlign: "center",
@@ -497,7 +499,17 @@ export default function ScheduleCalendar({
             }}
           >
             {WEEK_DAYS.map((day, idx) => (
-              <div key={day} style={{ padding: "8px 4px", color: idx >= 5 ? "#ef4444" : "var(--navy)" }}>
+              <div
+                key={day}
+                style={{
+                  padding: "8px 4px",
+                  color: idx >= 5 ? "#ef4444" : "var(--navy)",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {day}
               </div>
             ))}
@@ -507,7 +519,8 @@ export default function ScheduleCalendar({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              width: "100%",
               gridAutoRows: "minmax(95px, auto)",
             }}
           >
@@ -532,6 +545,10 @@ export default function ScheduleCalendar({
                     flexDirection: "column",
                     gap: 4,
                     minHeight: 95,
+                    minWidth: 0,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    overflow: "hidden",
                     transition: "background 0.15s ease",
                   }}
                 >
@@ -556,7 +573,7 @@ export default function ScheduleCalendar({
                   </div>
 
                   {/* Список карточек событий на день */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
                     {dayEvents.slice(0, 3).map((ev) => {
                       const meta = getEventTypeMeta(ev.event_type);
                       const isCompleted = ev.completion_status === "completed";
@@ -572,29 +589,33 @@ export default function ScheduleCalendar({
                             border: `1px solid ${meta.border}`,
                             borderLeft: `3px solid ${meta.color}`,
                             borderRadius: 4,
-                            padding: "2px 4px",
+                            padding: "3px 5px",
                             fontSize: 11,
+                            lineHeight: 1.25,
                             cursor: "pointer",
-                            overflow: "hidden",
-                            whiteSpace: "nowrap",
-                            textOverflow: "ellipsis",
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            overflowWrap: "anywhere",
                             color: "var(--navy)",
                             display: "flex",
-                            alignItems: "center",
+                            alignItems: "flex-start",
                             gap: 4,
+                            minWidth: 0,
+                            width: "100%",
+                            boxSizing: "border-box",
                           }}
                           title={`${ev.title}${ev.description ? ` — ${ev.description}` : ""}`}
                         >
-                          <span style={{ fontSize: 10 }}>{meta.icon}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1, fontWeight: 500 }}>
+                          <span style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>{meta.icon}</span>
+                          <span style={{ flex: 1, minWidth: 0, fontWeight: 500, wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {ev.title}
                           </span>
                           {!readOnly && (
-                            <>
+                            <span style={{ flexShrink: 0, marginLeft: 2, fontSize: 10 }}>
                               {isCompleted && <span style={{ color: "var(--olive)", fontWeight: 700 }}>✓</span>}
                               {isPending && <span style={{ color: "#d97706" }}>⏳</span>}
                               {isOverdue && <span style={{ color: "#dc2626" }}>⚠️</span>}
-                            </>
+                            </span>
                           )}
                         </div>
                       );
@@ -631,12 +652,14 @@ export default function ScheduleCalendar({
             borderRadius: 12,
             border: "1px solid var(--border)",
             overflow: "hidden",
+            width: "100%",
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              width: "100%",
               background: "var(--bg-soft)",
               borderBottom: "1px solid var(--border)",
               textAlign: "center",
@@ -653,6 +676,8 @@ export default function ScheduleCalendar({
                     padding: "10px 4px",
                     background: isCurrentDay ? "rgba(37, 99, 235, 0.08)" : "transparent",
                     color: isCurrentDay ? "#2563eb" : idx >= 5 ? "#ef4444" : "var(--navy)",
+                    minWidth: 0,
+                    overflow: "hidden",
                   }}
                 >
                   <div>{WEEK_DAYS[idx]}</div>
@@ -665,7 +690,8 @@ export default function ScheduleCalendar({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              width: "100%",
               minHeight: 260,
             }}
           >
@@ -683,6 +709,10 @@ export default function ScheduleCalendar({
                     display: "flex",
                     flexDirection: "column",
                     gap: 6,
+                    minWidth: 0,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    overflow: "hidden",
                   }}
                 >
                   {dayEvents.map((ev) => {
@@ -699,9 +729,22 @@ export default function ScheduleCalendar({
                           padding: "6px 8px",
                           fontSize: 12,
                           cursor: "pointer",
+                          minWidth: 0,
+                          width: "100%",
+                          boxSizing: "border-box",
                         }}
                       >
-                        <div style={{ fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            color: "var(--navy)",
+                            marginBottom: 2,
+                            wordBreak: "break-word",
+                            overflowWrap: "anywhere",
+                            whiteSpace: "normal",
+                            lineHeight: 1.3,
+                          }}
+                        >
                           {meta.icon} {ev.title}
                         </div>
                         {typeof ev.start_date === "string" && ev.start_date.includes("T") && (
