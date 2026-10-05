@@ -83,6 +83,8 @@ export default function CoursesTab({ courses, groups = [], reload, apiPrefix = "
 
 function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSetOrder, apiPrefix = "/api/admin" }) {
   const [edit, setEdit] = useState(false);
+  const [showImportThemeModal, setShowImportThemeModal] = useState(false);
+  const [openThemes, setOpenThemes] = useState(false);
   const curOrder = course.order_index ?? course.id;
   const [form, setForm] = useState({
     title: course.title,
@@ -178,7 +180,26 @@ function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSet
           </>
         )}
       </div>
-      <Collapsible title="Темы курса" subtitle={`${course.themes?.length || 0}`} defaultOpen={false}>
+      <Collapsible
+        title="Темы курса"
+        subtitle={`${course.themes?.length || 0}`}
+        isOpen={openThemes}
+        onToggle={setOpenThemes}
+        actions={
+          <button
+            type="button"
+            className="btn primary small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenThemes(true);
+              setShowImportThemeModal(true);
+            }}
+            style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <span>📥</span> Выбрать готовый плейлист из накопителя материалов
+          </button>
+        }
+      >
         <ThemesList course={course} reload={reload} apiPrefix={apiPrefix} />
       </Collapsible>
       <Collapsible
@@ -188,6 +209,16 @@ function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSet
       >
         <ExtraMaterialsList course={course} courses={courses} groups={groups} reload={reload} apiPrefix={apiPrefix} />
       </Collapsible>
+
+      <RepositoryPickerModal
+        open={showImportThemeModal}
+        onClose={() => setShowImportThemeModal(false)}
+        mode="playlist"
+        courseId={course.id}
+        courseTitle={course.title}
+        apiPrefix={apiPrefix}
+        onSuccess={reload}
+      />
     </div>
   );
 }
@@ -588,7 +619,6 @@ function ExtraMaterialRow({ material, currentCourseId, onDelete, onUnlink, onUpd
 
 function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
   const [form, setForm] = useState({ title: "", order_index: course.themes.length + 1 });
-  const [showImportThemeModal, setShowImportThemeModal] = useState(false);
 
   const add = async (e) => {
     e.preventDefault();
@@ -611,20 +641,6 @@ function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, padding: "8px 12px", background: "var(--bg-soft)", borderRadius: 8, flexWrap: "wrap", gap: 8 }}>
-        <span className="small muted">
-          Темы и уроки курса «<b>{course.title}</b>» ({course.themes?.length || 0}):
-        </span>
-        <button
-          type="button"
-          className="btn primary small"
-          onClick={() => setShowImportThemeModal(true)}
-          style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}
-        >
-          <span>📥</span> Выбрать готовый плейлист из накопителя материалов
-        </button>
-      </div>
-
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {course.themes.map(t => (
           <ThemeRow
@@ -646,16 +662,6 @@ function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
                onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 85 }} />
         <button className="btn ghost">➕ Создать тему</button>
       </form>
-
-      <RepositoryPickerModal
-        open={showImportThemeModal}
-        onClose={() => setShowImportThemeModal(false)}
-        mode="playlist"
-        courseId={course.id}
-        courseTitle={course.title}
-        apiPrefix={apiPrefix}
-        onSuccess={reload}
-      />
     </div>
   );
 }

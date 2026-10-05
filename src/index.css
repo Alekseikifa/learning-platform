@@ -434,6 +434,10 @@ a:focus-visible,
   flex: 1;
   color: var(--navy);
 }
+.collapsible-actions {
+  display: inline-flex;
+  align-items: center;
+}
 .collapsible-subtitle {
   color: var(--text-soft);
   font-size: 13px;

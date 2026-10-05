@@ -30,6 +30,45 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   const [loading, setLoading] = useState(false);
   const [activeView, setActiveView] = useState("playlists"); // "playlists" | "flat"
 
+  // Expanded playlists state: all playlists are collapsed by default!
+  const [expandedPlaylists, setExpandedPlaylists] = useState(() => new Set());
+  // Highlighted playlist for centering and visual focus
+  const [highlightedPlaylist, setHighlightedPlaylist] = useState(null);
+
+  // Toggle single playlist
+  const handleTogglePlaylist = (name) => {
+    if (!name) return;
+    setExpandedPlaylists(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
+
+  // Expand ONLY the changed playlist, center it in the window and highlight
+  const focusPlaylist = (playlistName) => {
+    if (!playlistName) return;
+    // Only the changed playlist should be expanded, all others collapsed
+    setExpandedPlaylists(new Set([playlistName]));
+    setHighlightedPlaylist(playlistName);
+    setActiveView("playlists");
+
+    setTimeout(() => {
+      const el = document.getElementById(`playlist-card-${encodeURIComponent(playlistName)}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 150);
+
+    setTimeout(() => {
+      setHighlightedPlaylist(prev => (prev === playlistName ? null : prev));
+    }, 2800);
+  };
+
   // Filter & Search
   const [search, setSearch] = useState("");
   const [selectedPlaylistFilter, setSelectedThemeFilter] = useState("");
@@ -189,6 +228,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       setShowAddModal(false);
       setEditingMaterial(null);
       await loadData();
+      focusPlaylist(finalTheme);
     } catch (err) {
       alert("Ошибка сохранения: " + (err.message || err));
     }
@@ -196,9 +236,14 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
 
   const handleDeleteMaterial = async (id, title) => {
     if (!confirm(`Удалить материал «${title}» из накопителя?`)) return;
+    const targetMat = materials.find(m => m.id === id);
+    const playlistName = targetMat?.playlist_name;
     try {
       await api(`${apiPrefix}/repository/materials/${id}`, { method: "DELETE" });
       await loadData();
+      if (playlistName) {
+        focusPlaylist(playlistName);
+      }
     } catch (err) {
       alert("Ошибка удаления: " + (err.message || err));
     }
@@ -351,12 +396,16 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   // Reorder material inside playlist
   const handleChangeOrder = async (mat, newOrder) => {
     if (newOrder < 1 || newOrder === mat.order_index) return;
+    const playlistName = mat.playlist_name;
     try {
       await api(`${apiPrefix}/repository/materials/${mat.id}`, {
         method: "PUT",
         body: JSON.stringify({ order_index: Number(newOrder) }),
       });
       await loadData();
+      if (playlistName) {
+        focusPlaylist(playlistName);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -366,7 +415,8 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   const handleRenamePlaylistSubmit = async (e) => {
     e.preventDefault();
     const { oldName, newName } = renamePlaylistModal;
-    if (!newName.trim() || newName.trim() === oldName) {
+    const targetName = newName.trim();
+    if (!targetName || targetName === oldName) {
       setRenameThemeModal({ open: false, oldName: "", newName: "" });
       return;
     }
@@ -376,11 +426,12 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       for (const item of itemsToUpdate) {
         await api(`${apiPrefix}/repository/materials/${item.id}`, {
           method: "PUT",
-          body: JSON.stringify({ playlist_name: newName.trim() }),
+          body: JSON.stringify({ playlist_name: targetName }),
         });
       }
       setRenameThemeModal({ open: false, oldName: "", newName: "" });
       await loadData();
+      focusPlaylist(targetName);
     } catch (err) {
       alert("Ошибка при переименовании плейлиста: " + (err.message || err));
     }
@@ -601,7 +652,30 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
           </select>
         </div>
 
-        <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+        <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
+          {activeView === "playlists" && groupedPlaylists.length > 0 && (
+            <div style={{ display: "flex", gap: 4, marginRight: 6 }}>
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => setExpandedPlaylists(new Set())}
+                title="Свернуть все плейлисты"
+                style={{ fontSize: 12, padding: "4px 8px" }}
+              >
+                ◀ Свернуть все
+              </button>
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => setExpandedPlaylists(new Set(groupedPlaylists.map(g => g.playlist_name)))}
+                title="Развернуть все плейлисты"
+                style={{ fontSize: 12, padding: "4px 8px" }}
+              >
+                ▼ Развернуть все
+              </button>
+            </div>
+          )}
+
           <button
             type="button"
             className={"btn small " + (activeView === "playlists" ? "primary" : "ghost")}
@@ -649,6 +723,9 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 playlistName={playlist_name}
                 items={items}
                 courses={courses}
+                isCollapsed={!expandedPlaylists.has(playlist_name)}
+                onToggleCollapse={() => handleTogglePlaylist(playlist_name)}
+                isHighlighted={highlightedPlaylist === playlist_name}
                 onAddLesson={() => openAddForPlaylist(playlist_name)}
                 onEditLesson={handleEditClick}
                 onDeleteLesson={handleDeleteMaterial}
@@ -1487,6 +1564,9 @@ function PlaylistStorageCard({
   playlistName,
   items,
   courses,
+  isCollapsed = true,
+  onToggleCollapse,
+  isHighlighted = false,
   onAddLesson,
   onEditLesson,
   onDeleteLesson,
@@ -1497,8 +1577,6 @@ function PlaylistStorageCard({
   onPreviewNote,
   onPreviewLesson,
 }) {
-  const [collapsed, setCollapsed] = useState(false);
-
   // Group counts by format
   const formatCounts = useMemo(() => {
     const counts = {};
@@ -1509,35 +1587,68 @@ function PlaylistStorageCard({
   }, [items]);
 
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", border: "1px solid var(--border)" }}>
+    <div
+      id={`playlist-card-${encodeURIComponent(playlistName)}`}
+      className="card playlist-card-box"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        border: isHighlighted ? "2px solid #2563EB" : "1px solid var(--border)",
+        boxShadow: isHighlighted
+          ? "0 0 0 4px rgba(37, 99, 235, 0.25), 0 8px 24px rgba(37, 99, 235, 0.18)"
+          : "var(--shadow, 0 1px 3px rgba(0,0,0,0.05))",
+        transition: "border-color 0.3s ease, box-shadow 0.3s ease",
+        scrollMargin: "100px",
+      }}
+    >
       {/* Theme Header Bar */}
       <div
         style={{
           padding: "12px 16px",
-          background: "var(--bg-soft)",
-          borderBottom: collapsed ? "none" : "1px solid var(--border)",
+          background: isHighlighted ? "#EFF6FF" : "var(--bg-soft)",
+          borderBottom: isCollapsed ? "none" : "1px solid var(--border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: 10,
+          cursor: "pointer",
+        }}
+        onClick={(e) => {
+          if (e.target.closest("button") || e.target.closest("input")) return;
+          onToggleCollapse?.();
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 240 }}>
           <button
             type="button"
             className="btn ghost small"
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={onToggleCollapse}
             style={{ padding: "4px 8px", fontSize: 13 }}
-            title={collapsed ? "Развернуть плейлист" : "Свернуть плейлист"}
+            title={isCollapsed ? "Развернуть плейлист" : "Свернуть плейлист"}
           >
-            {collapsed ? "▶" : "▼"}
+            {isCollapsed ? "▶" : "▼"}
           </button>
 
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 18 }}>📚</span>
               <b style={{ fontSize: 16, color: "var(--navy)" }}>{playlistName}</b>
+              {isHighlighted && (
+                <span
+                  className="tag"
+                  style={{
+                    background: "#2563EB",
+                    color: "#FFFFFF",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                  }}
+                >
+                  ✓ Изменено
+                </span>
+              )}
               <button
                 type="button"
                 className="btn ghost small"
@@ -1585,7 +1696,7 @@ function PlaylistStorageCard({
       </div>
 
       {/* Lessons List inside this Theme */}
-      {!collapsed && (
+      {!isCollapsed && (
         <div className="list" style={{ margin: 0 }}>
           {items.map((mat, idx) => {
             const fmt = getFormatInfo(mat.type);
