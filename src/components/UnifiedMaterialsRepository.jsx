@@ -2,6 +2,14 @@ import { useEffect, useState, useMemo } from "react";
 import { api, uploadFile } from "../api";
 import Modal from "./Modal";
 import SmartMediaViewer, { getPlatformBadge, parseVideoUrl } from "./SmartMediaViewer";
+import RichTextEditor, { sanitizeRichHtml } from "./RichTextEditor";
+
+function cleanPastedUrl(raw) {
+  if (!raw || typeof raw !== "string") return raw;
+  const str = raw.trim();
+  const iframeMatch = str.match(/src=["']([^"']+)["']/i);
+  return iframeMatch ? iframeMatch[1].trim() : str;
+}
 
 export const MAT_FORMATS = [
   { v: "video", l: "🎬 Видео", badgeColor: "#1E3A5F", bg: "#EBF1F8" },
@@ -233,9 +241,10 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
   };
 
   const handleSourceChange = (idx, field, value) => {
+    const finalVal = field === "url" ? cleanPastedUrl(value) : value;
     setForm(f => {
       const list = [...(f.sources || [])];
-      list[idx] = { ...list[idx], [field]: value };
+      list[idx] = { ...list[idx], [field]: finalVal };
       if (field === "platform") {
         const badge = getPlatformBadge(value);
         if (!list[idx].label || list[idx].label.includes("VK") || list[idx].label.includes("YouTube") || list[idx].label.includes("RuTube")) {
@@ -823,13 +832,12 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 </label>
 
                 {form.type === "note" ? (
-                  <textarea
+                  <RichTextEditor
+                    value={form.url || ""}
+                    onChange={val => setForm(f => ({ ...f, url: val }))}
                     placeholder="Введите или вставьте текст конспекта, тезисы лекции, цитаты из Писания..."
-                    value={form.url}
-                    onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
-                    rows={6}
-                    required
-                    style={{ width: "100%", fontFamily: "inherit", fontSize: 14 }}
+                    minHeight={300}
+                    maxHeight={520}
                   />
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -869,7 +877,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                       <input
                         placeholder="https://vk.com/video... или https://youtube.com/watch?v=... или /api/files/..."
                         value={form.url}
-                        onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                        onChange={e => setForm(f => ({ ...f, url: cleanPastedUrl(e.target.value) }))}
                         required
                         style={{ flex: 1 }}
                       />
@@ -1012,12 +1020,12 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 <div className="small muted" style={{ color: "#15803D", marginBottom: 6 }}>
                   Вы можете прикрепить к видеоуроку конспект в текстовом виде. Ученики смогут читать его прямо под видео или на сплит-экране.
                 </div>
-                <textarea
-                  placeholder="Введите или вставьте текст конспекта первого урока Дмитрия Бабкова, основные положения и тезисы..."
+                <RichTextEditor
                   value={form.synopsis || ""}
-                  onChange={e => setForm(f => ({ ...f, synopsis: e.target.value }))}
-                  rows={4}
-                  style={{ width: "100%", fontFamily: "inherit", fontSize: 13, background: "#FFFFFF" }}
+                  onChange={val => setForm(f => ({ ...f, synopsis: val }))}
+                  placeholder="Введите тезисы лекции, план урока, ключевые места Писания или вставьте готовый конспект..."
+                  minHeight={320}
+                  maxHeight={540}
                 />
               </div>
 
@@ -1412,10 +1420,18 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 {previewNote.description}
               </div>
             )}
-            <div style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 14, borderRadius: 8, fontSize: 14, lineHeight: 1.6, maxHeight: 400, overflowY: "auto" }}>
-              {previewNote.url}
-            </div>
-        </Modal>
+            {/<[a-z][\s\S]*>/i.test(previewNote.url || "") ? (
+              <div
+                className="rich-synopsis"
+                style={{ background: "var(--bg)", padding: 14, borderRadius: 8, fontSize: 14, lineHeight: 1.6, maxHeight: 400, overflowY: "auto" }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(previewNote.url) }}
+              />
+            ) : (
+              <div style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 14, borderRadius: 8, fontSize: 14, lineHeight: 1.6, maxHeight: 400, overflowY: "auto" }}>
+                {previewNote.url}
+              </div>
+            )}
+          </Modal>
       )}
 
       {/* MODAL: PREVIEW LESSON (SMART MEDIA VIEWER) */}

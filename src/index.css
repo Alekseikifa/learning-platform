@@ -2131,4 +2131,80 @@ a:focus-visible,
   }
 }
 
+/* Rich Text Editor and Lesson Synopsis Styling */
+.rich-text-editor-content:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+  font-style: italic;
+}
+
+.rich-text-editor-content blockquote,
+.rich-synopsis blockquote {
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+  margin: 10px 0;
+  font-style: italic;
+  color: #78350f;
+}
+
+.rich-text-editor-content h3,
+.rich-synopsis h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 14px 0 6px;
+  font-family: inherit;
+}
+
+.rich-text-editor-content h4,
+.rich-synopsis h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 12px 0 4px;
+  font-family: inherit;
+}
+
+.rich-text-editor-content p,
+.rich-synopsis p {
+  margin: 6px 0;
+  line-height: 1.65;
+}
+
+.rich-text-editor-content ul,
+.rich-synopsis ul {
+  list-style-type: disc;
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.rich-text-editor-content ol,
+.rich-synopsis ol {
+  list-style-type: decimal;
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.rich-text-editor-content li,
+.rich-synopsis li {
+  margin: 3px 0;
+}
+
+.rich-text-editor-content a,
+.rich-synopsis a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.rich-text-editor-content b,
+.rich-text-editor-content strong,
+.rich-synopsis b,
+.rich-synopsis strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
 

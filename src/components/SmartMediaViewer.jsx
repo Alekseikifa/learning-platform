@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { sanitizeRichHtml, htmlToPlainText } from './RichTextEditor.jsx';
 
 export function parseVideoUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
-  const url = rawUrl.trim();
+
+  // Extract src if an iframe HTML snippet was pasted
+  let url = rawUrl.trim();
+  const iframeSrcMatch = url.match(/src=["']([^"']+)["']/i);
+  if (iframeSrcMatch) {
+    url = iframeSrcMatch[1].trim();
+  }
 
   // 1. YouTube (watch?v=, youtu.be/, shorts/, embed/)
   const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?\/\s]{11})/i);
@@ -44,24 +51,56 @@ export function parseVideoUrl(rawUrl) {
   }
 
   // 4. ВКонтакте / VK Видео
-  if (url.includes('vk.com/video_ext.php')) {
+  // 4a. Прямой URL встраивания video_ext.php (vk.com или vkvideo.ru)
+  if (url.includes('video_ext.php')) {
+    let embedSrc = url.startsWith('//') ? 'https:' + url : url;
+    if (!embedSrc.startsWith('http')) embedSrc = 'https://' + embedSrc;
+    // Приводим к надежному домену vk.com/video_ext.php и добавляем hd=2
+    embedSrc = embedSrc.replace(/vkvideo\.ru\/video_ext\.php/, 'vk.com/video_ext.php');
+    if (!embedSrc.includes('hd=')) {
+      embedSrc += (embedSrc.includes('?') ? '&' : '?') + 'hd=2';
+    }
     return {
       platform: 'VK Видео',
       key: 'vk',
       icon: '🔷',
       color: '#2563eb',
-      embedUrl: url,
+      embedUrl: embedSrc,
       originalUrl: url
     };
   }
+
+  // 4b. Ссылка на видео ВКонтакте / VK Видео
   const vkMatch = url.match(/(?:vk\.com|vkvideo\.ru)\/video(-?\d+)_(\d+)/i);
   if (vkMatch && vkMatch[1] && vkMatch[2]) {
+    // Извлекаем параметры доступа: list, hash, access_key, чтобы видео по закрытой ссылке или с хэшем воспроизводились
+    let extraParams = '';
+    try {
+      const parsedUrl = new URL(url.startsWith('http') ? url : `https://${url}`);
+      const params = parsedUrl.searchParams;
+      const allowed = ['list', 'hash', 'access_key'];
+      const parts = [];
+      for (const p of allowed) {
+        if (params.has(p)) {
+          parts.push(`${p}=${encodeURIComponent(params.get(p))}`);
+        }
+      }
+      if (parts.length > 0) extraParams = '&' + parts.join('&');
+    } catch (e) {
+      const listM = url.match(/[?&]list=([^&#]+)/);
+      if (listM) extraParams += `&list=${encodeURIComponent(listM[1])}`;
+      const hashM = url.match(/[?&]hash=([^&#]+)/);
+      if (hashM) extraParams += `&hash=${encodeURIComponent(hashM[1])}`;
+      const keyM = url.match(/[?&]access_key=([^&#]+)/);
+      if (keyM) extraParams += `&access_key=${encodeURIComponent(keyM[1])}`;
+    }
+
     return {
       platform: 'VK Видео',
       key: 'vk',
       icon: '🔷',
       color: '#2563eb',
-      embedUrl: 'https://vk.com/video_ext.php?oid=' + vkMatch[1] + '&id=' + vkMatch[2],
+      embedUrl: `https://vk.com/video_ext.php?oid=${vkMatch[1]}&id=${vkMatch[2]}${extraParams}&hd=2`,
       originalUrl: url
     };
   }
@@ -208,11 +247,29 @@ export default function SmartMediaViewer({
   const videoInfo = activeSource?.parsed || (activeSource ? parseVideoUrl(activeSource.url) : null);
 
   const [copiedSynopsis, setCopiedSynopsis] = useState(false);
-  const handleCopySynopsis = () => {
+  const handleCopySynopsis = async () => {
     if (!synopsis) return;
-    navigator.clipboard?.writeText(synopsis);
-    setCopiedSynopsis(true);
-    setTimeout(() => setCopiedSynopsis(false), 2000);
+    try {
+      const isHtml = /<[a-z][\s\S]*>/i.test(synopsis);
+      const htmlContent = isHtml ? synopsis : `<p>${synopsis.replace(/\n/g, '<br/>')}</p>`;
+      const plainContent = isHtml ? htmlToPlainText(synopsis) : synopsis;
+
+      if (typeof window !== 'undefined' && navigator.clipboard && window.ClipboardItem) {
+        const item = new ClipboardItem({
+          'text/html': new Blob([htmlContent], { type: 'text/html' }),
+          'text/plain': new Blob([plainContent], { type: 'text/plain' }),
+        });
+        await navigator.clipboard.write([item]);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(plainContent);
+      }
+      setCopiedSynopsis(true);
+      setTimeout(() => setCopiedSynopsis(false), 2000);
+    } catch (e) {
+      navigator.clipboard?.writeText(synopsis);
+      setCopiedSynopsis(true);
+      setTimeout(() => setCopiedSynopsis(false), 2000);
+    }
   };
 
   const hasMultipleSources = allVideoSources.length > 1;
@@ -294,7 +351,8 @@ export default function SmartMediaViewer({
                     src={videoInfo.embedUrl}
                     title={title || activeSource.label || videoInfo.platform}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; screen-wake-lock; web-share"
+                    referrerPolicy="no-referrer-when-downgrade"
                     allowFullScreen
                   />
                 </div>
@@ -427,21 +485,35 @@ export default function SmartMediaViewer({
               {copiedSynopsis ? '✓ Скопировано' : '📋 Копировать текст'}
             </button>
           </div>
-          <div style={{
-            whiteSpace: 'pre-wrap',
-            fontFamily: 'inherit',
-            fontSize: 14,
-            lineHeight: 1.65,
-            color: '#1e293b',
-            background: '#fafafa',
-            padding: '12px 14px',
-            borderRadius: 8,
-            border: '1px solid #f1f5f9',
-            maxHeight: 460,
-            overflowY: 'auto'
-          }}>
-            {synopsis}
-          </div>
+          {(() => {
+            const isHtml = /<[a-z][\s\S]*>/i.test(synopsis);
+            const containerStyle = {
+              fontFamily: 'inherit',
+              fontSize: 14,
+              lineHeight: 1.65,
+              color: '#1e293b',
+              background: '#fafafa',
+              padding: '12px 14px',
+              borderRadius: 8,
+              border: '1px solid #f1f5f9',
+              maxHeight: 520,
+              overflowY: 'auto'
+            };
+            if (isHtml) {
+              return (
+                <div
+                  className="rich-synopsis"
+                  style={containerStyle}
+                  dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(synopsis) }}
+                />
+              );
+            }
+            return (
+              <div style={{ ...containerStyle, whiteSpace: 'pre-wrap' }}>
+                {synopsis}
+              </div>
+            );
+          })()}
         </div>
       )}
 
