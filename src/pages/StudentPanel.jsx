@@ -323,9 +323,15 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                   ? <span className="tag ok">✓ Тест сдан</span>
                   : <span className="tag no">Тест не сдан</span>)}
                 {th.reports_stats ? (
-                  <span className={"tag " + (th.reports_stats.accepted === th.reports_stats.total_materials && th.reports_stats.total_materials > 0 ? "ok" : th.reports_stats.submitted > 0 ? "warn" : "")} style={{ fontSize: 12 }}>
-                    📝 Отчёты: {th.reports_stats.accepted}/{th.reports_stats.total_materials} зачтено
-                  </span>
+                  th.reports_stats.total_materials > 0 ? (
+                    <span className={"tag " + (th.reports_stats.accepted === th.reports_stats.total_materials ? "ok" : th.reports_stats.submitted > 0 ? "warn" : "")} style={{ fontSize: 12 }}>
+                      📝 Отчёты: {th.reports_stats.accepted}/{th.reports_stats.total_materials} зачтено
+                    </span>
+                  ) : (
+                    <span className="tag" style={{ fontSize: 12, background: "#f3f4f6", color: "#6b7280" }}>
+                      📝 Без обязательных отчётов
+                    </span>
+                  )
                 ) : th.report ? (
                   <span className={"tag " + (th.report.status === "accepted" ? "ok" : th.report.status === "rejected" ? "no" : "warn")}>
                     {th.report.status === "accepted" ? "📝 Отчёт зачтён" : th.report.status === "rejected" ? "📝 Отчёт: доработка" : "📝 Отчёт: на проверке"}
@@ -886,7 +892,7 @@ function ThemeSplitView({ materials, themeId, completedIds = [], onToggleComplet
               >
                 {completedIds.includes(currentVideo.id) ? "✓ Видео изучено" : "Отметить изученным"}
               </button>
-              {onOpenReport && (
+              {onOpenReport && !currentVideo.no_report && (
                 <button
                   type="button"
                   className={"btn small " + (currentVideo.report?.status === "accepted" ? "ok" : currentVideo.report?.status === "pending" ? "warn" : currentVideo.report?.status === "rejected" ? "danger" : "primary")}
@@ -1046,6 +1052,11 @@ function MaterialsBlock({ materials, themeId, completedIds = [], onToggleComplet
                 {isCompleted && (
                   <span className="tag ok" style={{ fontSize: 11, padding: "1px 6px" }}>✓ Изучено</span>
                 )}
+                {m.no_report && (
+                  <span className="tag" style={{ fontSize: 10, padding: "1px 6px", background: "#f3f4f6", color: "#4b5563" }}>
+                    Без отчёта
+                  </span>
+                )}
                 {isLastOpened && !isOpen && (
                   <span className="tag small" style={{ fontSize: 10, padding: "1px 6px", background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}>
                     📌 Последний открытый
@@ -1070,7 +1081,7 @@ function MaterialsBlock({ materials, themeId, completedIds = [], onToggleComplet
                 >
                   {isCompleted ? "✓ Изучено" : "Отметить изученным"}
                 </button>
-                {onOpenReport && (
+                {onOpenReport && !m.no_report && (
                   <button
                     type="button"
                     className={"btn small " + (m.report?.status === "accepted" ? "ok" : m.report?.status === "pending" ? "warn" : m.report?.status === "rejected" ? "danger" : "primary")}

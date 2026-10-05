@@ -425,8 +425,9 @@ export default function ChatPanel({
               </label>
 
               {isReport && themeMaterials && themeMaterials.length > 0 && (() => {
-                const curMatId = reportMaterialId || themeMaterials[0]?.id;
-                const curMat = themeMaterials.find((m) => m.id === curMatId) || themeMaterials[0];
+                const defaultMat = themeMaterials.find((m) => !m.no_report) || themeMaterials[0];
+                const curMatId = reportMaterialId || defaultMat?.id;
+                const curMat = themeMaterials.find((m) => m.id === curMatId) || defaultMat;
                 const curNum = curMat ? (curMat.order_index || themeMaterials.indexOf(curMat) + 1) : 1;
                 const rep = curMat?.report;
 
@@ -474,10 +475,13 @@ export default function ChatPanel({
                               gap: 4,
                             }}
                             onClick={() => setReportMaterialId(mat.id)}
-                            title={`Урок ${num}: ${mat.title}${status === "accepted" ? " (Зачтён)" : status === "pending" ? " (На проверке)" : status === "rejected" ? " (На доработке)" : ""}`}
+                            title={`Урок ${num}: ${mat.title}${mat.no_report ? " (отчёт не требуется)" : ""}${status === "accepted" ? " (Зачтён)" : status === "pending" ? " (На проверке)" : status === "rejected" ? " (На доработке)" : ""}`}
                           >
                             <span>Урок {num}</span>
                             {statusIcon && <span style={{ fontSize: 11 }}>{statusIcon}</span>}
+                            {mat.no_report && !statusIcon && (
+                              <span style={{ fontSize: 10, opacity: 0.7 }}>[без отчёта]</span>
+                            )}
                           </button>
                         );
                       })}
@@ -510,6 +514,8 @@ export default function ChatPanel({
                           ? " — ⏳ На проверке"
                           : hasRejected
                           ? " — 🔄 На доработке"
+                          : mat.no_report
+                          ? " — ℹ️ Без обязательного отчёта"
                           : "";
                         return (
                           <option key={mat.id} value={mat.id}>
@@ -533,7 +539,17 @@ export default function ChatPanel({
                       }}>
                         <div>
                           <b>Выбран:</b> Урок №{curNum}: «{curMat.title}»
+                          {curMat.no_report && (
+                            <span style={{ marginLeft: 6, padding: "1px 5px", background: "#f3f4f6", color: "#4b5563", borderRadius: 4, fontSize: 11 }}>
+                              Без отчёта
+                            </span>
+                          )}
                         </div>
+                        {curMat.no_report && (
+                          <div style={{ fontSize: 11, color: "#6b7280", fontStyle: "italic" }}>
+                            ℹ️ По этому уроку отчёт не является обязательным для сдачи темы.
+                          </div>
+                        )}
                         {rep && (
                           <div style={{ fontSize: 11, color: rep.status === "accepted" ? "#15803d" : rep.status === "rejected" ? "#b91c1c" : "#b45309" }}>
                             Текущий статус отчёта: {rep.status === "accepted" ? "✅ Зачтён" : rep.status === "rejected" ? "🔄 Требует доработки" : "⏳ На проверке куратором"}

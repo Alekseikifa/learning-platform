@@ -110,6 +110,8 @@ export interface Material {
   synopsis?: string | null;
   /** Аудиозапись урока */
   audio_url?: string | null;
+  /** Не требовать отчёт по этому материалу / уроку */
+  no_report?: boolean;
 }
 
 export interface Test {
@@ -208,6 +210,8 @@ export interface StorageMaterial {
   attachments?: MaterialAttachment[];
   synopsis?: string | null;
   audio_url?: string | null;
+  /** Не требовать отчёт по этому материалу / уроку */
+  no_report?: boolean;
 }
 
 export interface ChatMessage {

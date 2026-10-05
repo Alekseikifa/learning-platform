@@ -2300,6 +2300,7 @@ app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, req
     attachments: Array.isArray(attachments) ? attachments : [],
     synopsis: synopsis !== undefined ? (synopsis || null) : null,
     audio_url: audio_url !== undefined ? (audio_url || null) : null,
+    no_report: Boolean(req.body.no_report),
   };
   db.materials.push(newMat);
   logActivity(req, "Материалы", "material_create", newMat.title, `Добавлен урок «${newMat.title}»`);
@@ -2315,6 +2316,7 @@ app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_
   if (req.body.attachments !== undefined) m.attachments = Array.isArray(req.body.attachments) ? req.body.attachments : [];
   if (req.body.synopsis !== undefined) m.synopsis = req.body.synopsis || null;
   if (req.body.audio_url !== undefined) m.audio_url = req.body.audio_url || null;
+  if (req.body.no_report !== undefined) m.no_report = Boolean(req.body.no_report);
 
   if (req.body.url !== undefined || req.body.file_id !== undefined) {
     const { rec, missing } = resolveUploadedFile(req.body);
@@ -2336,6 +2338,7 @@ app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_
       if (m.attachments !== undefined) sm.attachments = m.attachments;
       if (m.synopsis !== undefined) sm.synopsis = m.synopsis;
       if (m.audio_url !== undefined) sm.audio_url = m.audio_url;
+      if (m.no_report !== undefined) sm.no_report = m.no_report;
     }
   }
 
@@ -4545,6 +4548,7 @@ app.get("/api/student/course/:course_id/themes", authMiddleware, requireRole("st
         attachments: m.attachments || [],
         synopsis: m.synopsis || null,
         audio_url: m.audio_url || null,
+        no_report: Boolean(m.no_report),
         report: matReport
           ? {
               id: matReport.id,
@@ -4580,14 +4584,17 @@ app.get("/api/student/course/:course_id/themes", authMiddleware, requireRole("st
       unlocked: chain || granted,
       unlock_granted: granted && !(test && testPassed),
       materials,
-      reports_stats: {
-        total_materials: rawMaterials.length,
-        submitted: rawMaterials.filter((m) => studentReports.some((r) => r.material_id === m.id || (rawMaterials.length === 1 && !r.material_id))).length,
-        accepted: rawMaterials.filter((m) => {
-          const rep = studentReports.find((r) => r.material_id === m.id) || (rawMaterials.length === 1 ? studentReports[0] : null);
-          return rep && rep.report_status === "accepted";
-        }).length,
-      },
+      reports_stats: (() => {
+        const requiredMaterials = rawMaterials.filter((m) => !m.no_report);
+        return {
+          total_materials: requiredMaterials.length,
+          submitted: requiredMaterials.filter((m) => studentReports.some((r) => r.material_id === m.id || (requiredMaterials.length === 1 && !r.material_id))).length,
+          accepted: requiredMaterials.filter((m) => {
+            const rep = studentReports.find((r) => r.material_id === m.id) || (requiredMaterials.length === 1 ? studentReports[0] : null);
+            return rep && rep.report_status === "accepted";
+          }).length,
+        };
+      })(),
       reports: studentReports.map((r) => {
         const mat = r.material_id ? db.materials.find((x) => x.id === r.material_id) : null;
         return {
@@ -5644,6 +5651,7 @@ app.post(["/api/staff/repository/materials", "/api/admin/repository/materials", 
     attachments: Array.isArray(req.body.attachments) ? req.body.attachments : [],
     synopsis: req.body.synopsis !== undefined ? (req.body.synopsis || null) : null,
     audio_url: req.body.audio_url !== undefined ? (req.body.audio_url || null) : null,
+    no_report: Boolean(req.body.no_report),
     created_at: new Date().toISOString(),
   };
 
@@ -5668,6 +5676,7 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
   if (req.body.attachments !== undefined) item.attachments = Array.isArray(req.body.attachments) ? req.body.attachments : [];
   if (req.body.synopsis !== undefined) item.synopsis = req.body.synopsis || null;
   if (req.body.audio_url !== undefined) item.audio_url = req.body.audio_url || null;
+  if (req.body.no_report !== undefined) item.no_report = Boolean(req.body.no_report);
 
   // Разрешаем привязку к файлу, если переданы file_id или ссылка
   if (req.body.file_id !== undefined || req.body.url !== undefined) {
@@ -5696,6 +5705,7 @@ app.put(["/api/staff/repository/materials/:id", "/api/admin/repository/materials
       m.attachments = item.attachments;
       m.synopsis = item.synopsis;
       m.audio_url = item.audio_url;
+      m.no_report = Boolean(item.no_report);
     }
   });
 
@@ -5806,6 +5816,7 @@ const importPlaylistHandler = (req: Request, res: Response) => {
       attachments: item.attachments || [],
       synopsis: item.synopsis || null,
       audio_url: item.audio_url || null,
+      no_report: Boolean(item.no_report),
     });
   }
 
@@ -5858,6 +5869,7 @@ app.post(["/api/staff/courses/:course_id/themes/:theme_id/attach-material", "/ap
     attachments: repoItem.attachments || [],
     synopsis: repoItem.synopsis || null,
     audio_url: repoItem.audio_url || null,
+    no_report: Boolean(repoItem.no_report),
   };
   db.materials.push(newMat);
 

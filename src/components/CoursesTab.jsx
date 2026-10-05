@@ -812,6 +812,11 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
                         📎 Файлы ({m.attachments.length})
                       </span>
                     )}
+                    {m.no_report && (
+                      <span className="tag" style={{ fontSize: 10, background: "#f3f4f6", color: "#4b5563", padding: "1px 6px" }}>
+                        Без отчёта
+                      </span>
+                    )}
                     {m.description && <span className="small muted">· {m.description}</span>}
                   </div>
 

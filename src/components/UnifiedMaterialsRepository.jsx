@@ -92,6 +92,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
     attachments: [],
     description: "",
     order_index: 1,
+    no_report: false,
   });
 
   // Attach to Course Modal State
@@ -157,6 +158,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       attachments: [],
       description: "",
       order_index: existingInTheme.length + 1,
+      no_report: false,
     });
     setEditingMaterial(null);
     setShowAddModal(true);
@@ -211,6 +213,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       attachments: form.attachments || [],
       description: form.description.trim(),
       order_index: Number(form.order_index) || 1,
+      no_report: Boolean(form.no_report),
     };
 
     try {
@@ -263,6 +266,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
       attachments: Array.isArray(mat.attachments) ? JSON.parse(JSON.stringify(mat.attachments)) : [],
       description: mat.description || "",
       order_index: mat.order_index || 1,
+      no_report: Boolean(mat.no_report),
     });
     setShowAddModal(true);
   };
@@ -1283,6 +1287,28 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                 />
               </div>
 
+              {/* Checkbox: No Report Required */}
+              <div style={{
+                background: form.no_report ? "#FEF3C7" : "#F8FAFC",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: form.no_report ? "1px solid #F59E0B" : "1px solid #E2E8F0",
+                transition: "all 0.15s ease",
+              }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 600, fontSize: 13, color: form.no_report ? "#92400E" : "var(--navy)" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.no_report)}
+                    onChange={e => setForm(f => ({ ...f, no_report: e.target.checked }))}
+                    style={{ width: 16, height: 16, cursor: "pointer" }}
+                  />
+                  <span>Отметить материал: по нему не нужно писать отчёт (без отчёта)</span>
+                </label>
+                <div className="small muted" style={{ marginTop: 4, marginLeft: 26, color: form.no_report ? "#B45309" : undefined }}>
+                  Ученикам не потребуется сдавать отчёт по этому уроку куратору. Урок не будет требоваться в обязательной статистике сдачи отчётов по теме.
+                </div>
+              </div>
+
               {/* Action buttons */}
               <div className="spread" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                 <button
@@ -1796,6 +1822,11 @@ function PlaylistStorageCard({
                           📎 {mat.attachments.length} {mat.attachments.length === 1 ? 'док.' : 'док.'}
                         </span>
                       )}
+                      {mat.no_report && (
+                        <span className="tag" style={{ background: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', fontSize: 11, padding: '1px 6px' }}>
+                          Без отчёта
+                        </span>
+                      )}
                     </div>
 
                     {mat.description && (
@@ -1910,6 +1941,11 @@ function FlatMaterialRow({ material, onEdit, onDelete, onAttach, onPreviewNote, 
             {material.attachments && material.attachments.length > 0 && (
               <span className="tag" style={{ background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontSize: 11, padding: '1px 6px' }}>
                 📎 {material.attachments.length} док.
+              </span>
+            )}
+            {material.no_report && (
+              <span className="tag" style={{ background: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', fontSize: 11, padding: '1px 6px' }}>
+                Без отчёта
               </span>
             )}
           </div>
