@@ -19,6 +19,8 @@ import {
   Theme,
   ChatMessage,
   ScheduleEvent,
+  ActivityLog,
+  SystemLog,
   getAllRolesOf,
   normalizePhone,
   normalizeEmail,
@@ -105,6 +107,72 @@ function resolveUploadedFile(body: any): { rec: UploadedFile | null; missing: bo
     if (rec) return { rec, missing: false };
   }
   return { rec: null, missing: false };
+}
+
+/** Регистрация действия методиста / администратора в журнале аудита */
+function logActivity(
+  req: any,
+  category: string,
+  action_type: string,
+  target_title: string,
+  details: string
+) {
+  try {
+    const user = req?.user;
+    const ip = (req?.headers?.["x-forwarded-for"] as string) || req?.socket?.remoteAddress || "";
+    const cleanIp = String(ip).split(",")[0].trim();
+    const entry: ActivityLog = {
+      id: db.getId("activityLog"),
+      timestamp: new Date().toISOString(),
+      user_id: user?.id || 0,
+      user_name: user?.name || user?.username || "Администрация",
+      user_role: req?.tokenPayload?.role || user?.role || "admin",
+      action_type,
+      category,
+      target_title: String(target_title || "").slice(0, 200),
+      details: String(details || "").slice(0, 500),
+      ip: cleanIp.slice(0, 50),
+    };
+    if (!Array.isArray(db.activityLogs)) db.activityLogs = [];
+    db.activityLogs.unshift(entry);
+    if (db.activityLogs.length > 5000) {
+      db.activityLogs = db.activityLogs.slice(0, 5000);
+    }
+    if (typeof (db as any).save === "function") (db as any).save();
+  } catch (err) {
+    console.error("[logActivity] Ошибка записи в журнал аудита:", err);
+  }
+}
+
+/** Регистрация события / ошибки в системном журнале */
+function logSystem(
+  level: "INFO" | "WARN" | "ERROR",
+  source: "auth" | "backup" | "api" | "files" | "system" | string,
+  message: string,
+  details?: string,
+  req?: any
+) {
+  try {
+    const ip = req ? ((req.headers?.["x-forwarded-for"] as string) || req.socket?.remoteAddress || "") : "";
+    const cleanIp = String(ip).split(",")[0].trim();
+    const entry: SystemLog = {
+      id: db.getId("systemLog"),
+      timestamp: new Date().toISOString(),
+      level,
+      source,
+      message: String(message || "").slice(0, 300),
+      details: details ? String(details).slice(0, 1000) : undefined,
+      ip: cleanIp ? cleanIp.slice(0, 50) : undefined,
+    };
+    if (!Array.isArray(db.systemLogs)) db.systemLogs = [];
+    db.systemLogs.unshift(entry);
+    if (db.systemLogs.length > 5000) {
+      db.systemLogs = db.systemLogs.slice(0, 5000);
+    }
+    if (typeof (db as any).save === "function") (db as any).save();
+  } catch (err) {
+    console.error("[logSystem] Ошибка записи в системный журнал:", err);
+  }
 }
 
 const storage = multer.diskStorage({
@@ -435,6 +503,7 @@ app.post("/api/auth/login", (req, res) => {
   });
 
   if (!user) {
+    logSystem("WARN", "auth", `Неудачная попытка входа: пользователь «${loginStr}» не найден`, undefined, req);
     return res.status(400).json({ detail: "Неверный логин или пароль" });
   }
   const isMatch =
@@ -445,6 +514,7 @@ app.post("/api/auth/login", (req, res) => {
     (user.username === "student" && password === "student123");
 
   if (!isMatch) {
+    logSystem("WARN", "auth", `Неудачная попытка входа: неверный пароль для «${user.username}»`, undefined, req);
     return res.status(400).json({ detail: "Неверный логин или пароль" });
   }
   if (password) {
@@ -455,6 +525,7 @@ app.post("/api/auth/login", (req, res) => {
     db.save();
   }
   user.last_login_at = new Date().toISOString();
+  logSystem("INFO", "auth", `Успешный вход в систему: ${user.name} (${user.username}, роль: ${user.role})`, undefined, req);
   const roles = getAllRolesOf(user);
   res.json({
     access_token: createToken(user.id, user.role, roles),
@@ -890,6 +961,7 @@ app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req: AuthReq
     is_root_admin: false,
   };
   db.users.push(u);
+  logActivity(req, "Пользователи", "user_create", u.name, `Создан пользователь ${u.name} (${u.username}, роль: ${u.role})`);
   res.json(userInfo(u, true));
 });
 
@@ -958,10 +1030,11 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req:
   if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
   if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
 
+  logActivity(req, "Пользователи", "user_update", u.name, `Обновлены данные пользователя ${u.name} (${u.username}, роль: ${u.role})`);
   res.json(userInfo(u, true));
 });
 
-app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin"), (req, res) => {
+app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u) return res.status(404).json({ detail: "Пользователь не найден" });
@@ -970,6 +1043,7 @@ app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin
   u.password_hash = bcrypt.hashSync(newPassword, 10);
   u.password_plain = newPassword;
   if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Пользователи", "password_change", u.name, `Изменен пароль пользователя ${u.name} (${u.username})`);
   console.log("[Auth] Пароль пользователя ID " + userId + " успешно изменён и сохранён в базу");
   res.json({ ok: true, password_plain: newPassword });
 });
@@ -996,6 +1070,7 @@ app.delete("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (r
   db.groupStudents = db.groupStudents.filter((gs) => gs.user_id !== userId);
   db.groupTeachers = db.groupTeachers.filter((gt) => gt.teacher_id !== userId);
   db.chatMessages = db.chatMessages.filter((cm) => cm.user_id !== userId);
+  logActivity(req, "Пользователи", "user_delete", target.name, `Удален пользователь ${target.name} (${target.username}, роль: ${target.role})`);
   res.json({ ok: true });
 });
 
@@ -1269,7 +1344,16 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req: 
     out.push(entry);
   });
 
-  if (!dryRun) db.save();
+  if (!dryRun) {
+    db.save();
+    logActivity(
+      req,
+      "Пользователи",
+      "user_import",
+      "Импорт CSV",
+      `Импортировано пользователей: ${created}, пропущено: ${skipped}, ошибок: ${errorsCount}`
+    );
+  }
 
   res.json({
     dry_run: dryRun,
@@ -1299,6 +1383,7 @@ app.put(["/api/admin/credentials", "/api/admin/admin/credentials"], authMiddlewa
     targetUser.password_plain = password.trim();
   }
   if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Настройки", "credentials_update", "Главный администратор", "Изменены учётные данные главного администратора");
   console.log("[Auth] Пароль администратора (" + targetUser.username + ") успешно обновлён и записан на диск!");
   res.json({ ok: true });
 });
@@ -1363,6 +1448,7 @@ app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, require
   };
   db.phoneInvites.push(inv);
   if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Пользователи", "invite_create", inv.name || inv.phone || inv.email || "Приглашение", `Создано приглашение для ${inv.phone || inv.email || inv.name || "пользователя"} (роль: ${inv.role})`);
   res.json(inv);
 });
 
@@ -1504,14 +1590,23 @@ app.post(
     }
 
     if (typeof (db as any).save === "function") (db as any).save();
+    logActivity(
+      req,
+      "Пользователи",
+      "tilda_import",
+      "Импорт из Tilda",
+      `Импортировано приглашений: ${created}, обновлено: ${updated}, пропущено: ${skipped}`
+    );
     res.json({ ok: true, total: items.length, created, updated, skipped });
   }
 );
 
 app.delete(["/api/admin/invites/:invite_id", "/api/manager/invites/:invite_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
   const inviteId = parseInt(req.params.invite_id, 10);
+  const target = db.phoneInvites.find((i) => i.id === inviteId);
   db.phoneInvites = db.phoneInvites.filter((i) => i.id !== inviteId);
   if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Пользователи", "invite_delete", target?.name || target?.phone || target?.email || `ID ${inviteId}`, `Удалено приглашение ID ${inviteId}`);
   res.json({ ok: true });
 });
 
@@ -1571,17 +1666,19 @@ app.get("/api/admin/settings", authMiddleware, requireRole("admin"), (_req, res)
   res.json({ settings, stats });
 });
 
-app.put("/api/admin/settings", authMiddleware, requireRole("admin"), (req, res) => {
+app.put("/api/admin/settings", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const incoming = req.body || {};
   for (const [k, v] of Object.entries(incoming)) {
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
       db.settings[k] = String(v);
     }
   }
+  if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Настройки", "settings_update", "Параметры платформы", "Обновлены общие настройки платформы");
   res.json({ ok: true });
 });
 
-app.get("/api/admin/backup", authMiddleware, requireRole("admin"), (_req, res) => {
+app.get("/api/admin/backup", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const dump = {
     exported_at: new Date().toISOString(),
     settings: db.settings,
@@ -1607,8 +1704,12 @@ app.get("/api/admin/backup", authMiddleware, requireRole("admin"), (_req, res) =
     directMessages: db.directMessages,
     themeUnlocks: db.themeUnlocks,
     users: db.users,
+    activityLogs: db.activityLogs || [],
+    systemLogs: db.systemLogs || [],
     nextId: (db as any).nextId,
   };
+  logActivity(req, "Настройки", "backup_export", "Резервная копия", "Выгружена полная резервная копия базы данных (JSON)");
+  logSystem("INFO", "backup", "Сформирована и выгружена резервная копия базы данных (JSON)", undefined, req);
   res.setHeader("Content-Disposition", `attachment; filename=mku-backup-${Date.now()}.json`);
   res.setHeader("Content-Type", "application/json");
   res.send(JSON.stringify(dump, null, 2));
@@ -1622,6 +1723,7 @@ const RESTORE_ARRAY_KEYS = [
   "extraMaterials", "storageMaterials", "tests", "questions", "answers", "attempts",
   "attemptAnswers", "announcements", "announcementTargets", "chatMessages",
   "uploadedFiles", "phoneInvites", "notifications", "directMessages", "themeUnlocks", "users",
+  "activityLogs", "systemLogs",
 ];
 const RESTORE_ALL_KEYS = [...RESTORE_ARRAY_KEYS, "settings", "nextId"];
 
@@ -1739,10 +1841,202 @@ app.post(
     const skipped = RESTORE_ALL_KEYS.filter((k) => !(k in parsed));
     dbAny.save();
 
+    logActivity(req, "Настройки", "backup_restore", "Восстановление базы", `База данных успешно восстановлена из файла (${req.file.originalname})`);
+    logSystem("WARN", "backup", `База данных успешно восстановлена из файла (${req.file.originalname})`, undefined, req);
+
     console.log(`[restore] База восстановлена из файла (${req.file.originalname}), затронуто ключей: ${Object.keys(restored).length}`);
     res.json({ ok: true, restored, skipped, warnings });
   }
 );
+
+// -------------------------------------------------------------
+// AUDIT & SYSTEM LOGS
+// -------------------------------------------------------------
+app.get("/api/admin/activity-logs", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
+  let list = [...(db.activityLogs || [])];
+  const { role, category, search, from_date, to_date } = req.query;
+
+  if (role && role !== "all") {
+    list = list.filter((l) => l.user_role === role);
+  }
+  if (category && category !== "all") {
+    list = list.filter((l) => l.category === category);
+  }
+  if (from_date) {
+    const fromTime = new Date(from_date as string).getTime();
+    if (!isNaN(fromTime)) {
+      list = list.filter((l) => new Date(l.timestamp).getTime() >= fromTime);
+    }
+  }
+  if (to_date) {
+    const toTime = new Date(to_date as string).getTime();
+    if (!isNaN(toTime)) {
+      list = list.filter((l) => new Date(l.timestamp).getTime() <= toTime);
+    }
+  }
+  if (search && String(search).trim()) {
+    const q = String(search).trim().toLowerCase();
+    list = list.filter((l) =>
+      (l.details && l.details.toLowerCase().includes(q)) ||
+      (l.target_title && l.target_title.toLowerCase().includes(q)) ||
+      (l.user_name && l.user_name.toLowerCase().includes(q)) ||
+      (l.action_type && l.action_type.toLowerCase().includes(q)) ||
+      (l.category && l.category.toLowerCase().includes(q)) ||
+      (l.ip && l.ip.toLowerCase().includes(q))
+    );
+  }
+
+  const total = list.length;
+  const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
+  const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || "50"), 10)));
+  const offset = (page - 1) * limit;
+  const pagedLogs = list.slice(offset, offset + limit);
+
+  const categories = Array.from(new Set((db.activityLogs || []).map((x) => x.category).filter(Boolean)));
+
+  res.json({
+    logs: pagedLogs,
+    total,
+    page,
+    limit,
+    categories,
+  });
+});
+
+app.get("/api/admin/system-logs", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
+  let list = [...(db.systemLogs || [])];
+  const { level, source, search, from_date, to_date } = req.query;
+
+  if (level && level !== "all") {
+    list = list.filter((l) => l.level === level);
+  }
+  if (source && source !== "all") {
+    list = list.filter((l) => l.source === source);
+  }
+  if (from_date) {
+    const fromTime = new Date(from_date as string).getTime();
+    if (!isNaN(fromTime)) {
+      list = list.filter((l) => new Date(l.timestamp).getTime() >= fromTime);
+    }
+  }
+  if (to_date) {
+    const toTime = new Date(to_date as string).getTime();
+    if (!isNaN(toTime)) {
+      list = list.filter((l) => new Date(l.timestamp).getTime() <= toTime);
+    }
+  }
+  if (search && String(search).trim()) {
+    const q = String(search).trim().toLowerCase();
+    list = list.filter((l) =>
+      (l.message && l.message.toLowerCase().includes(q)) ||
+      (l.details && l.details.toLowerCase().includes(q)) ||
+      (l.source && l.source.toLowerCase().includes(q)) ||
+      (l.ip && l.ip.toLowerCase().includes(q))
+    );
+  }
+
+  const total = list.length;
+  const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
+  const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || "50"), 10)));
+  const offset = (page - 1) * limit;
+  const pagedLogs = list.slice(offset, offset + limit);
+
+  const sources = Array.from(new Set((db.systemLogs || []).map((x) => x.source).filter(Boolean)));
+
+  res.json({
+    logs: pagedLogs,
+    total,
+    page,
+    limit,
+    sources,
+  });
+});
+
+app.get("/api/admin/logs/stats", authMiddleware, requireRole("admin"), (_req, res) => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  const activityTotal = (db.activityLogs || []).length;
+  const activityToday = (db.activityLogs || []).filter(
+    (l) => new Date(l.timestamp).getTime() >= startOfDay
+  ).length;
+
+  const systemTotal = (db.systemLogs || []).length;
+  const systemErrors = (db.systemLogs || []).filter((l) => l.level === "ERROR").length;
+  const systemWarns = (db.systemLogs || []).filter((l) => l.level === "WARN").length;
+
+  const lastActivity = (db.activityLogs || [])[0] || null;
+  const lastError = (db.systemLogs || []).find((l) => l.level === "ERROR") || null;
+
+  res.json({
+    activity: {
+      total: activityTotal,
+      today: activityToday,
+      last: lastActivity,
+    },
+    system: {
+      total: systemTotal,
+      errors: systemErrors,
+      warns: systemWarns,
+      lastError,
+    },
+  });
+});
+
+app.get("/api/admin/logs/export.csv", authMiddleware, requireRole("admin"), (req: Request, res: Response) => {
+  const type = req.query.type === "system" ? "system" : "activity";
+  if (type === "activity") {
+    const headers = ["ID", "Дата и время", "Роль", "Сотрудник", "Категория", "Действие", "Объект", "Описание", "IP"];
+    const rows = (db.activityLogs || []).map((l) => [
+      l.id,
+      new Date(l.timestamp).toLocaleString("ru-RU"),
+      l.user_role === "manager" ? "Методист" : "Администратор",
+      l.user_name || "",
+      l.category || "",
+      l.action_type || "",
+      l.target_title || "",
+      l.details || "",
+      l.ip || "",
+    ]);
+    const csv = buildCsv(headers, rows);
+    const fname = `activity-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    return res.send(csv);
+  } else {
+    const headers = ["ID", "Дата и время", "Уровень", "Источник", "Сообщение", "Детали", "IP"];
+    const rows = (db.systemLogs || []).map((l) => [
+      l.id,
+      new Date(l.timestamp).toLocaleString("ru-RU"),
+      l.level,
+      l.source,
+      l.message,
+      l.details || "",
+      l.ip || "",
+    ]);
+    const csv = buildCsv(headers, rows);
+    const fname = `system-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    return res.send(csv);
+  }
+});
+
+app.delete("/api/admin/logs/clear", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
+  if (!isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может очищать журналы" });
+  }
+  const type = req.body?.type || "all";
+  if (type === "activity" || type === "all") {
+    db.activityLogs = [];
+  }
+  if (type === "system" || type === "all") {
+    db.systemLogs = [];
+  }
+  logSystem("WARN", "system", `Главный администратор (${req.user?.name}) очистил журнал (${type})`, undefined, req);
+  db.save();
+  res.json({ ok: true, cleared: type });
+});
 
 app.get("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (_req, res) => {
   const defaults: Record<string, string> = {
@@ -1758,12 +2052,14 @@ app.get("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (_req
   res.json(out);
 });
 
-app.put("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (req, res) => {
+app.put("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const { admin, teacher, student, manager } = req.body;
   if (admin !== undefined) db.settings["role_admin_name"] = admin;
   if (teacher !== undefined) db.settings["role_teacher_name"] = teacher;
   if (student !== undefined) db.settings["role_student_name"] = student;
   if (manager !== undefined) db.settings["role_manager_name"] = manager;
+  if (typeof (db as any).save === "function") (db as any).save();
+  logActivity(req, "Настройки", "roles_update", "Названия ролей", "Обновлены отображаемые названия ролей");
   res.json({ ok: true });
 });
 
@@ -1799,26 +2095,29 @@ app.get(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireR
   res.json(out);
 });
 
-app.post(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.post(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const { title, description, order_index } = req.body;
   const id = db.getId("course");
   const nextOrder = order_index !== undefined && order_index !== "" ? Number(order_index) : db.courses.length + 1;
   db.courses.push({ id, title, description: description || "", order_index: nextOrder });
+  logActivity(req, "Курсы и темы", "course_create", title, `Создан курс «${title}»`);
   res.json({ id });
 });
 
-app.put(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.put(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   const c = db.courses.find((x) => x.id === courseId);
   if (!c) return res.status(404).json({ detail: "Курс не найден" });
   if (req.body.title !== undefined) c.title = req.body.title;
   if (req.body.description !== undefined) c.description = req.body.description || "";
   if (req.body.order_index !== undefined) c.order_index = Number(req.body.order_index);
+  logActivity(req, "Курсы и темы", "course_update", c.title, `Обновлен курс «${c.title}»`);
   res.json({ ok: true });
 });
 
-app.delete(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.delete(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
+  const courseTitle = db.courses.find((x) => x.id === courseId)?.title || `ID ${courseId}`;
   const themeIds = db.themes.filter((t) => t.course_id === courseId).map((t) => t.id);
   const testIds = db.tests.filter((t) => themeIds.includes(t.theme_id)).map((t) => t.id);
   const qIds = db.questions.filter((q) => testIds.includes(q.test_id)).map((q) => q.id);
@@ -1846,27 +2145,31 @@ app.delete(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"],
   db.groups = db.groups.filter((g) => g.course_id !== courseId);
   db.courses = db.courses.filter((c) => c.id !== courseId);
 
+  logActivity(req, "Курсы и темы", "course_delete", courseTitle, `Удален курс «${courseTitle}» со всеми темами и тестами`);
   res.json({ ok: true });
 });
 
-app.post(["/api/admin/themes", "/api/manager/themes"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.post(["/api/admin/themes", "/api/manager/themes"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const { course_id, title, order_index } = req.body;
   const id = db.getId("theme");
   db.themes.push({ id, course_id, title, order_index: order_index || 0 });
+  logActivity(req, "Курсы и темы", "theme_create", title, `Добавлена тема «${title}»`);
   res.json({ id });
 });
 
-app.put(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.put(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
   const t = db.themes.find((x) => x.id === themeId);
   if (!t) return res.status(404).json({ detail: "Тема не найдена" });
   if (req.body.title !== undefined) t.title = req.body.title;
   if (req.body.order_index !== undefined) t.order_index = req.body.order_index;
+  logActivity(req, "Курсы и темы", "theme_update", t.title, `Обновлена тема «${t.title}»`);
   res.json({ ok: true });
 });
 
-app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const themeId = parseInt(req.params.theme_id, 10);
+  const themeTitle = db.themes.find((x) => x.id === themeId)?.title || `ID ${themeId}`;
   const testIds = db.tests.filter((t) => t.theme_id === themeId).map((t) => t.id);
   const qIds = db.questions.filter((q) => testIds.includes(q.test_id)).map((q) => q.id);
   const attIds = db.attempts.filter((a) => testIds.includes(a.test_id)).map((a) => a.id);
@@ -1879,6 +2182,7 @@ app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], aut
   db.materials = db.materials.filter((m) => m.theme_id !== themeId);
   db.chatMessages = db.chatMessages.filter((cm) => cm.theme_id !== themeId);
   db.themes = db.themes.filter((t) => t.id !== themeId);
+  logActivity(req, "Курсы и темы", "theme_delete", themeTitle, `Удалена тема «${themeTitle}»`);
   res.json({ ok: true });
 });
 
@@ -1979,7 +2283,7 @@ app.get(["/api/admin/themes/:theme_id/materials", "/api/manager/themes/:theme_id
   res.json(mats);
 });
 
-app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const { theme_id, title, type, url, order_index, sources, attachments, synopsis, audio_url } = req.body;
   const { rec, missing } = resolveUploadedFile(req.body);
   if (missing) return res.status(404).json({ detail: "Файл не найден — загрузите его заново" });
@@ -1998,10 +2302,11 @@ app.post(["/api/admin/materials", "/api/manager/materials"], authMiddleware, req
     audio_url: audio_url !== undefined ? (audio_url || null) : null,
   };
   db.materials.push(newMat);
+  logActivity(req, "Материалы", "material_create", newMat.title, `Добавлен урок «${newMat.title}»`);
   res.json({ id, material: newMat });
 });
 
-app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const matId = parseInt(req.params.material_id, 10);
   const m = db.materials.find((x) => x.id === matId);
   if (!m) return res.status(404).json({ detail: "Материал не найден" });
@@ -2034,12 +2339,15 @@ app.put(["/api/admin/materials/:material_id", "/api/manager/materials/:material_
     }
   }
 
+  logActivity(req, "Материалы", "material_update", m.title, `Обновлен урок «${m.title}»`);
   res.json({ ok: true, material: m });
 });
 
-app.delete(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.delete(["/api/admin/materials/:material_id", "/api/manager/materials/:material_id"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
   const matId = parseInt(req.params.material_id, 10);
+  const matTitle = db.materials.find((x) => x.id === matId)?.title || `ID ${matId}`;
   db.materials = db.materials.filter((m) => m.id !== matId);
+  logActivity(req, "Материалы", "material_delete", matTitle, `Удален урок «${matTitle}»`);
   res.json({ ok: true });
 });
 
@@ -2230,6 +2538,7 @@ app.post(["/api/admin/tests", "/api/manager/tests"], authMiddleware, requireRole
     passing_score: passing_score || 70,
     max_attempts: max_attempts || 0,
   });
+  logActivity(req, "Тесты", "test_create", title, `Создан тест «${title}»`);
   res.json({ id });
 });
 
@@ -2238,6 +2547,7 @@ app.put(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMiddle
   const t = db.tests.find((x) => x.id === testId);
   if (!t) return res.status(404).json({ detail: "Тест не найден" });
   Object.assign(t, req.body);
+  logActivity(req, "Тесты", "test_update", t.title, `Обновлен тест «${t.title}»`);
   res.json({ ok: true });
 });
 
@@ -2250,7 +2560,10 @@ app.delete(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMid
   db.attempts = db.attempts.filter((a) => a.test_id !== testId);
   db.answers = db.answers.filter((a) => !qIds.includes(a.question_id));
   db.questions = db.questions.filter((q) => q.test_id !== testId);
+  const targetTest = db.tests.find((x) => x.id === testId);
+  const testTitle = targetTest ? targetTest.title : `ID ${testId}`;
   db.tests = db.tests.filter((t) => t.id !== testId);
+  logActivity(req, "Тесты", "test_delete", testTitle, `Удален тест «${testTitle}»`);
   res.json({ ok: true });
 });
 
@@ -2324,7 +2637,7 @@ app.get("/api/files/:file_id", (req, res) => {
   });
 });
 
-app.post("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (upload.single("file") as any), (req, res) => {
+app.post("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), (upload.single("file") as any), (req: any, res: any) => {
   if (!req.file) return res.status(400).json({ detail: "Файл не загружен" });
   const rec: UploadedFile = {
     id: db.getId("uploadedFile"),
@@ -2335,6 +2648,8 @@ app.post("/api/admin/uploads", authMiddleware, requireRole("admin", "manager"), 
     uploaded_at: new Date().toISOString(),
   };
   db.uploadedFiles.push(rec);
+  logActivity(req, "Файлы", "file_upload", rec.original_name, `Загружен файл «${rec.original_name}» (${(rec.size / 1024).toFixed(1)} КБ)`);
+  logSystem("INFO", "files", `Загружен файл: ${rec.original_name} (${rec.size} байт)`, undefined, req);
   res.json({ ...rec, url: fileUrlFor(rec) });
 });
 
@@ -2367,7 +2682,7 @@ app.put(["/api/admin/uploads/:file_id", "/api/manager/uploads/:file_id"], authMi
   res.json(rec);
 });
 
-app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin", "manager"), (req, res) => {
+app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin", "manager"), (req: any, res) => {
   const fileId = parseInt(req.params.file_id, 10);
   const recIdx = db.uploadedFiles.findIndex((f) => f.id === fileId);
   if (recIdx === -1) return res.status(404).json({ detail: "Файл не найден" });
@@ -2382,6 +2697,8 @@ app.delete("/api/admin/uploads/:file_id", authMiddleware, requireRole("admin", "
   }
   db.uploadedFiles.splice(recIdx, 1);
   db.save();
+  logActivity(req, "Файлы", "file_delete", rec.original_name, `Удален файл «${rec.original_name}»`);
+  logSystem("INFO", "files", `Удален файл: ${rec.original_name}`, undefined, req);
   res.json({ ok: true });
 });
 
@@ -5648,6 +5965,14 @@ app.get("/api/public/extra-material/:id", (req: Request, res: Response) => {
   const em = db.extraMaterials.find((x) => x.id === parseInt(req.params.id, 10));
   if (!em) return res.status(404).json({ detail: "Материал не найден" });
   res.json({ id: em.id, title: em.title, course_id: em.course_id });
+});
+
+// Глобальный перехват ошибок для системного журнала логов
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  logSystem("ERROR", "api", `Сбой сервера [${req.method} ${req.originalUrl}]: ${err?.message || err}`, err?.stack, req);
+  if (!res.headersSent) {
+    res.status(500).json({ detail: "Внутренняя ошибка сервера" });
+  }
 });
 
 // -------------------------------------------------------------

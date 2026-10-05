@@ -22,6 +22,7 @@ import UploadsTab from "../components/UploadsTab";
 import UserImportModal from "../components/UserImportModal";
 import TildaImportModal from "../components/TildaImportModal";
 import ScheduleCalendar from "../components/ScheduleCalendar";
+import LogsModal from "../components/LogsModal";
 import { api, uploadFile, getToken, getUser } from "../api";
 
 const ROLE_LABELS = {
@@ -398,6 +399,18 @@ function SettingsTab({ groups = [] }) {
   const [usersCsvOpen, setUsersCsvOpen] = useState(false);
   const [tildaModalOpen, setTildaModalOpen] = useState(false);
   const [allGroups, setAllGroups] = useState(groups || []);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [logsModalTab, setLogsModalTab] = useState("activity");
+  const [logsStats, setLogsStats] = useState(null);
+
+  const loadLogsStats = async () => {
+    try {
+      const data = await api("/api/admin/logs/stats");
+      setLogsStats(data);
+    } catch (e) {
+      console.error("Error loading logs stats:", e);
+    }
+  };
 
   useEffect(() => {
     if (groups && groups.length > 0) {
@@ -421,6 +434,7 @@ function SettingsTab({ groups = [] }) {
       }
       if (data.stats) setStats(data.stats);
     } catch (e) { console.error("Error loading settings:", e); }
+    loadLogsStats();
     api("/api/auth/me")
       .then(me => setCreds(c => ({ ...c, username: me.username })))
       .catch(() => {});
@@ -950,6 +964,146 @@ function SettingsTab({ groups = [] }) {
             </button>
           </div>
         </div>
+
+        {/* 9. Журналы аудита и системные логи */}
+        <div className="card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
+          <div className="spread" style={{ alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>📋</span> Журналы аудита и системные логи
+              </h3>
+              <div className="muted small">
+                Журнал действий методистов и администраторов (курсы, темы, тесты, пользователи, настройки) и системный журнал логов (авторизации, безопасность, сбои, бэкапы)
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setLogsModalTab("activity");
+                  setLogsModalOpen(true);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "#1e3a5f",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                }}
+              >
+                👤 Журнал действий
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setLogsModalTab("system");
+                  setLogsModalOpen(true);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "#334155",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                }}
+              >
+                ⚙️ Системный журнал
+              </button>
+            </div>
+          </div>
+
+          {/* Сводные счётчики */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 10,
+              marginTop: 14,
+            }}
+          >
+            <div className="card" style={{ padding: "10px 12px", margin: 0, textAlign: "center", background: "#fff" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#1e3a8a" }}>
+                {logsStats?.activity?.total ?? 0}
+              </div>
+              <div className="small muted">Действий руководства</div>
+              <div style={{ fontSize: 11, color: "#059669", fontWeight: 600, marginTop: 2 }}>
+                +{logsStats?.activity?.today ?? 0} сегодня
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "10px 12px", margin: 0, textAlign: "center", background: "#fff" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#475569" }}>
+                {logsStats?.system?.total ?? 0}
+              </div>
+              <div className="small muted">Системных событий</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                входы, бэкапы, файлы
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "10px 12px", margin: 0, textAlign: "center", background: "#fff" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: logsStats?.system?.errors > 0 ? "#b91c1c" : "#16a34a" }}>
+                {logsStats?.system?.errors ?? 0}
+              </div>
+              <div className="small muted">Ошибок сервера</div>
+              <div style={{ fontSize: 11, color: logsStats?.system?.errors > 0 ? "#b91c1c" : "#16a34a", fontWeight: 600, marginTop: 2 }}>
+                {logsStats?.system?.errors > 0 ? "Требуют внимания" : "Сбоев нет"}
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "10px 12px", margin: 0, textAlign: "center", background: "#fff" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: logsStats?.system?.warns > 0 ? "#d97706" : "#475569" }}>
+                {logsStats?.system?.warns ?? 0}
+              </div>
+              <div className="small muted">Предупреждений</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                неудачные входы, проверки
+              </div>
+            </div>
+          </div>
+
+          {/* Последнее действие в системе */}
+          {logsStats?.activity?.last && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "8px 12px",
+                background: "#fff",
+                borderRadius: 6,
+                border: "1px solid #e2e8f0",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              <div>
+                <span className="muted">Последнее действие ({new Date(logsStats.activity.last.timestamp).toLocaleTimeString("ru-RU")}): </span>
+                <b>{logsStats.activity.last.user_name}</b> ({logsStats.activity.last.user_role === "manager" ? "Методист" : "Администратор"}) — {logsStats.activity.last.details}
+              </div>
+              <button
+                className="btn small"
+                onClick={() => {
+                  setLogsModalTab("activity");
+                  setLogsModalOpen(true);
+                }}
+                style={{ fontSize: 11, padding: "2px 8px" }}
+              >
+                Подробнее в журнале →
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Preview Modal for Welcome Window */}
@@ -963,6 +1117,16 @@ function SettingsTab({ groups = [] }) {
         <TildaImportModal
           allGroups={allGroups}
           onClose={() => setTildaModalOpen(false)}
+        />
+      )}
+      {logsModalOpen && (
+        <LogsModal
+          isOpen={logsModalOpen}
+          onClose={() => {
+            setLogsModalOpen(false);
+            loadLogsStats();
+          }}
+          initialTab={logsModalTab}
         />
       )}
     </div>

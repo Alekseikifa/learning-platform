@@ -317,6 +317,29 @@ export interface ScheduleEvent {
   updated_at?: string;
 }
 
+export interface ActivityLog {
+  id: number;
+  timestamp: string;
+  user_id: number;
+  user_name: string;
+  user_role: string;
+  action_type: string;
+  category: string;
+  target_title: string;
+  details: string;
+  ip?: string;
+}
+
+export interface SystemLog {
+  id: number;
+  timestamp: string;
+  level: "INFO" | "WARN" | "ERROR";
+  source: string;
+  message: string;
+  details?: string;
+  ip?: string;
+}
+
 // In-Memory Database Store
 class DatabaseStore {
   users: User[] = [];
@@ -344,6 +367,8 @@ class DatabaseStore {
   themeUnlocks: ThemeUnlock[] = [];
   materialCompletions: MaterialCompletion[] = [];
   scheduleEvents: ScheduleEvent[] = [];
+  activityLogs: ActivityLog[] = [];
+  systemLogs: SystemLog[] = [];
 
   private nextId = {
     user: 1,
@@ -367,6 +392,8 @@ class DatabaseStore {
     themeUnlock: 1,
     materialCompletion: 1,
     scheduleEvent: 1,
+    activityLog: 1,
+    systemLog: 1,
   };
 
   getId(table: keyof typeof this.nextId): number {
@@ -408,6 +435,8 @@ class DatabaseStore {
         themeUnlocks: this.themeUnlocks,
         materialCompletions: this.materialCompletions || [],
         scheduleEvents: this.scheduleEvents || [],
+        activityLogs: (this.activityLogs || []).slice(0, 5000),
+        systemLogs: (this.systemLogs || []).slice(0, 5000),
         nextId: this.nextId,
       };
       fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf-8");
@@ -425,6 +454,8 @@ class DatabaseStore {
         const data = JSON.parse(raw);
         const nextIdDefaults = { ...this.nextId };
         Object.assign(this, data);
+        if (!Array.isArray(this.activityLogs)) this.activityLogs = [];
+        if (!Array.isArray(this.systemLogs)) this.systemLogs = [];
         // старые файлы базы не содержат новые ключи счётчиков — дополняем дефолтами
         this.nextId = { ...nextIdDefaults, ...this.nextId };
         // миграция старых баз: телефон = логин у пользователей, зарегистрированных по номеру
