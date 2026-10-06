@@ -609,15 +609,19 @@ a:focus-visible,
 .chat-msg:hover .chat-msg-actions,
 .dm-msg:hover .dm-msg-actions,
 .chat-msg-actions:focus-within,
-.dm-msg-actions:focus-within {
-  opacity: 1;
+.dm-msg-actions:focus-within,
+.chat-msg-actions.has-active-picker,
+.dm-msg-actions.has-active-picker {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 200;
 }
 .chat-action-btn, .dm-action-btn {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 2px 5px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 13px;
   cursor: pointer;
   line-height: 1;
   color: var(--text-soft);
@@ -629,29 +633,43 @@ a:focus-visible,
 }
 .chat-emoji-picker, .dm-emoji-picker {
   position: absolute;
-  top: 100%;
+  bottom: calc(100% + 4px);
+  top: auto;
   right: 0;
-  margin-top: 4px;
-  z-index: 100;
+  z-index: 300;
   display: flex;
   gap: 4px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 4px 6px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  padding: 4px 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+/* Мостик от пикера вниз к кнопке, чтобы курсор мыши не терял фокус при переходе */
+.chat-emoji-picker::before, .dm-emoji-picker::before {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  top: auto;
+  left: 0;
+  right: 0;
+  height: 8px;
 }
 .chat-emoji-btn, .dm-emoji-btn {
   background: transparent;
   border: none;
-  font-size: 16px;
+  font-size: 18px;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 3px 5px;
   border-radius: 4px;
-  transition: transform 0.1s;
+  transition: transform 0.12s ease;
+  line-height: 1;
 }
 .chat-emoji-btn:hover, .dm-emoji-btn:hover {
-  transform: scale(1.25);
+  transform: scale(1.3);
+  background: rgba(0, 0, 0, 0.05);
 }
 .chat-reply-bar, .dm-reply-bar {
   display: flex;

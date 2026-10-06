@@ -15,6 +15,7 @@ import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
 import ScheduleCalendar from "../components/ScheduleCalendar";
+import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
@@ -30,20 +31,33 @@ const TABS = [
   { id: "uploads",       label: "Файлы" },
 ];
 
-// старые закладки ?tab=students («Ученики») → ?tab=users («Пользователи»)
-const LEGACY_TABS = { students: "users" };
-const resolveTab = (t) => (t && (TABS.some(x => x.id === t) ? t : LEGACY_TABS[t])) || null;
+const MONITORING_ITEMS = [
+  { id: "students",  label: "Ученики" },
+  { id: "progress",  label: "Таблица прогресса" },
+  { id: "reports",   label: "Отчёты по урокам" },
+  { id: "attempts",  label: "Попытки" },
+  { id: "analytics", label: "Аналитика" },
+];
+
+const resolveTab = (t) => {
+  if (!t) return null;
+  if (TABS.some(x => x.id === t) || MONITORING_ITEMS.some(x => x.id === t)) return t;
+  return null;
+};
 
 export default function ManagerPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTabState] = useState(() => resolveTab(searchParams.get("tab")) || "invites");
   const [courses, setCourses] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState("");
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [dataErr, setDataErr] = useState(null);
   const [key, setKey] = useState(0);
   const reload = () => setKey(k => k + 1);
+
+  const isMonitoring = MONITORING_ITEMS.some((m) => m.id === tab);
 
   // переключение таба пишем в URL — F5 и «назад» сохраняют место
   const changeTab = (id) => {
@@ -78,24 +92,54 @@ export default function ManagerPanel() {
       .finally(() => setUsersLoading(false));
   }, [key]);
 
+  useEffect(() => {
+    if (!groupId && groups[0]) setGroupId(groups[0].id);
+  }, [groups, groupId]);
+
   return (
-    <Layout title="Панель методиста" tabs={TABS} active={tab} onChange={changeTab}>
+    <Layout
+      title="Панель методиста"
+      tabs={TABS}
+      active={tab}
+      onChange={changeTab}
+      dropdown={{ label: "Мониторинг", items: MONITORING_ITEMS, onChange: changeTab }}
+    >
       {dataErr && (
         <div className="card" style={{ color: "#dc2626" }}>
           Не удалось загрузить данные панели ({dataErr}) — попробуйте обновить страницу
         </div>
       )}
+
+      {isMonitoring && (
+        <div className="card row" style={{ alignItems: "center", gap: 10 }}>
+          <label><b>Группа:</b></label>
+          <select value={groupId} onChange={e => setGroupId(e.target.value)} style={{ minWidth: 200 }}>
+            {groups.map(g => (
+              <option key={g.id} value={g.id}>{g.course_title || "Курс"} — {g.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {isMonitoring && !groups.length && (
+        <div className="card muted">Группы не найдены</div>
+      )}
+      {isMonitoring && groupId && tab === "students" && <StudentsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "progress" && <ProgressTable groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "reports"  && <ReportsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "attempts" && <AttemptsTab groupId={+groupId} />}
+      {isMonitoring && groupId && tab === "analytics" && <AnalyticsTab groupId={+groupId} />}
+
       {tab === "users"          && <UsersTab groups={groups} users={users} usersLoading={usersLoading} reload={reload} />}
-        {tab === "invites"       && <InvitesTab allowManagerRole={false} />}
-      {tab === "courses"       && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/manager" />}
-      {tab === "groups"        && <GroupsTab courses={courses} users={users} reload={reload} apiPrefix="/api/manager" />}
-      {tab === "schedule"      && <ScheduleCalendar courses={courses} readOnly={false} />}
-      {tab === "tests"         && <TestsTab courses={courses} apiPrefix="/api/manager" />}
-      {tab === "materials"     && <MaterialsTab courses={courses} groups={groups} />}
-      {tab === "messages"      && <DirectMessages />}
-      {tab === "announcements" && <AnnouncementsPanel initialGroups={groups} />}
-      {tab === "chats"         && <StaffChatsPanel />}
-        {tab === "uploads"       && <UploadsTab apiPrefix="/api/manager" />}
+      {tab === "invites"        && <InvitesTab allowManagerRole={false} />}
+      {tab === "courses"        && <CoursesTab courses={courses} groups={groups} reload={reload} apiPrefix="/api/manager" />}
+      {tab === "groups"         && <GroupsTab courses={courses} users={users} reload={reload} apiPrefix="/api/manager" />}
+      {tab === "schedule"       && <ScheduleCalendar courses={courses} readOnly={false} />}
+      {tab === "tests"          && <TestsTab courses={courses} apiPrefix="/api/manager" />}
+      {tab === "materials"      && <MaterialsTab courses={courses} groups={groups} />}
+      {tab === "messages"       && <DirectMessages />}
+      {tab === "announcements"  && <AnnouncementsPanel initialGroups={groups} />}
+      {tab === "chats"          && <StaffChatsPanel />}
+      {tab === "uploads"        && <UploadsTab apiPrefix="/api/manager" />}
     </Layout>
   );
 }

@@ -38,6 +38,9 @@ function toBlock(segs) {
   return { text: text.replace(/\s+/g, " ").trim(), hasBold };
 }
 
+const TEXT_Q_TAG = /\[(письменный ответ|развёрнутый ответ|развернутый ответ|письменно|текст|text)\]/i;
+const SAMPLE_ANSWER_PREFIX = /^(образец ответа|образец|ключевые слова|ключ|ответ)\s*:\s*(.*)$/i;
+
 export function parseBlocks(blocks) {
   const questions = [];
   let cur = null;
@@ -45,9 +48,17 @@ export function parseBlocks(blocks) {
 
   for (const b of blocks) {
     if (!b.text) {
-      if (cur && cur.answers.length) flush();
+      if (cur && (cur.answers.length || cur.question_type === "text")) flush();
       continue;
     }
+
+    const sampleMatch = b.text.match(SAMPLE_ANSWER_PREFIX);
+    if (cur && sampleMatch) {
+      cur.question_type = "text";
+      cur.sample_answer = sampleMatch[2].trim();
+      continue;
+    }
+
     const letter = b.text.match(LETTER);
     const num = b.text.match(NUMBER);
 
@@ -65,18 +76,46 @@ export function parseBlocks(blocks) {
       continue;
     }
 
-    if (cur && cur.answers.length) flush();
-    if (!cur) cur = { text: b.text.replace(QUESTION_NUM, "").trim(), answers: [], labelMode: null };
-    else cur.text += " " + b.text;
+    if (cur && (cur.answers.length || cur.question_type === "text")) flush();
+
+    const isTextTagged = TEXT_Q_TAG.test(b.text);
+    const cleanedText = b.text.replace(TEXT_Q_TAG, "").replace(QUESTION_NUM, "").trim();
+
+    if (!cur) {
+      cur = {
+        text: cleanedText,
+        question_type: isTextTagged ? "text" : "choice",
+        sample_answer: "",
+        answers: [],
+        labelMode: null,
+      };
+    } else {
+      cur.text += " " + cleanedText;
+      if (isTextTagged) cur.question_type = "text";
+    }
   }
   flush();
 
   return questions.map((q) => {
     let issue = null;
-    if (!q.text) issue = "Пустой текст вопроса";
-    else if (q.answers.length < 2) issue = "Менее 2 вариантов ответа";
-    else if (!q.answers.some((a) => a.is_correct)) issue = "Нет правильного ответа (жирное выделение не найдено)";
-    return { text: q.text, answers: q.answers, valid: !issue, issue, include: !issue };
+    if (!q.text) {
+      issue = "Пустой текст вопроса";
+    } else if (q.question_type === "text") {
+      issue = null;
+    } else if (q.answers.length < 2) {
+      issue = "Менее 2 вариантов ответа";
+    } else if (!q.answers.some((a) => a.is_correct)) {
+      issue = "Нет правильного ответа (жирное выделение не найдено)";
+    }
+    return {
+      text: q.text,
+      question_type: q.question_type || "choice",
+      sample_answer: q.sample_answer || "",
+      answers: q.answers,
+      valid: !issue,
+      issue,
+      include: !issue,
+    };
   });
 }
 

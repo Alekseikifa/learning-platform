@@ -28,7 +28,9 @@ import { api, uploadFile, getToken, getUser } from "../api";
 const ROLE_LABELS = {
   admin: "Администратор",
   manager: "Методист",
-  teacher: "Куратор",
+  teacher: "Декан",
+  dean: "Декан",
+  curator: "Куратор",
   student: "Ученик",
 };
 
@@ -212,7 +214,8 @@ function UsersTab({ users, loading, reload }) {
                onChange={e => setForm({ ...form, password: e.target.value })} required />
         <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
           <option value="student">Ученик</option>
-          <option value="teacher">Куратор</option>
+          <option value="curator">Куратор</option>
+          <option value="teacher">Декан</option>
           <option value="manager">Методист</option>
           {isCurrentUserRoot && <option value="admin">🛡️ Администратор</option>}
         </select>

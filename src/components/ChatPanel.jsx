@@ -277,7 +277,7 @@ export default function ChatPanel({
               )}
 
               {/* Панель действий сообщения (Ответить + Реакции) */}
-              <div className="chat-msg-actions">
+              <div className={"chat-msg-actions" + (activeEmojiPicker === m.id ? " has-active-picker" : "")}>
                 <button
                   type="button"
                   className="chat-action-btn"
@@ -290,6 +290,7 @@ export default function ChatPanel({
                   <button
                     type="button"
                     className="chat-action-btn"
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveEmojiPicker(activeEmojiPicker === m.id ? null : m.id);
@@ -299,13 +300,21 @@ export default function ChatPanel({
                     😀+
                   </button>
                   {activeEmojiPicker === m.id && (
-                    <div className="chat-emoji-picker" onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="chat-emoji-picker"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {STANDARD_EMOJIS.map((emoji) => (
                         <button
                           key={emoji}
                           type="button"
                           className="chat-emoji-btn"
-                          onClick={() => handleReact(m.id, emoji)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReact(m.id, emoji);
+                          }}
                         >
                           {emoji}
                         </button>

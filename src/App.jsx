@@ -14,6 +14,7 @@ const TeacherPanel = lazy(() => import("./pages/TeacherPanel"));
 const defaultRouteFor = (role) =>
   role === "admin" ? "/admin"
   : role === "manager" ? "/manager"
+  : role === "curator" ? "/curator"
   : role === "teacher" ? "/teacher"
   : "/student";
 
@@ -103,6 +104,14 @@ export default function App() {
           path="/teacher"
           element={
             <ProtectedRoute role="teacher">
+              <TeacherPanel />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/curator"
+          element={
+            <ProtectedRoute role="curator">
               <TeacherPanel />
             </ProtectedRoute>
           }

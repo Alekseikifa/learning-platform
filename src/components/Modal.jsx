@@ -43,15 +43,27 @@ export default function Modal({
   children,
 }) {
   useModalEsc(onClose, dismissible);
+  const mouseDownTargetRef = useRef(null);
 
-  const handleBackdrop = () => {
-    if (dismissible) onClose();
+  const handleMouseDown = (e) => {
+    mouseDownTargetRef.current = e.target;
+  };
+
+  const handleBackdrop = (e) => {
+    if (
+      e.target === e.currentTarget &&
+      mouseDownTargetRef.current === e.currentTarget &&
+      dismissible
+    ) {
+      onClose();
+    }
   };
 
   return (
     <div
       className={backdropClassName}
       style={backdropStyle}
+      onMouseDown={handleMouseDown}
       onClick={handleBackdrop}
     >
       <div

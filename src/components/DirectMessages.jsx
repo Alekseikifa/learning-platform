@@ -6,7 +6,9 @@ import SearchSelect from "./SearchSelect";
 const ROLE_NAMES = {
   admin: "Администратор",
   manager: "Методист",
-  teacher: "Куратор",
+  teacher: "Декан",
+  dean: "Декан",
+  curator: "Куратор",
   student: "Ученик",
 };
 
@@ -232,7 +234,7 @@ export default function DirectMessages() {
                       </div>
 
                       {/* Кнопки действий: Ответить и Реакция */}
-                      <div className="dm-msg-actions">
+                      <div className={"dm-msg-actions" + (activeEmojiPicker === m.id ? " has-active-picker" : "")}>
                         <button
                           type="button"
                           className="dm-action-btn"
@@ -249,6 +251,7 @@ export default function DirectMessages() {
                           <button
                             type="button"
                             className="dm-action-btn"
+                            onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => {
                               e.stopPropagation();
                               setActiveEmojiPicker(activeEmojiPicker === m.id ? null : m.id);
@@ -258,13 +261,21 @@ export default function DirectMessages() {
                             😀+
                           </button>
                           {activeEmojiPicker === m.id && (
-                            <div className="dm-emoji-picker" onClick={(e) => e.stopPropagation()}>
+                            <div
+                              className="dm-emoji-picker"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               {STANDARD_EMOJIS.map((emoji) => (
                                 <button
                                   key={emoji}
                                   type="button"
                                   className="dm-emoji-btn"
-                                  onClick={() => handleReact(m.id, emoji)}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReact(m.id, emoji);
+                                  }}
                                 >
                                   {emoji}
                                 </button>

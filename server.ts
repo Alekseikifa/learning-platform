@@ -259,11 +259,15 @@ function isStudent(u: User): boolean {
   return u.role !== "admin" && hasRole(u, "student");
 }
 
-function isCurator(u: User): boolean {
+function isDean(u: User): boolean {
   return u.role !== "admin" && hasRole(u, "teacher");
 }
 
-const ALLOWED_EXTRA_ROLES = ["teacher", "student", "manager", "admin"];
+function isCurator(u: User): boolean {
+  return u.role !== "admin" && hasRole(u, "curator");
+}
+
+const ALLOWED_EXTRA_ROLES = ["teacher", "curator", "student", "manager", "admin"];
 
 function normalizeExtraRoles(primaryRole: string, value: unknown): string {
   const raw = Array.isArray(value)
@@ -434,6 +438,8 @@ export function getExtraMaterialDetails(em: ExtraMaterial) {
   const courseTitles = courses.map((c) => c.title);
   const groupNames = groups.map((g) => g.name);
 
+  const theme = em.theme_id ? db.themes.find((t) => t.id === em.theme_id) : null;
+
   return {
     id: em.id,
     title: em.title,
@@ -444,6 +450,8 @@ export function getExtraMaterialDetails(em: ExtraMaterial) {
     created_at: em.created_at,
     course_id: em.course_id || (em.course_ids[0] ?? null),
     course_title: courseTitles.join(", ") || "",
+    theme_id: em.theme_id || null,
+    theme_title: theme ? theme.title : null,
     course_ids: em.course_ids,
     group_ids: em.group_ids,
     courses,
@@ -462,6 +470,10 @@ export function canStudentAccessExtra(userId: number, em: ExtraMaterial): boolea
   const myGids = db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
   if (em.group_ids.some((gid) => myGids.includes(gid))) return true;
   const myCourseIds = db.groups.filter((g) => myGids.includes(g.id)).map((g) => g.course_id);
+  if (em.theme_id) {
+    const th = db.themes.find((t) => t.id === em.theme_id);
+    if (th && myCourseIds.includes(th.course_id)) return true;
+  }
   if (em.course_ids.some((cid) => myCourseIds.includes(cid))) return true;
   if (em.course_id && myCourseIds.includes(em.course_id)) return true;
   return false;
@@ -469,11 +481,22 @@ export function canStudentAccessExtra(userId: number, em: ExtraMaterial): boolea
 
 export function canTeacherAccessExtra(teacherId: number, em: ExtraMaterial): boolean {
   normalizeExtraMaterial(em);
+  const u = db.users.find((x) => x.id === teacherId);
+  if (u && (u.role === "admin" || u.role === "manager")) return true;
+  // Если материал привязан к конкретной теме куратора
+  if (em.theme_id) {
+    const th = db.themes.find((t) => t.id === em.theme_id);
+    if (th && th.curator_id === teacherId) return true;
+  }
   const tGids = db.groupTeachers.filter((gt) => gt.teacher_id === teacherId).map((gt) => gt.group_id);
   if (em.group_ids.some((gid) => tGids.includes(gid))) return true;
   const tCourseIds = db.groups.filter((g) => tGids.includes(g.id)).map((g) => g.course_id);
   if (em.course_ids.some((cid) => tCourseIds.includes(cid))) return true;
   if (em.course_id && tCourseIds.includes(em.course_id)) return true;
+  // Куратор имеет доступ к доп. материалам курсов, в которых он курирует хотя бы одну тему
+  const curatedCourseIds = db.themes.filter((t) => t.curator_id === teacherId).map((t) => t.course_id);
+  if (em.course_ids.some((cid) => curatedCourseIds.includes(cid))) return true;
+  if (em.course_id && curatedCourseIds.includes(em.course_id)) return true;
   return false;
 }
 
@@ -938,8 +961,8 @@ app.get("/api/admin/users", authMiddleware, requireRole("admin"), (_req, res) =>
 
 app.post("/api/admin/users", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
   const { role, extra_roles, username, password, name, is_active } = req.body;
-  if (!["teacher", "student", "manager", "admin"].includes(role)) {
-    return res.status(400).json({ detail: "role must be teacher, student, manager or admin" });
+  if (!["teacher", "curator", "student", "manager", "admin"].includes(role)) {
+    return res.status(400).json({ detail: "role must be teacher, curator, student, manager or admin" });
   }
   const isAssigningAdmin = role === "admin" || (extra_roles && String(extra_roles).includes("admin"));
   if (isAssigningAdmin && !isRootAdmin(req.user)) {
@@ -1019,7 +1042,7 @@ app.put("/api/admin/users/:user_id", authMiddleware, requireRole("admin"), (req:
     }
   }
   if (role !== undefined) {
-    if (!["teacher", "student", "manager", "admin"].includes(role)) {
+    if (!["teacher", "curator", "student", "manager", "admin"].includes(role)) {
       return res.status(400).json({ detail: "Недопустимая роль" });
     }
     u.role = role;
@@ -1133,17 +1156,18 @@ type ImportRow = {
 };
 
 // каноническая роль по коду, алиасу или пользовательскому названию из настроек
-function canonicalRole(raw: unknown): "teacher" | "student" | "manager" | "admin" | null {
+function canonicalRole(raw: unknown): "teacher" | "curator" | "student" | "manager" | "admin" | null {
   const s = String(raw || "").trim().toLowerCase().replace(/ё/g, "е");
   if (!s) return null;
-  const direct: Record<string, "teacher" | "student" | "manager" | "admin"> = {
+  const direct: Record<string, "teacher" | "curator" | "student" | "manager" | "admin"> = {
     student: "student", ученик: "student", ученица: "student", ученики: "student",
-    teacher: "teacher", куратор: "teacher", учитель: "teacher", преподаватель: "teacher",
+    curator: "curator", куратор: "curator",
+    teacher: "teacher", декан: "teacher", учитель: "teacher", преподаватель: "teacher", dean: "teacher",
     manager: "manager", методист: "manager",
     admin: "admin", администратор: "admin", админ: "admin", administrator: "admin",
   };
   if (direct[s]) return direct[s];
-  for (const key of ["student", "teacher", "manager", "admin"] as const) {
+  for (const key of ["student", "curator", "teacher", "manager", "admin"] as const) {
     const custom = String(db.settings["role_" + key + "_name"] || "").trim().toLowerCase();
     if (custom && custom === s) return key;
   }
@@ -1534,10 +1558,11 @@ app.post(
       let role = String(item.role || "student").trim().toLowerCase();
       if (role === "methodist" || role === "методист") role = "manager";
       else if (role === "admin" || role === "админ" || role === "администратор" || role === "administrator") role = "admin";
-      else if (role === "curator" || role === "куратор" || role === "учитель" || role === "преподаватель" || role === "teacher") role = "teacher";
+      else if (role === "curator" || role === "куратор") role = "curator";
+      else if (role === "учитель" || role === "преподаватель" || role === "teacher" || role === "декан") role = "teacher";
       else if (role === "student" || role === "ученик") role = "student";
 
-      if (!["student", "teacher", "manager", "admin"].includes(role)) {
+      if (!["student", "curator", "teacher", "manager", "admin"].includes(role)) {
         role = "student";
       }
 
@@ -1621,7 +1646,8 @@ app.get("/api/settings/public", (_req, res) => {
     warning_enabled: "true",
     show_header_banner: "true",
     role_admin_name: "Администратор",
-    role_teacher_name: "Куратор",
+    role_teacher_name: "Декан",
+    role_curator_name: "Куратор",
     role_student_name: "Ученик",
     role_manager_name: "Методист",
   };
@@ -1646,7 +1672,8 @@ app.get("/api/admin/settings", authMiddleware, requireRole("admin"), (_req, res)
     allow_review_answers: "true",
     notify_curators_on_test: "true",
     role_admin_name: "Администратор",
-    role_teacher_name: "Куратор",
+    role_teacher_name: "Декан",
+    role_curator_name: "Куратор",
     role_student_name: "Ученик",
     role_manager_name: "Методист",
   };
@@ -1656,6 +1683,7 @@ app.get("/api/admin/settings", authMiddleware, requireRole("admin"), (_req, res)
   }
   const stats = {
     total_students: db.users.filter((u) => isStudent(u)).length,
+    total_deans: db.users.filter((u) => isDean(u)).length,
     total_curators: db.users.filter((u) => isCurator(u)).length,
     total_courses: db.courses.length,
     total_groups: db.groups.length,
@@ -2053,9 +2081,10 @@ app.get("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (_req
 });
 
 app.put("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
-  const { admin, teacher, student, manager } = req.body;
+  const { admin, teacher, curator, student, manager } = req.body;
   if (admin !== undefined) db.settings["role_admin_name"] = admin;
   if (teacher !== undefined) db.settings["role_teacher_name"] = teacher;
+  if (curator !== undefined) db.settings["role_curator_name"] = curator;
   if (student !== undefined) db.settings["role_student_name"] = student;
   if (manager !== undefined) db.settings["role_manager_name"] = manager;
   if (typeof (db as any).save === "function") (db as any).save();
@@ -2063,14 +2092,20 @@ app.put("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (req:
   res.json({ ok: true });
 });
 
-app.get(["/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager"), (_req, res) => {
+app.get(["/api/courses", "/api/admin/courses", "/api/manager/courses"], authMiddleware, requireRole("admin", "manager", "teacher", "curator"), (_req, res) => {
   const out = [...db.courses]
     .sort((a, b) => (a.order_index ?? a.id) - (b.order_index ?? b.id))
     .map((c) => {
       const themes = db.themes
         .filter((t) => t.course_id === c.id)
         .sort((a, b) => a.order_index - b.order_index || a.id - b.id)
-        .map((t) => ({ id: t.id, title: t.title, order_index: t.order_index }));
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          order_index: t.order_index,
+          curator_id: t.curator_id || null,
+          curator_name: t.curator_id ? db.users.find((u) => u.id === t.curator_id)?.name || null : null,
+        }));
       const extra_materials = db.extraMaterials
         .filter((em) => {
           normalizeExtraMaterial(em);
@@ -2150,9 +2185,16 @@ app.delete(["/api/admin/courses/:course_id", "/api/manager/courses/:course_id"],
 });
 
 app.post(["/api/admin/themes", "/api/manager/themes"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {
-  const { course_id, title, order_index } = req.body;
+  const { course_id, title, order_index, curator_id } = req.body;
   const id = db.getId("theme");
-  db.themes.push({ id, course_id, title, order_index: order_index || 0 });
+  db.themes.push({
+    id,
+    course_id,
+    title,
+    order_index: order_index || 0,
+    curator_id: curator_id ? parseInt(curator_id, 10) : null,
+  });
+  db.save();
   logActivity(req, "Курсы и темы", "theme_create", title, `Добавлена тема «${title}»`);
   res.json({ id });
 });
@@ -2163,6 +2205,10 @@ app.put(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], authMi
   if (!t) return res.status(404).json({ detail: "Тема не найдена" });
   if (req.body.title !== undefined) t.title = req.body.title;
   if (req.body.order_index !== undefined) t.order_index = req.body.order_index;
+  if (req.body.curator_id !== undefined) {
+    t.curator_id = req.body.curator_id ? parseInt(req.body.curator_id, 10) : null;
+  }
+  db.save();
   logActivity(req, "Курсы и темы", "theme_update", t.title, `Обновлена тема «${t.title}»`);
   res.json({ ok: true });
 });
@@ -2182,6 +2228,7 @@ app.delete(["/api/admin/themes/:theme_id", "/api/manager/themes/:theme_id"], aut
   db.materials = db.materials.filter((m) => m.theme_id !== themeId);
   db.chatMessages = db.chatMessages.filter((cm) => cm.theme_id !== themeId);
   db.themes = db.themes.filter((t) => t.id !== themeId);
+  db.save();
   logActivity(req, "Курсы и темы", "theme_delete", themeTitle, `Удалена тема «${themeTitle}»`);
   res.json({ ok: true });
 });
@@ -2402,7 +2449,7 @@ app.get("/api/admin/extra-materials", authMiddleware, requireRole("admin", "mana
 });
 
 const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
-  const { title, description, type, url, order_index, course_ids, group_ids, course_id } = req.body;
+  const { title, description, type, url, order_index, course_ids, group_ids, course_id, theme_id } = req.body;
   const courseParamId = req.params?.course_id ? parseInt(req.params.course_id, 10) : undefined;
   const cleanTitle = (title || "").trim();
   if (!cleanTitle) return res.status(400).json({ detail: "Введите название материала" });
@@ -2417,6 +2464,12 @@ const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
   if (courseParamId && !cids.includes(courseParamId)) {
     cids.push(courseParamId);
   }
+  if (theme_id) {
+    const linkedTheme = db.themes.find((t) => t.id === Number(theme_id));
+    if (linkedTheme && !cids.includes(linkedTheme.course_id)) {
+      cids.push(linkedTheme.course_id);
+    }
+  }
   let gids: number[] = Array.isArray(group_ids) ? group_ids.map(Number) : [];
 
   const id = db.getId("extraMaterial");
@@ -2425,6 +2478,7 @@ const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
     course_id: cids[0] || undefined,
     course_ids: cids,
     group_ids: gids,
+    theme_id: theme_id ? Number(theme_id) : null,
     title: cleanTitle,
     description: description || "",
     type: type || "note",
@@ -2451,6 +2505,15 @@ const handleCreateAdminExtraMaterial = (req: AuthRequest, res: Response) => {
   for (const gid of targetGroupIds) {
     for (const gs of db.groupStudents.filter((x) => x.group_id === gid)) recipients.add(gs.user_id);
     for (const gt of db.groupTeachers.filter((x) => x.group_id === gid)) recipients.add(gt.teacher_id);
+  }
+  if (newEm.theme_id) {
+    const th = db.themes.find((t) => t.id === newEm.theme_id);
+    if (th?.curator_id) recipients.add(th.curator_id);
+  }
+  for (const cid of cids) {
+    for (const th of db.themes.filter((t) => t.course_id === cid && t.curator_id)) {
+      recipients.add(th.curator_id!);
+    }
   }
   recipients.delete(req.user!.id);
 
@@ -2479,6 +2542,7 @@ app.put("/api/admin/extra-materials/:id", authMiddleware, requireRole("admin", "
   if (req.body.type !== undefined) em.type = req.body.type;
   if (req.body.url !== undefined) em.url = req.body.url;
   if (req.body.order_index !== undefined) em.order_index = Number(req.body.order_index);
+  if (req.body.theme_id !== undefined) em.theme_id = req.body.theme_id ? Number(req.body.theme_id) : null;
   if (req.body.sources !== undefined) em.sources = Array.isArray(req.body.sources) ? req.body.sources : [];
   if (req.body.attachments !== undefined) em.attachments = Array.isArray(req.body.attachments) ? req.body.attachments : [];
   if (req.body.synopsis !== undefined) em.synopsis = req.body.synopsis || null;
@@ -2516,14 +2580,20 @@ app.get(["/api/admin/themes/:theme_id/test", "/api/manager/themes/:theme_id/test
       const answers = db.answers
         .filter((a) => a.question_id === q.id)
         .map((a) => ({ id: a.id, text: a.text, is_correct: a.is_correct }));
-      return { id: q.id, text: q.text, answers };
+      return {
+        id: q.id,
+        text: q.text,
+        question_type: q.question_type || "choice",
+        sample_answer: q.sample_answer || "",
+        answers,
+      };
     });
   res.json({
     id: t.id,
     title: t.title,
     theme_id: t.theme_id,
     passing_score: t.passing_score,
-    max_attempts: t.max_attempts,
+    max_attempts: Number(t.max_attempts) || 0,
     questions: qs,
   });
 });
@@ -2533,14 +2603,16 @@ app.post(["/api/admin/tests", "/api/manager/tests"], authMiddleware, requireRole
   if (db.tests.find((t) => t.theme_id === theme_id)) {
     return res.status(400).json({ detail: "У темы уже есть тест" });
   }
+  const defaultPassing = parseInt(db.settings?.default_passing_score, 10) || 70;
   const id = db.getId("test");
   db.tests.push({
     id,
     theme_id,
     title,
-    passing_score: passing_score || 70,
-    max_attempts: max_attempts || 0,
+    passing_score: passing_score !== undefined ? (parseInt(passing_score, 10) || defaultPassing) : defaultPassing,
+    max_attempts: max_attempts !== undefined ? Math.max(0, parseInt(max_attempts, 10) || 0) : 0,
   });
+  db.save();
   logActivity(req, "Тесты", "test_create", title, `Создан тест «${title}»`);
   res.json({ id });
 });
@@ -2549,7 +2621,10 @@ app.put(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMiddle
   const testId = parseInt(req.params.test_id, 10);
   const t = db.tests.find((x) => x.id === testId);
   if (!t) return res.status(404).json({ detail: "Тест не найден" });
-  Object.assign(t, req.body);
+  if (req.body.title !== undefined) t.title = req.body.title;
+  if (req.body.passing_score !== undefined) t.passing_score = parseInt(req.body.passing_score, 10) || 70;
+  if (req.body.max_attempts !== undefined) t.max_attempts = Math.max(0, parseInt(req.body.max_attempts, 10) || 0);
+  db.save();
   logActivity(req, "Тесты", "test_update", t.title, `Обновлен тест «${t.title}»`);
   res.json({ ok: true });
 });
@@ -2566,28 +2641,41 @@ app.delete(["/api/admin/tests/:test_id", "/api/manager/tests/:test_id"], authMid
   const targetTest = db.tests.find((x) => x.id === testId);
   const testTitle = targetTest ? targetTest.title : `ID ${testId}`;
   db.tests = db.tests.filter((t) => t.id !== testId);
+  db.save();
   logActivity(req, "Тесты", "test_delete", testTitle, `Удален тест «${testTitle}»`);
   res.json({ ok: true });
 });
 
 app.post(["/api/admin/questions", "/api/manager/questions"], authMiddleware, requireRole("admin", "manager"), (req, res) => {
-  const { test_id, text, answers } = req.body;
-  if (!Array.isArray(answers) || answers.length < 2) {
-    return res.status(400).json({ detail: "Должно быть минимум 2 ответа" });
-  }
-  if (answers.filter((a: any) => a.is_correct).length < 1) {
-    return res.status(400).json({ detail: "Выберите хотя бы один правильный ответ" });
+  const { test_id, text, question_type = "choice", sample_answer, answers } = req.body;
+  const isTextType = question_type === "text";
+  if (!isTextType) {
+    if (!Array.isArray(answers) || answers.length < 2) {
+      return res.status(400).json({ detail: "Должно быть минимум 2 ответа" });
+    }
+    if (answers.filter((a: any) => a.is_correct).length < 1) {
+      return res.status(400).json({ detail: "Выберите хотя бы один правильный ответ" });
+    }
   }
   const qId = db.getId("question");
-  db.questions.push({ id: qId, test_id, text });
-  for (const a of answers) {
-    db.answers.push({
-      id: db.getId("answer"),
-      question_id: qId,
-      text: a.text,
-      is_correct: !!a.is_correct,
-    });
+  db.questions.push({
+    id: qId,
+    test_id,
+    text: (text || "").trim(),
+    question_type: isTextType ? "text" : "choice",
+    sample_answer: isTextType ? (sample_answer || "").trim() : null,
+  });
+  if (!isTextType && Array.isArray(answers)) {
+    for (const a of answers) {
+      db.answers.push({
+        id: db.getId("answer"),
+        question_id: qId,
+        text: a.text,
+        is_correct: !!a.is_correct,
+      });
+    }
   }
+  db.save();
   res.json({ id: qId });
 });
 
@@ -2596,7 +2684,11 @@ app.put(["/api/admin/questions/:question_id", "/api/manager/questions/:question_
   const q = db.questions.find((x) => x.id === questionId);
   if (!q) return res.status(404).json({ detail: "Вопрос не найден" });
   if (req.body.text !== undefined) q.text = req.body.text;
-  if (req.body.answers !== undefined) {
+  if (req.body.question_type !== undefined) q.question_type = req.body.question_type;
+  if (req.body.sample_answer !== undefined) q.sample_answer = req.body.sample_answer;
+
+  const isTextType = q.question_type === "text";
+  if (req.body.answers !== undefined && !isTextType) {
     const answers = req.body.answers;
     if (!Array.isArray(answers) || answers.length < 2 || answers.filter((a: any) => a.is_correct).length < 1) {
       return res.status(400).json({ detail: "Должно быть не менее 2 ответов и хотя бы один правильный" });
@@ -2611,6 +2703,7 @@ app.put(["/api/admin/questions/:question_id", "/api/manager/questions/:question_
       });
     }
   }
+  db.save();
   res.json({ ok: true });
 });
 
@@ -2618,6 +2711,7 @@ app.delete(["/api/admin/questions/:question_id", "/api/manager/questions/:questi
   const questionId = parseInt(req.params.question_id, 10);
   db.answers = db.answers.filter((a) => a.question_id !== questionId);
   db.questions = db.questions.filter((q) => q.id !== questionId);
+  db.save();
   res.json({ ok: true });
 });
 
@@ -2781,7 +2875,7 @@ app.post("/api/manager/users", authMiddleware, requireRole("manager"), (req, res
   if (!cleanName || !cleanUser || !password) {
     return res.status(400).json({ detail: "Заполните ФИО, логин и пароль" });
   }
-  if (!["student", "teacher"].includes(role)) {
+  if (!["student", "teacher", "curator"].includes(role)) {
     return res.status(400).json({ detail: "Методист может создавать только учеников и кураторов" });
   }
   if (db.users.find((u) => u.username === cleanUser)) {
@@ -2853,7 +2947,7 @@ app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (
   if (is_active !== undefined) u.is_active = !!is_active;
   if (u.role !== "manager") {
     if (role !== undefined) {
-      if (!["student", "teacher"].includes(role)) {
+      if (!["student", "teacher", "curator"].includes(role)) {
         return res.status(400).json({ detail: "Методист может назначать только роли ученика и куратора" });
       }
       u.role = role;
@@ -3092,8 +3186,11 @@ function teacherGroupIds(teacherId: number): number[] {
 
 function ownTeacherGroup(teacherId: number, groupId: number): boolean {
   const u = db.users.find((x) => x.id === teacherId);
-  if (u && u.role === "admin") return true;
-  return db.groupTeachers.some((gt) => gt.teacher_id === teacherId && gt.group_id === groupId);
+  if (u && (u.role === "admin" || u.role === "manager")) return true;
+  if (db.groupTeachers.some((gt) => gt.teacher_id === teacherId && gt.group_id === groupId)) return true;
+  const group = db.groups.find((g) => g.id === groupId);
+  if (group && db.themes.some((t) => t.course_id === group.course_id && t.curator_id === teacherId)) return true;
+  return false;
 }
 
 // -------------------------------------------------------------
@@ -3116,6 +3213,10 @@ function teacherGroupInCourse(teacherId: number, courseId: number): number | nul
 
 /** Группа, для которой открыт доп. материал (закреплённая группа или группа его курса). */
 function extraMatchesGroup(em: ExtraMaterial, g: Group): boolean {
+  if (em.theme_id) {
+    const th = db.themes.find((t) => t.id === em.theme_id);
+    if (th && th.course_id === g.course_id) return true;
+  }
   return em.group_ids.includes(g.id) || em.course_ids.includes(g.course_id) || em.course_id === g.course_id;
 }
 
@@ -3126,13 +3227,15 @@ function extraMatchesGroup(em: ExtraMaterial, g: Group): boolean {
 function extraChatGroupFor(
   userId: number,
   em: ExtraMaterial,
-  who: "student" | "teacher",
+  who: "student" | "teacher" | "curator",
   requested: number | null
 ): number | null {
-  const myGids =
-    who === "teacher"
-      ? teacherGroupIds(userId)
-      : db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
+  const isStaff = who === "teacher" || who === "curator";
+  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === userId).map((t) => t.course_id);
+  const myCuratedGids = db.groups.filter((g) => myCuratedCourseIds.includes(g.course_id)).map((g) => g.id);
+  const myGids = isStaff
+    ? [...new Set([...teacherGroupIds(userId), ...myCuratedGids])]
+    : db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
   if (requested !== null) {
     const g = db.groups.find((x) => x.id === requested);
     if (!g || !myGids.includes(requested) || !extraMatchesGroup(em, g)) return null;
@@ -3150,13 +3253,19 @@ function extraChatGroupForStaff(em: ExtraMaterial): number | null {
   return g ? g.id : null;
 }
 
-/** Группа куратора для чата темы: явный ?group_id= (если куратор её ведёт и это курс темы) или первая группа курса темы. */
+/** Группа куратора/декана для чата темы: явный ?group_id= (если куратор её ведёт или курирует тему) или первая группа курса темы. */
 function teacherThemeChatGroup(teacherId: number, theme: Theme, requestedRaw: unknown): number | null {
   const requested = parseOptionalInt(requestedRaw);
+  const isCuratorForTheme = theme.curator_id === teacherId;
   if (requested !== null) {
     const g = db.groups.find((x) => x.id === requested);
-    if (!g || g.course_id !== theme.course_id || !teacherGroupIds(teacherId).includes(requested)) return null;
-    return g.id;
+    if (!g || g.course_id !== theme.course_id) return null;
+    if (isCuratorForTheme || teacherGroupIds(teacherId).includes(requested)) return g.id;
+    return null;
+  }
+  if (isCuratorForTheme) {
+    const firstCourseGroup = db.groups.find((g) => g.course_id === theme.course_id);
+    return firstCourseGroup ? firstCourseGroup.id : null;
   }
   return teacherGroupInCourse(teacherId, theme.course_id);
 }
@@ -3281,11 +3390,18 @@ app.post("/api/chat/messages/:id/react", authMiddleware, (req: AuthRequest, res:
 });
 
 // Проверка отчёта куратором, администратором или методистом
-app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("teacher", "admin", "manager"), (req: AuthRequest, res: Response) => {
+app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("teacher", "admin", "manager", "curator"), (req: AuthRequest, res: Response) => {
   const msgId = parseInt(req.params.id, 10);
   const msg = db.chatMessages.find((m) => m.id === msgId);
   if (!msg) return res.status(404).json({ detail: "Сообщение не найдено" });
   if (!msg.is_report) return res.status(400).json({ detail: "Сообщение не является отчётом" });
+
+  if (req.user!.role === "curator" && msg.theme_id) {
+    const th = db.themes.find((t) => t.id === msg.theme_id);
+    if (th && th.curator_id !== req.user!.id) {
+      return res.status(403).json({ detail: "Куратор может проверять отчёты только по своим курируемым темам" });
+    }
+  }
 
   const { status, comment } = req.body;
   if (!["pending", "accepted", "rejected"].includes(status)) {
@@ -3319,9 +3435,9 @@ app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("te
 });
 
 // Список отчётов группы для куратора, администратора или методиста
-app.get("/api/teacher/groups/:group_id/reports", authMiddleware, requireRole("teacher", "admin", "manager"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups/:group_id/reports", "/api/curator/groups/:group_id/reports"], authMiddleware, requireRole("teacher", "admin", "manager", "curator"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
-  if (req.user!.role === "teacher" && !ownTeacherGroup(req.user!.id, groupId)) {
+  if ((req.user!.role === "teacher" || req.user!.role === "curator") && !ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
   const group = db.groups.find((g) => g.id === groupId);
@@ -3329,9 +3445,18 @@ app.get("/api/teacher/groups/:group_id/reports", authMiddleware, requireRole("te
 
   const sIds = db.groupStudents.filter((gs) => gs.group_id === groupId).map((gs) => gs.user_id);
   const themeIds = db.themes.filter((t) => t.course_id === group.course_id).map((t) => t.id);
+  const myCuratedThemeIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.id);
 
   const reports = db.chatMessages
-    .filter((m) => m.is_report && (m.group_id === groupId || (sIds.includes(m.user_id) && m.theme_id && themeIds.includes(m.theme_id))))
+    .filter((m) => {
+      if (!m.is_report) return false;
+      const inScope = m.group_id === groupId || (sIds.includes(m.user_id) && m.theme_id && themeIds.includes(m.theme_id));
+      if (!inScope) return false;
+      if (req.user!.role === "curator") {
+        return m.theme_id && myCuratedThemeIds.includes(m.theme_id);
+      }
+      return true;
+    })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .map((m) => {
       const student = db.users.find((u) => u.id === m.user_id);
@@ -3555,7 +3680,7 @@ app.get("/api/schedule/themes", authMiddleware, (req: AuthRequest, res: Response
 });
 
 // 2. Список событий для преподавателей, методистов и администраторов
-app.get("/api/schedule/events", authMiddleware, requireRole("admin", "manager", "teacher"), (req: AuthRequest, res: Response) => {
+app.get("/api/schedule/events", authMiddleware, requireRole("admin", "manager", "teacher", "curator"), (req: AuthRequest, res: Response) => {
   const u = req.user!;
   const courseId = req.query.course_id ? parseInt(String(req.query.course_id), 10) : null;
   const groupId = req.query.group_id ? parseInt(String(req.query.group_id), 10) : null;
@@ -3567,6 +3692,14 @@ app.get("/api/schedule/events", authMiddleware, requireRole("admin", "manager", 
     const gids = teacherGroupIds(u.id);
     const cids = [...new Set(db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id))];
     events = events.filter((e) => cids.includes(e.course_id) && (!e.group_id || gids.includes(e.group_id)));
+  } else if (u.role === "curator") {
+    const myCuratedThemes = db.themes.filter((t) => t.curator_id === u.id);
+    const myCuratedThemeIds = myCuratedThemes.map((t) => t.id);
+    const myCuratedCourseIds = [...new Set(myCuratedThemes.map((t) => t.course_id))];
+    events = events.filter((e) => {
+      if (e.theme_id) return myCuratedThemeIds.includes(e.theme_id);
+      return myCuratedCourseIds.includes(e.course_id);
+    });
   }
 
   if (courseId) {
@@ -3600,7 +3733,7 @@ app.get("/api/schedule/events", authMiddleware, requireRole("admin", "manager", 
 });
 
 // 3. Создание события графика (Админ, Методист, Куратор)
-app.post("/api/schedule/events", authMiddleware, requireRole("admin", "manager", "teacher"), (req: AuthRequest, res: Response) => {
+app.post("/api/schedule/events", authMiddleware, requireRole("admin", "manager", "teacher", "curator"), (req: AuthRequest, res: Response) => {
   const u = req.user!;
   const {
     course_id,
@@ -3620,11 +3753,14 @@ app.post("/api/schedule/events", authMiddleware, requireRole("admin", "manager",
     return res.status(400).json({ detail: "Заполните обязательные поля: курс, название, тип события и дату." });
   }
 
-  // Проверка прав для куратора
-  if (u.role === "teacher" && group_id) {
+  // Проверка прав для куратора/преподавателя
+  if ((u.role === "teacher" || u.role === "curator") && group_id) {
     const gids = teacherGroupIds(u.id);
-    if (!gids.includes(Number(group_id))) {
-      return res.status(403).json({ detail: "Вы можете создавать события только для назначенных вам групп." });
+    const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
+    const grp = db.groups.find((g) => g.id === Number(group_id));
+    const isCuratedCourse = grp && myCuratedCourseIds.includes(grp.course_id);
+    if (!gids.includes(Number(group_id)) && !isCuratedCourse) {
+      return res.status(403).json({ detail: "Вы можете создавать события только для назначенных вам групп или курируемых курсов." });
     }
   }
 
@@ -3686,15 +3822,18 @@ app.post("/api/schedule/events", authMiddleware, requireRole("admin", "manager",
 });
 
 // 4. Редактирование события
-app.put("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manager", "teacher"), (req: AuthRequest, res: Response) => {
+app.put("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manager", "teacher", "curator"), (req: AuthRequest, res: Response) => {
   const id = parseInt(req.params.id, 10);
   const ev = db.scheduleEvents.find((e) => e.id === id);
   if (!ev) return res.status(404).json({ detail: "Событие не найдено" });
 
   const u = req.user!;
-  if (u.role === "teacher" && ev.group_id) {
+  if ((u.role === "teacher" || u.role === "curator") && ev.group_id) {
     const gids = teacherGroupIds(u.id);
-    if (!gids.includes(ev.group_id)) {
+    const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
+    const grp = db.groups.find((g) => g.id === ev.group_id);
+    const isCuratedCourse = grp && myCuratedCourseIds.includes(grp.course_id);
+    if (!gids.includes(ev.group_id) && !isCuratedCourse) {
       return res.status(403).json({ detail: "Нет доступа к редактированию данного события." });
     }
   }
@@ -3716,16 +3855,19 @@ app.put("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manage
 });
 
 // 5. Удаление события
-app.delete("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manager", "teacher"), (req: AuthRequest, res: Response) => {
+app.delete("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manager", "teacher", "curator"), (req: AuthRequest, res: Response) => {
   const id = parseInt(req.params.id, 10);
   const idx = db.scheduleEvents.findIndex((e) => e.id === id);
   if (idx === -1) return res.status(404).json({ detail: "Событие не найдено" });
 
   const ev = db.scheduleEvents[idx];
   const u = req.user!;
-  if (u.role === "teacher" && ev.group_id) {
+  if ((u.role === "teacher" || u.role === "curator") && ev.group_id) {
     const gids = teacherGroupIds(u.id);
-    if (!gids.includes(ev.group_id)) {
+    const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
+    const grp = db.groups.find((g) => g.id === ev.group_id);
+    const isCuratedCourse = grp && myCuratedCourseIds.includes(grp.course_id);
+    if (!gids.includes(ev.group_id) && !isCuratedCourse) {
       return res.status(403).json({ detail: "Нет доступа к удалению данного события." });
     }
   }
@@ -3746,19 +3888,24 @@ function testIdsForGroups(groupIds: number[]): number[] {
   return db.tests.filter((t) => themeIds.includes(t.theme_id)).map((t) => t.id);
 }
 
-app.get("/api/teacher/courses", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/courses", "/api/curator/courses"], authMiddleware, requireRole("teacher", "curator", "admin"), (req: AuthRequest, res: Response) => {
   const gids = teacherGroupIds(req.user!.id);
-  const courseIds = [...new Set(db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id))];
+  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.course_id);
+  const courseIds = [...new Set([
+    ...db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id),
+    ...myCuratedCourseIds,
+  ])];
   const courses = db.courses
-    .filter((c) => courseIds.includes(c.id))
+    .filter((c) => req.user!.role === "admin" || courseIds.includes(c.id))
     .map((c) => ({ id: c.id, title: c.title, description: c.description }));
   res.json(courses);
 });
 
-app.get("/api/teacher/groups", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups", "/api/curator/groups"], authMiddleware, requireRole("teacher", "curator", "admin"), (req: AuthRequest, res: Response) => {
   const gids = teacherGroupIds(req.user!.id);
+  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.course_id);
   const out = db.groups
-    .filter((g) => gids.includes(g.id))
+    .filter((g) => req.user!.role === "admin" || gids.includes(g.id) || myCuratedCourseIds.includes(g.course_id))
     .map((g) => {
       const c = db.courses.find((x) => x.id === g.course_id);
       return { id: g.id, name: g.name, course_id: g.course_id, course_title: c ? c.title : "" };
@@ -3766,7 +3913,31 @@ app.get("/api/teacher/groups", authMiddleware, requireRole("teacher"), (req: Aut
   res.json(out);
 });
 
-app.get("/api/teacher/groups/:group_id/students", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
+// Темы, закреплённые за куратором
+app.get("/api/curator/themes", authMiddleware, requireRole("curator", "admin"), (req: AuthRequest, res: Response) => {
+  const isAdm = req.user!.role === "admin";
+  const themes = isAdm
+    ? db.themes
+    : db.themes.filter((t) => t.curator_id === req.user!.id);
+  const out = themes.map((t) => {
+    const c = db.courses.find((x) => x.id === t.course_id);
+    const mats = db.materials.filter((m) => m.theme_id === t.id);
+    const test = db.tests.find((x) => x.theme_id === t.id);
+    return {
+      id: t.id,
+      title: t.title,
+      order_index: t.order_index,
+      course_id: t.course_id,
+      course_title: c ? c.title : "",
+      materials_count: mats.length,
+      test_id: test ? test.id : null,
+      test_title: test ? test.title : null,
+    };
+  });
+  res.json(out);
+});
+
+app.get(["/api/teacher/groups/:group_id/students", "/api/curator/groups/:group_id/students"], authMiddleware, requireRole("teacher", "curator", "admin", "manager"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -3923,7 +4094,7 @@ app.get("/api/teacher/groups/:group_id/attention", authMiddleware, requireRole("
   });
 });
 
-app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups/:group_id/progress", "/api/curator/groups/:group_id/progress"], authMiddleware, requireRole("teacher", "curator", "admin", "manager"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -3939,10 +4110,13 @@ app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("t
 
   const themesOut = themes.map((th) => {
     const test = db.tests.find((t) => t.theme_id === th.id);
+    const curator = th.curator_id ? db.users.find((u) => u.id === th.curator_id) : null;
     return {
       id: th.id,
       title: th.title,
       order_index: th.order_index,
+      curator_id: th.curator_id || null,
+      curator_name: curator ? curator.name : null,
       test_id: test ? test.id : null,
       test_title: test ? test.title : null,
     };
@@ -4070,7 +4244,7 @@ app.get("/api/teacher/groups/:group_id/progress", authMiddleware, requireRole("t
   res.json({ themes: themesOut, students: studentsOut });
 });
 
-app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups/:group_id/attempts", "/api/curator/groups/:group_id/attempts"], authMiddleware, requireRole("teacher", "curator", "admin", "manager"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -4078,8 +4252,17 @@ app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("t
   const testIds = testIdsForGroups([groupId]);
   const sIds = db.groupStudents.filter((gs) => gs.group_id === groupId).map((gs) => gs.user_id);
 
-  const attempts = db.attempts
-    .filter((a) => testIds.includes(a.test_id) && sIds.includes(a.user_id))
+  let attempts = db.attempts
+    .filter((a) => testIds.includes(a.test_id) && sIds.includes(a.user_id));
+  if (req.user!.role === "curator") {
+    const myCuratedThemeIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.id);
+    attempts = attempts.filter((a) => {
+      const test = db.tests.find((t) => t.id === a.test_id);
+      return test && myCuratedThemeIds.includes(test.theme_id);
+    });
+  }
+
+  const outAttempts = attempts
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 500)
     .map((a) => {
@@ -4088,6 +4271,8 @@ app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("t
       const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
       return {
         id: a.id,
+        user_id: a.user_id,
+        test_id: a.test_id,
         student: student ? student.name : "",
         test: test ? test.title : "",
         theme_id: theme ? theme.id : null,
@@ -4098,64 +4283,191 @@ app.get("/api/teacher/groups/:group_id/attempts", authMiddleware, requireRole("t
         created_at: a.created_at,
       };
     });
-  res.json(attempts);
+  res.json(outAttempts);
 });
 
-app.get("/api/teacher/attempts/:attempt_id/details", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
-  const attemptId = parseInt(req.params.attempt_id, 10);
-  const a = db.attempts.find((x) => x.id === attemptId);
-  if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
+app.get(
+  ["/api/teacher/attempts/:attempt_id/details", "/api/curator/attempts/:attempt_id/details", "/api/manager/attempts/:attempt_id/details"],
+  authMiddleware,
+  requireRole("teacher", "admin", "manager", "curator"),
+  (req: AuthRequest, res: Response) => {
+    const attemptId = parseInt(req.params.attempt_id, 10);
+    const a = db.attempts.find((x) => x.id === attemptId);
+    if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
 
-  const test = db.tests.find((t) => t.id === a.test_id);
-  const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
-  const course = theme ? db.courses.find((c) => c.id === theme.course_id) : null;
+    const test = db.tests.find((t) => t.id === a.test_id);
+    const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
+    if (req.user!.role === "curator" && theme && theme.curator_id !== req.user!.id) {
+      return res.status(403).json({ detail: "Куратор может просматривать попытки только по своим темам" });
+    }
+    const student = db.users.find((u) => u.id === a.user_id);
+    const questions = db.questions.filter((q) => q.test_id === a.test_id);
+    const aaMap = new Map(
+      db.attemptAnswers.filter((aa) => aa.attempt_id === a.id).map((aa) => [aa.question_id, aa])
+    );
 
-  const gids = teacherGroupIds(req.user!.id);
-  const myCourseIds = db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id);
-  if (req.user!.role !== "admin" && (!course || !myCourseIds.includes(course.id))) {
-    return res.status(403).json({ detail: "Доступ запрещён" });
+    const out = questions.map((q) => {
+      const aa = aaMap.get(q.id);
+      const isCorrect = aa ? aa.is_correct : false;
+      const isTextQ = q.question_type === "text";
+
+      if (isTextQ) {
+        return {
+          id: q.id,
+          question: q.text,
+          question_type: "text",
+          sample_answer: q.sample_answer || "",
+          text_answer: aa?.text_answer || "",
+          is_correct: isCorrect,
+        };
+      }
+
+      const answers = db.answers.filter((ans) => ans.question_id === q.id);
+      const right = answers.find((ans) => ans.is_correct);
+      const chosenId = aa ? aa.answer_id : null;
+      return {
+        id: q.id,
+        question: q.text,
+        question_type: "choice",
+        answers: answers.map((ans) => ({
+          id: ans.id,
+          text: ans.text,
+          is_correct: ans.is_correct,
+          chosen: chosenId === ans.id,
+        })),
+        chosen_answer_id: chosenId,
+        right_answer_id: right ? right.id : null,
+        is_correct: isCorrect,
+      };
+    });
+
+    res.json({
+      attempt_id: a.id,
+      test_id: a.test_id,
+      user_id: a.user_id,
+      score: a.score,
+      passed: a.passed,
+      created_at: a.created_at,
+      test_title: test ? test.title : "",
+      theme_title: theme ? theme.title : "",
+      student_name: student ? student.name : "",
+      questions: out,
+    });
   }
+);
 
-  const student = db.users.find((u) => u.id === a.user_id);
-  const questions = db.questions.filter((q) => q.test_id === a.test_id);
-  const aaMap = new Map(
-    db.attemptAnswers.filter((aa) => aa.attempt_id === a.id).map((aa) => [aa.question_id, aa])
-  );
+app.put(
+  [
+    "/api/teacher/attempts/:attempt_id/grade-answer",
+    "/api/curator/attempts/:attempt_id/grade-answer",
+    "/api/manager/attempts/:attempt_id/grade-answer",
+    "/api/admin/attempts/:attempt_id/grade-answer",
+  ],
+  authMiddleware,
+  requireRole("teacher", "admin", "manager", "curator"),
+  (req: AuthRequest, res: Response) => {
+    const attemptId = parseInt(req.params.attempt_id, 10);
+    const questionId = parseInt(req.body.question_id, 10);
+    const isCorrect = Boolean(req.body.is_correct);
 
-  const out = questions.map((q) => {
-    const answers = db.answers.filter((ans) => ans.question_id === q.id);
-    const right = answers.find((ans) => ans.is_correct);
-    const aa = aaMap.get(q.id);
-    const chosenId = aa ? aa.answer_id : null;
-    const isCorrect = aa ? aa.is_correct : false;
-    return {
-      question: q.text,
-      answers: answers.map((ans) => ({
-        id: ans.id,
-        text: ans.text,
-        is_correct: ans.is_correct,
-        chosen: chosenId === ans.id,
-      })),
-      chosen_answer_id: chosenId,
-      right_answer_id: right ? right.id : null,
-      is_correct: isCorrect,
-    };
-  });
+    const a = db.attempts.find((x) => x.id === attemptId);
+    if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
 
-  res.json({
-    attempt_id: a.id,
-    score: a.score,
-    passed: a.passed,
-    created_at: a.created_at,
-    test_title: test ? test.title : "",
-    theme_title: theme ? theme.title : "",
-    student_name: student ? student.name : "",
-    questions: out,
-  });
-});
+    let aa = db.attemptAnswers.find((x) => x.attempt_id === a.id && x.question_id === questionId);
+    if (!aa) {
+      aa = {
+        id: db.getId("attemptAnswer"),
+        attempt_id: a.id,
+        question_id: questionId,
+        answer_id: null,
+        text_answer: null,
+        is_correct: isCorrect,
+      };
+      db.attemptAnswers.push(aa);
+    } else {
+      aa.is_correct = isCorrect;
+    }
 
-app.get("/api/teacher/announcements", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
-  const myGids = teacherGroupIds(req.user!.id);
+    const test = db.tests.find((t) => t.id === a.test_id);
+    const questions = db.questions.filter((q) => q.test_id === a.test_id);
+    let correctCount = 0;
+    for (const q of questions) {
+      const row = db.attemptAnswers.find((x) => x.attempt_id === a.id && x.question_id === q.id);
+      if (row?.is_correct) correctCount++;
+    }
+    const total = questions.length || 1;
+    a.score = Math.round((100 * correctCount) / total);
+    a.passed = a.score >= (test?.passing_score ?? 70);
+    db.save();
+    logActivity(
+      req,
+      "Оценивание",
+      "grade_answer",
+      `Попытка #${a.id}`,
+      `Вопрос #${questionId}: ${isCorrect ? "зачтено" : "не зачтено"}. Итог: ${a.score}%`
+    );
+    res.json({ ok: true, score: a.score, passed: a.passed });
+  }
+);
+
+app.delete(
+  [
+    "/api/teacher/attempts/:attempt_id",
+    "/api/curator/attempts/:attempt_id",
+    "/api/manager/attempts/:attempt_id",
+    "/api/admin/attempts/:attempt_id",
+  ],
+  authMiddleware,
+  requireRole("teacher", "admin", "manager", "curator"),
+  (req: AuthRequest, res: Response) => {
+    const attemptId = parseInt(req.params.attempt_id, 10);
+    const idx = db.attempts.findIndex((a) => a.id === attemptId);
+    if (idx === -1) return res.status(404).json({ detail: "Попытка не найдена" });
+
+    db.attempts.splice(idx, 1);
+    db.attemptAnswers = db.attemptAnswers.filter((aa) => aa.attempt_id !== attemptId);
+    db.save();
+    logActivity(req, "Попытки", "delete_attempt", `Удаление попытки #${attemptId}`, "Попытка удалена");
+    res.json({ ok: true });
+  }
+);
+
+app.post(
+  [
+    "/api/teacher/students/:user_id/tests/:test_id/reset-attempts",
+    "/api/curator/students/:user_id/tests/:test_id/reset-attempts",
+    "/api/manager/students/:user_id/tests/:test_id/reset-attempts",
+    "/api/admin/students/:user_id/tests/:test_id/reset-attempts",
+  ],
+  authMiddleware,
+  requireRole("teacher", "admin", "manager", "curator"),
+  (req: AuthRequest, res: Response) => {
+    const userId = parseInt(req.params.user_id, 10);
+    const testId = parseInt(req.params.test_id, 10);
+
+    const attIds = db.attempts
+      .filter((a) => a.user_id === userId && a.test_id === testId)
+      .map((a) => a.id);
+
+    db.attempts = db.attempts.filter((a) => !(a.user_id === userId && a.test_id === testId));
+    db.attemptAnswers = db.attemptAnswers.filter((aa) => !attIds.includes(aa.attempt_id));
+    db.save();
+
+    logActivity(
+      req,
+      "Попытки",
+      "reset_attempts",
+      `Сброс попыток теста #${testId}`,
+      `Сброшены ${attIds.length} попыток для ученика #${userId}`
+    );
+    res.json({ ok: true, removed_count: attIds.length });
+  }
+);
+
+app.get(["/api/teacher/announcements", "/api/curator/announcements"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
+  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.course_id);
+  const myCuratedGids = db.groups.filter((g) => myCuratedCourseIds.includes(g.course_id)).map((g) => g.id);
+  const myGids = [...new Set([...teacherGroupIds(req.user!.id), ...myCuratedGids])];
   const targetAnnIds = new Set(
     db.announcementTargets.filter((at) => myGids.includes(at.group_id)).map((at) => at.announcement_id)
   );
@@ -4196,7 +4508,7 @@ app.get("/api/teacher/announcements", authMiddleware, requireRole("teacher"), (r
   res.json(out);
 });
 
-app.post("/api/teacher/announcements", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.post(["/api/teacher/announcements", "/api/curator/announcements"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const { title, body, group_ids } = req.body;
   if (!Array.isArray(group_ids) || group_ids.length === 0) {
     return res.status(400).json({ detail: "Нужно выбрать хотя бы одну группу" });
@@ -4225,7 +4537,7 @@ app.post("/api/teacher/announcements", authMiddleware, requireRole("teacher"), (
   res.json({ id });
 });
 
-app.put("/api/teacher/announcements/:ann_id", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.put(["/api/teacher/announcements/:ann_id", "/api/curator/announcements/:ann_id"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const annId = parseInt(req.params.ann_id, 10);
   const a = db.announcements.find((x) => x.id === annId);
   if (!a || a.author_id !== req.user!.id) {
@@ -4248,7 +4560,7 @@ app.put("/api/teacher/announcements/:ann_id", authMiddleware, requireRole("teach
   res.json({ ok: true });
 });
 
-app.delete("/api/teacher/announcements/:ann_id", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.delete(["/api/teacher/announcements/:ann_id", "/api/curator/announcements/:ann_id"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const annId = parseInt(req.params.ann_id, 10);
   const a = db.announcements.find((x) => x.id === annId);
   if (!a || a.author_id !== req.user!.id) {
@@ -4259,12 +4571,19 @@ app.delete("/api/teacher/announcements/:ann_id", authMiddleware, requireRole("te
   res.json({ ok: true });
 });
 
-app.get("/api/teacher/groups/:group_id/analytics", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups/:group_id/analytics", "/api/curator/groups/:group_id/analytics"], authMiddleware, requireRole("teacher", "curator", "admin"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
-  const testIds = testIdsForGroups([groupId]);
+  let testIds = testIdsForGroups([groupId]);
+  if (req.user!.role === "curator") {
+    const myThemeIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.id);
+    testIds = testIds.filter((tid) => {
+      const t = db.tests.find((x) => x.id === tid);
+      return t && myThemeIds.includes(t.theme_id);
+    });
+  }
   const tests = db.tests.filter((t) => testIds.includes(t.id));
 
   const perTest = tests.map((t) => {
@@ -4309,29 +4628,48 @@ app.get("/api/teacher/groups/:group_id/analytics", authMiddleware, requireRole("
   res.json({ per_test: perTest, per_student: perStudent, timeline });
 });
 
-app.get("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
-  const themeId = parseInt(req.params.theme_id, 10);
-  const theme = db.themes.find((t) => t.id === themeId);
-  if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
+app.get(
+  ["/api/teacher/themes/:theme_id/chat", "/api/curator/themes/:theme_id/chat"],
+  authMiddleware,
+  requireRole("teacher", "curator", "admin"),
+  (req: AuthRequest, res: Response) => {
+    const themeId = parseInt(req.params.theme_id, 10);
+    const theme = db.themes.find((t) => t.id === themeId);
+    if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-  const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id);
-  if (gid === null) {
-    return res.status(403).json({ detail: "Доступ запрещён" });
+    if (req.user!.role === "curator" && theme.curator_id !== req.user!.id) {
+      return res.status(403).json({ detail: "Куратор может просматривать чат только своих курируемых тем" });
+    }
+
+    const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id);
+    if (gid === null && req.user!.role !== "admin") {
+      return res.status(403).json({ detail: "Доступ запрещён" });
+    }
+
+    const rows = gid
+      ? db.chatMessages.filter((m) => m.theme_id === themeId && m.group_id === gid)
+      : db.chatMessages.filter((m) => m.theme_id === themeId);
+    res.json(chatRows(rows, req.user!.id, false));
   }
+);
 
-  const rows = db.chatMessages.filter((m) => m.theme_id === themeId && m.group_id === gid);
-  res.json(chatRows(rows, req.user!.id, false));
-});
+app.post(
+  ["/api/teacher/themes/:theme_id/chat", "/api/curator/themes/:theme_id/chat"],
+  authMiddleware,
+  requireRole("teacher", "curator", "admin"),
+  (req: AuthRequest, res: Response) => {
+    const themeId = parseInt(req.params.theme_id, 10);
+    const theme = db.themes.find((t) => t.id === themeId);
+    if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-app.post("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
-  const themeId = parseInt(req.params.theme_id, 10);
-  const theme = db.themes.find((t) => t.id === themeId);
-  if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
+    if (req.user!.role === "curator" && theme.curator_id !== req.user!.id) {
+      return res.status(403).json({ detail: "Куратор может отправлять сообщения только в чат своих курируемых тем" });
+    }
 
-  const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id);
-  if (gid === null) {
-    return res.status(403).json({ detail: "Доступ запрещён" });
-  }
+    const gid = teacherThemeChatGroup(req.user!.id, theme, req.query.group_id) || (db.groups.find((g) => g.course_id === theme.course_id)?.id || null);
+    if (gid === null) {
+      return res.status(403).json({ detail: "Доступ запрещён" });
+    }
 
   const replyToId = req.body.reply_to_id ? Number(req.body.reply_to_id) : null;
   const msgId = db.getId("chatMessage");
@@ -4371,11 +4709,13 @@ app.post("/api/teacher/themes/:theme_id/chat", authMiddleware, requireRole("teac
   res.json({ id: msgId });
 });
 
-app.get("/api/teacher/course/:course_id/extra-materials", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/course/:course_id/extra-materials", "/api/curator/course/:course_id/extra-materials"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const courseId = parseInt(req.params.course_id, 10);
   const gids = teacherGroupIds(req.user!.id);
   const myCourseIds = db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id);
-  if (!myCourseIds.includes(courseId)) {
+  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.course_id);
+  const allowedCourseIds = [...new Set([...myCourseIds, ...myCuratedCourseIds])];
+  if (!allowedCourseIds.includes(courseId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
@@ -4385,16 +4725,17 @@ app.get("/api/teacher/course/:course_id/extra-materials", authMiddleware, requir
       const isCourseMatch = em.course_ids.includes(courseId) || em.course_id === courseId;
       const isGroupMatch = em.group_ids.some((gid) => {
         const g = db.groups.find((x) => x.id === gid);
-        return g && g.course_id === courseId && gids.includes(gid);
+        return g && g.course_id === courseId && (gids.includes(gid) || myCuratedCourseIds.includes(courseId));
       });
-      return isCourseMatch || isGroupMatch;
+      const isThemeMatch = em.theme_id && db.themes.some((t) => t.id === em.theme_id && t.course_id === courseId);
+      return isCourseMatch || isGroupMatch || isThemeMatch;
     })
     .sort((a, b) => a.order_index - b.order_index || a.id - b.id)
     .map((em) => getExtraMaterialDetails(em));
   res.json(mats);
 });
 
-app.get("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/extra-materials/:id/chat", "/api/curator/extra-materials/:id/chat"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em) return res.status(404).json({ detail: "Материал не найден" });
@@ -4411,7 +4752,7 @@ app.get("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("te
   res.json(chatRows(rows, req.user!.id, false));
 });
 
-app.post("/api/teacher/extra-materials/:id/chat", authMiddleware, requireRole("teacher"), (req: AuthRequest, res: Response) => {
+app.post(["/api/teacher/extra-materials/:id/chat", "/api/curator/extra-materials/:id/chat"], authMiddleware, requireRole("teacher", "curator"), (req: AuthRequest, res: Response) => {
   const extraId = parseInt(req.params.id, 10);
   const em = db.extraMaterials.find((x) => x.id === extraId);
   if (!em) return res.status(404).json({ detail: "Материал не найден" });
@@ -4638,7 +4979,15 @@ app.get("/api/student/course/:course_id/themes", authMiddleware, requireRole("st
           }
         : null,
     });
-    chain = (chain && (!test || testPassed)) || granted;
+    const requiredMaterials = rawMaterials.filter((m) => !m.no_report);
+    const reportsAcceptedCount = requiredMaterials.filter((m) => {
+      const rep = studentReports.find((r) => r.material_id === m.id) || (requiredMaterials.length === 1 ? studentReports[0] : null);
+      return rep && rep.report_status === "accepted";
+    }).length;
+    const reportsDone = requiredMaterials.length === 0 || reportsAcceptedCount >= requiredMaterials.length;
+    const themeCompleted = (test ? testPassed : true) && reportsDone;
+
+    chain = chain && themeCompleted;
   }
   res.json(out);
 });
@@ -4676,19 +5025,31 @@ app.post("/api/student/materials/:id/toggle-completed", authMiddleware, requireR
 });
 
 // -------------------------------------------------------------
-// OPEN NEXT THEME FOR A STUDENT (admin/manager manual unlock)
+// OPEN NEXT THEME FOR A STUDENT (admin/manager/dean manual unlock)
 // -------------------------------------------------------------
 app.get(
-  ["/api/admin/students/:user_id/unlockable-themes", "/api/teacher/students/:user_id/unlockable-themes"],
+  [
+    "/api/admin/students/:user_id/unlockable-themes",
+    "/api/teacher/students/:user_id/unlockable-themes",
+    "/api/manager/students/:user_id/unlockable-themes",
+    "/api/curator/students/:user_id/unlockable-themes",
+  ],
   authMiddleware,
-  requireRole("admin", "teacher"),
+  requireRole("admin", "teacher", "manager", "curator"),
   (req: AuthRequest, res: Response) => {
     const userId = parseInt(req.params.user_id, 10);
     const u = db.users.find((x) => x.id === userId && isStudent(x));
     if (!u) return res.status(404).json({ detail: "Ученик не найден" });
     const grants = themeGrants(userId);
     const out = [];
-    for (const cid of studentCourseIds(userId)) {
+    const isStaffAdmin = req.user!.role === "admin" || req.user!.role === "manager";
+    let targetCourseIds = studentCourseIds(userId);
+    if (isStaffAdmin) {
+      const allCourseIds = db.courses.map((c) => c.id);
+      targetCourseIds = [...new Set([...targetCourseIds, ...allCourseIds])];
+    }
+
+    for (const cid of targetCourseIds) {
       const course = db.courses.find((c) => c.id === cid);
       if (!course) continue;
       const themes = db.themes
@@ -4703,16 +5064,32 @@ app.get(
           : false;
         const granted = grants.has(th.id);
         const open = chain || granted;
-        if (!open || granted) {
-          items.push({
-            id: th.id,
-            title: th.title,
-            order_index: th.order_index,
-            locked: !open,
-            granted,
-          });
+
+        const rawMaterials = db.materials.filter((m) => m.theme_id === th.id);
+        const requiredMaterials = rawMaterials.filter((m) => !m.no_report);
+        let reportsDone = true;
+        if (requiredMaterials.length > 0) {
+          const studentReports = db.chatMessages.filter((m) => m.theme_id === th.id && m.user_id === userId && m.is_report);
+          const acceptedReports = requiredMaterials.filter((m) => {
+            const rep = studentReports.find((r) => r.material_id === m.id) || (requiredMaterials.length === 1 ? studentReports[0] : null);
+            return rep && rep.report_status === "accepted";
+          }).length;
+          reportsDone = acceptedReports >= requiredMaterials.length;
         }
-        chain = (chain && (!test || passed)) || granted;
+        const themeCompleted = (test ? passed : true) && (requiredMaterials.length > 0 ? reportsDone : true);
+
+        // Показываем ВСЕ темы курса, чтобы администратор и преподаватели видели полный список
+        items.push({
+          id: th.id,
+          title: th.title,
+          order_index: th.order_index,
+          locked: !open,
+          granted,
+          passed: test ? passed : themeCompleted,
+          naturally_unlocked: chain && !granted,
+        });
+
+        chain = chain && themeCompleted;
       }
       if (items.length) out.push({ course_id: cid, course_title: course.title, themes: items });
     }
@@ -4721,9 +5098,14 @@ app.get(
 );
 
 app.post(
-  ["/api/admin/students/:user_id/unlock-theme", "/api/teacher/students/:user_id/unlock-theme"],
+  [
+    "/api/admin/students/:user_id/unlock-theme",
+    "/api/teacher/students/:user_id/unlock-theme",
+    "/api/manager/students/:user_id/unlock-theme",
+    "/api/curator/students/:user_id/unlock-theme",
+  ],
   authMiddleware,
-  requireRole("admin", "teacher"),
+  requireRole("admin", "teacher", "manager", "curator"),
   (req: AuthRequest, res: Response) => {
     const userId = parseInt(req.params.user_id, 10);
     const themeId = parseInt(req.body?.theme_id, 10);
@@ -4731,7 +5113,17 @@ app.post(
     const th = db.themes.find((x) => x.id === themeId);
     if (!u || !th) return res.status(404).json({ detail: "Не найдено" });
     if (!inStudentCourse(userId, th.course_id)) {
-      return res.status(400).json({ detail: "Ученик не состоит в курсе этой темы" });
+      if (req.user!.role === "admin" || req.user!.role === "manager") {
+        const grp = db.groups.find((g) => g.course_id === th.course_id);
+        if (grp && !db.groupStudents.some((gs) => gs.user_id === userId && gs.group_id === grp.id)) {
+          db.groupStudents.push({
+            group_id: grp.id,
+            user_id: userId,
+          });
+        }
+      } else {
+        return res.status(400).json({ detail: "Ученик не состоит в курсе этой темы" });
+      }
     }
     if (!db.themeUnlocks.find((gu) => gu.user_id === userId && gu.theme_id === themeId)) {
       db.themeUnlocks.push({
@@ -4748,9 +5140,14 @@ app.post(
 );
 
 app.delete(
-  ["/api/admin/students/:user_id/unlock-theme", "/api/teacher/students/:user_id/unlock-theme"],
+  [
+    "/api/admin/students/:user_id/unlock-theme",
+    "/api/teacher/students/:user_id/unlock-theme",
+    "/api/manager/students/:user_id/unlock-theme",
+    "/api/curator/students/:user_id/unlock-theme",
+  ],
   authMiddleware,
-  requireRole("admin", "teacher"),
+  requireRole("admin", "teacher", "manager", "curator"),
   (req: AuthRequest, res: Response) => {
     const userId = parseInt(req.params.user_id, 10);
     const themeId = parseInt(req.query?.theme_id as string, 10);
@@ -4770,24 +5167,55 @@ app.get("/api/student/test/:test_id", authMiddleware, requireRole("student"), re
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
-  if (test.max_attempts > 0) {
-    const used = db.attempts.filter((a) => a.user_id === req.user!.id && a.test_id === test.id).length;
-    if (used >= test.max_attempts) {
-      return res.status(400).json({ detail: "Лимит попыток исчерпан" });
-    }
+  const maxAtt = Number(test.max_attempts) || 0;
+  const studentAttempts = db.attempts
+    .filter((a) => a.user_id === req.user!.id && a.test_id === test.id)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const used = studentAttempts.length;
+  if (maxAtt > 0 && used >= maxAtt) {
+    const lastAttempt = studentAttempts[0] || null;
+    return res.json({
+      test: {
+        id: test.id,
+        title: test.title,
+        passing_score: test.passing_score,
+        max_attempts: maxAtt,
+        attempts_used: used,
+        attempts_left: 0,
+        attempts_exhausted: true,
+      },
+      last_attempt: lastAttempt,
+      questions: [],
+    });
   }
 
   const questions = db.questions
     .filter((q) => q.test_id === test.id)
     .map((q) => {
-      const answers = db.answers
-        .filter((a) => a.question_id === q.id)
-        .map((a) => ({ id: a.id, text: a.text }));
-      return { id: q.id, text: q.text, answers };
+      const isTextQ = q.question_type === "text";
+      const answers = isTextQ
+        ? []
+        : db.answers
+            .filter((a) => a.question_id === q.id)
+            .map((a) => ({ id: a.id, text: a.text }));
+      return {
+        id: q.id,
+        text: q.text,
+        question_type: q.question_type || "choice",
+        sample_answer: q.sample_answer || "",
+        answers,
+      };
     });
 
   res.json({
-    test: { id: test.id, title: test.title, passing_score: test.passing_score },
+    test: {
+      id: test.id,
+      title: test.title,
+      passing_score: test.passing_score,
+      max_attempts: maxAtt,
+      attempts_used: used,
+      attempts_left: maxAtt > 0 ? Math.max(0, maxAtt - used) : null,
+    },
     questions,
   });
 });
@@ -4802,24 +5230,38 @@ app.post("/api/student/test/:test_id/submit", authMiddleware, requireRole("stude
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
 
-  if (test.max_attempts > 0) {
-    const used = db.attempts.filter((a) => a.user_id === req.user!.id && a.test_id === test.id).length;
-    if (used >= test.max_attempts) {
-      return res.status(400).json({ detail: "Лимит попыток исчерпан" });
-    }
+  const maxAtt = Number(test.max_attempts) || 0;
+  const used = db.attempts.filter((a) => a.user_id === req.user!.id && a.test_id === test.id).length;
+  if (maxAtt > 0 && used >= maxAtt) {
+    return res.status(400).json({ detail: "Лимит попыток исчерпан. Повторная сдача теста недоступна." });
   }
 
   const userAnswers: Record<string, number> = req.body.answers || {};
+  const userTextAnswers: Record<string, string> = req.body.text_answers || {};
   const questions = db.questions.filter((q) => q.test_id === test.id);
   let correct = 0;
-  const aaRows: { qid: number; chosen: number | null; is_correct: boolean }[] = [];
+  const aaRows: { qid: number; chosen: number | null; text_answer: string | null; is_correct: boolean }[] = [];
 
   for (const q of questions) {
-    const rights = db.answers.filter((a) => a.question_id === q.id && a.is_correct);
-    const chosen = userAnswers[String(q.id)] || userAnswers[q.id as any] || null;
-    const isCorrect = !!(chosen && rights.some((r) => r.id === chosen));
-    if (isCorrect) correct++;
-    aaRows.push({ qid: q.id, chosen, is_correct: isCorrect });
+    if (q.question_type === "text") {
+      const studentText = String(userTextAnswers[String(q.id)] || userTextAnswers[q.id as any] || "").trim();
+      let isCorrect = false;
+      if (q.sample_answer && q.sample_answer.trim()) {
+        const sampleLower = q.sample_answer.toLowerCase().trim();
+        const studentLower = studentText.toLowerCase();
+        isCorrect = studentLower.includes(sampleLower) || sampleLower.includes(studentLower);
+      } else {
+        isCorrect = studentText.length > 0;
+      }
+      if (isCorrect) correct++;
+      aaRows.push({ qid: q.id, chosen: null, text_answer: studentText, is_correct: isCorrect });
+    } else {
+      const rights = db.answers.filter((a) => a.question_id === q.id && a.is_correct);
+      const chosen = userAnswers[String(q.id)] || userAnswers[q.id as any] || null;
+      const isCorrect = !!(chosen && rights.some((r) => r.id === chosen));
+      if (isCorrect) correct++;
+      aaRows.push({ qid: q.id, chosen, text_answer: null, is_correct: isCorrect });
+    }
   }
 
   const total = questions.length || 1;
@@ -4842,20 +5284,30 @@ app.post("/api/student/test/:test_id/submit", authMiddleware, requireRole("stude
       attempt_id: attemptId,
       question_id: item.qid,
       answer_id: item.chosen,
+      text_answer: item.text_answer,
       is_correct: item.is_correct,
     });
   }
+  db.save();
 
-  // Notify curators
-  const gids = db.groupStudents.filter((gs) => gs.user_id === req.user!.id).map((gs) => gs.group_id);
-  const teacherIds = db.groupTeachers.filter((gt) => gids.includes(gt.group_id)).map((gt) => gt.teacher_id);
-  notifyUsers(
-    teacherIds,
-    "attempt",
-    `${req.user!.name}: тест «${test.title}» — ${score}%`,
-    passed ? "сдан" : "не сдан",
-    "/teacher?tab=attempts"
-  );
+  // Notify curators & teachers if enabled
+  if (db.settings.notify_curators_on_test !== "false") {
+    const gids = db.groupStudents.filter((gs) => gs.user_id === req.user!.id).map((gs) => gs.group_id);
+    const teacherIds = db.groupTeachers.filter((gt) => gids.includes(gt.group_id)).map((gt) => gt.teacher_id);
+    if (theme.curator_id && !teacherIds.includes(theme.curator_id)) {
+      teacherIds.push(theme.curator_id);
+    }
+    notifyUsers(
+      teacherIds,
+      "attempt",
+      `${req.user!.name}: тест «${test.title}» — ${score}%`,
+      passed ? "сдан" : "не сдан",
+      "/teacher?tab=attempts"
+    );
+  }
+
+  const newUsed = used + 1;
+  const attemptsLeft = maxAtt > 0 ? Math.max(0, maxAtt - newUsed) : null;
 
   res.json({
     attempt_id: attemptId,
@@ -4864,10 +5316,17 @@ app.post("/api/student/test/:test_id/submit", authMiddleware, requireRole("stude
     correct,
     total,
     passing_score: test.passing_score,
+    max_attempts: maxAtt,
+    attempts_used: newUsed,
+    attempts_left: attemptsLeft,
   });
 });
 
 app.get("/api/student/attempts/:attempt_id/details", authMiddleware, requireRole("student"), (req: AuthRequest, res: Response) => {
+  if (db.settings.allow_review_answers === "false") {
+    return res.status(403).json({ detail: "Просмотр разбора ответов отключён администратором" });
+  }
+
   const attemptId = parseInt(req.params.attempt_id, 10);
   const a = db.attempts.find((x) => x.id === attemptId && x.user_id === req.user!.id);
   if (!a) return res.status(404).json({ detail: "Попытка не найдена" });
@@ -4880,21 +5339,36 @@ app.get("/api/student/attempts/:attempt_id/details", authMiddleware, requireRole
   );
 
   const out = questions.map((q) => {
-    const answers = db.answers.filter((ans) => ans.question_id === q.id);
-    const right = answers.find((ans) => ans.is_correct);
     const aa = aaMap.get(q.id);
-    const chosenId = aa ? aa.answer_id : null;
     const isCorrect = aa ? aa.is_correct : false;
+    const isTextQ = q.question_type === "text";
+
+    if (isTextQ) {
+      return {
+        question: q.text,
+        question_type: "text",
+        text_answer: aa?.text_answer || "",
+        is_correct: isCorrect,
+      };
+    }
+
+    const answers = db.answers.filter((ans) => ans.question_id === q.id);
+    const chosenId = aa ? aa.answer_id : null;
+    const right = answers.find((ans) => ans.is_correct);
+
+    // Point 3: If student answered WRONG, do NOT leak the right answer!
+    // Only reveal is_correct if the answer is correct!
     return {
       question: q.text,
+      question_type: "choice",
       answers: answers.map((ans) => ({
         id: ans.id,
         text: ans.text,
-        is_correct: ans.is_correct,
+        is_correct: isCorrect ? ans.is_correct : false,
         chosen: chosenId === ans.id,
       })),
       chosen_answer_id: chosenId,
-      right_answer_id: right ? right.id : null,
+      right_answer_id: isCorrect ? (right ? right.id : null) : null,
       is_correct: isCorrect,
     };
   });
@@ -5045,6 +5519,9 @@ app.post("/api/student/themes/:theme_id/chat", authMiddleware, requireRole("stud
   if (typeof (db as any).save === "function") (db as any).save();
 
   const teacherIds = db.groupTeachers.filter((gt) => gt.group_id === gid).map((gt) => gt.teacher_id);
+  if (theme.curator_id && !teacherIds.includes(theme.curator_id)) {
+    teacherIds.push(theme.curator_id);
+  }
   const adminIds = db.users.filter((u) => hasRole(u, "admin") || hasRole(u, "manager")).map((u) => u.id);
 
   if (isReport) {
@@ -5208,6 +5685,13 @@ app.get("/api/staff/groups", authMiddleware, requireRole("admin", "manager"), (_
     return { id: g.id, name: g.name, course_id: g.course_id, course_title: c ? c.title : "" };
   });
   res.json(out);
+});
+
+app.get("/api/staff/curators", authMiddleware, requireRole("admin", "manager"), (_req, res) => {
+  const curators = db.users
+    .filter((u) => u.role === "curator" || u.role === "teacher" || isDean(u) || isCurator(u))
+    .map((u) => ({ id: u.id, name: u.name, username: u.username, role: u.role }));
+  res.json(curators);
 });
 
 app.get(["/api/staff/announcements", "/api/admin/announcements"], authMiddleware, requireRole("admin", "manager"), (req: AuthRequest, res: Response) => {

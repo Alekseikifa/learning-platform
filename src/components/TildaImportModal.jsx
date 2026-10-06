@@ -3,7 +3,8 @@ import { api, getUser } from "../api";
 
 export const TILDA_ROLE_CONFIG = {
   student: { value: "student", label: "Ученик", icon: "👤", color: "#475569", bg: "#f1f5f9" },
-  teacher: { value: "teacher", label: "Куратор", icon: "🎓", color: "#0891b2", bg: "#ecfeff" },
+  curator: { value: "curator", label: "Куратор", icon: "🎓", color: "#0891b2", bg: "#ecfeff" },
+  teacher: { value: "teacher", label: "Декан", icon: "🏛️", color: "#2563eb", bg: "#eff6ff" },
   manager: { value: "manager", label: "Методист", icon: "📋", color: "#7c3aed", bg: "#f5f3ff" },
   admin:   { value: "admin",   label: "Администратор", icon: "👑", color: "#b45309", bg: "#fffbeb", border: "#fde68a" },
 };
@@ -131,13 +132,15 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
       let targetGroupId = "";
       let targetRole = "student";
 
-      // Определение роли с поддержкой всех 4 ролей
+      // Определение роли
       if (lower.includes("админ") || lower.includes("admin")) {
         // Назначать администратора может только главный администратор
-        targetRole = isCurrentUserRoot ? "admin" : "teacher";
+        targetRole = isCurrentUserRoot ? "admin" : "curator";
       } else if (lower.includes("методист") || lower.includes("метод") || lower.includes("manager")) {
         targetRole = "manager";
-      } else if (lower.includes("команда мку") || lower.includes("преподавател") || lower.includes("учител") || lower.includes("куратор") || lower.includes("teacher")) {
+      } else if (lower.includes("куратор") || lower.includes("curator")) {
+        targetRole = "curator";
+      } else if (lower.includes("декан") || lower.includes("dean") || lower.includes("команда мку") || lower.includes("преподавател") || lower.includes("учител") || lower.includes("teacher")) {
         targetRole = "teacher";
       }
 
@@ -482,7 +485,8 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                         style={{ padding: "6px 12px", fontSize: 13, borderRadius: 6, fontWeight: 500 }}
                       >
                         <option value="student">👤 Ученик</option>
-                        <option value="teacher">🎓 Куратор</option>
+                        <option value="curator">🎓 Куратор</option>
+                        <option value="teacher">🏛️ Декан</option>
                         <option value="manager">📋 Методист</option>
                         {isCurrentUserRoot ? (
                           <option value="admin">👑 Администратор</option>
@@ -539,7 +543,8 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
                               style={{ padding: "4px 8px", fontSize: 12, borderRadius: 6 }}
                             >
                               <option value="student">👤 Ученик</option>
-                              <option value="teacher">🎓 Куратор</option>
+                              <option value="curator">🎓 Куратор</option>
+                              <option value="teacher">🏛️ Декан</option>
                               <option value="manager">📋 Методист</option>
                               {isCurrentUserRoot ? (
                                 <option value="admin">👑 Администратор</option>

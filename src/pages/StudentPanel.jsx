@@ -734,7 +734,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                                   className="btn ghost"
                                   onClick={() => setChatFor({ test: th.test })}
                                 >
-                                  Посмотреть тест / пройти повторно
+                                  {th.test.attempts_left === 0 ? "Посмотреть результаты теста" : "Посмотреть тест / пройти повторно"}
                                 </button>
                               </div>
                             ) : (
@@ -749,13 +749,12 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                                 </div>
                                 <button
                                   type="button"
-                                  className="btn primary"
-                                  disabled={th.test.attempts_left === 0}
+                                  className={th.test.attempts_left === 0 ? "btn ghost" : "btn primary"}
                                   onClick={() => setChatFor({ test: th.test })}
                                   style={{ fontSize: 14, padding: "8px 20px" }}
                                 >
                                   {th.test.attempts_left === 0
-                                    ? "Лимит попыток исчерпан"
+                                    ? "🔒 Лимит попыток исчерпан (посмотреть результаты)"
                                     : "✍️ Начать проверочный тест"}
                                 </button>
                               </div>
@@ -779,7 +778,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
       })}
 
       {chatFor?.test && (
-        <TestModal testId={chatFor.test.id} onClose={() => setChatFor(null)}
+        <TestModal testId={chatFor.test.id} onClose={() => { setChatFor(null); load(); }}
                    onDone={() => { setChatFor(null); load(); }} />
       )}
       {chatFor?.chatThemeId && (
@@ -1183,6 +1182,64 @@ function TestModal({ testId, onClose, onDone }) {
     );
   }
 
+  // Если лимит попыток исчерпан
+  if (data.test?.attempts_exhausted || (data.test?.max_attempts > 0 && data.test?.attempts_used >= data.test?.max_attempts)) {
+    const last = data.last_attempt;
+    return (
+      <Modal onClose={onClose} innerStyle={{ maxWidth: 540 }}>
+        <div className="spread">
+          <div>
+            <h3 style={{ margin: 0, color: "var(--navy)" }}>{data.test.title}</h3>
+            <div className="muted small" style={{ marginTop: 2 }}>
+              Проходной балл: {data.test.passing_score}% · Макс. попыток: {data.test.max_attempts}
+            </div>
+          </div>
+          <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
+        </div>
+
+        <div style={{ margin: "20px 0", textAlign: "center" }}>
+          <div
+            className={"result " + (last?.passed ? "ok" : "no")}
+            style={{ padding: 20, borderRadius: 12 }}
+          >
+            <div style={{ fontSize: 32, marginBottom: 8 }}>{last?.passed ? "🎉" : "🔒"}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+              {last?.passed ? "Тест успешно сдан!" : "Лимит попыток исчерпан"}
+            </div>
+            {last && (
+              <div style={{ marginTop: 6, fontSize: 14 }}>
+                Ваш результат: <b>{last.score}%</b> ({last.passed ? "зачёт" : "не зачёт"}).
+              </div>
+            )}
+            <div className="muted small" style={{ marginTop: 8 }}>
+              Использовано попыток: <b>{data.test.attempts_used}</b> из <b>{data.test.max_attempts}</b>. Повторная сдача недоступна.
+            </div>
+          </div>
+
+          <div className="row" style={{ marginTop: 16, justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+            {last && (
+              <button
+                className="btn primary"
+                onClick={async () => {
+                  try {
+                    const d = await api(`/api/student/attempts/${last.id}/details`);
+                    setDetails(d);
+                  } catch (e) {
+                    if (window.appToast) window.appToast.error(e.message);
+                  }
+                }}
+              >
+                🔍 Посмотреть свои ответы
+              </button>
+            )}
+            <button className="btn ghost" onClick={onClose}>Закрыть</button>
+          </div>
+        </div>
+        {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
+      </Modal>
+    );
+  }
+
   const answeredCount = Object.keys(answers).length;
   const totalCount = data.questions.length;
   const progressPct = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
@@ -1193,7 +1250,13 @@ function TestModal({ testId, onClose, onDone }) {
   };
 
   const submit = async () => {
-    const missing = data.questions.filter((q) => !answers[q.id]);
+    const missing = data.questions.filter((q) => {
+      const a = answers[q.id];
+      if (q.question_type === "text") {
+        return !a || !String(a).trim();
+      }
+      return !a;
+    });
     if (missing.length > 0) {
       const first = missing[0];
       const idx = data.questions.indexOf(first) + 1;
@@ -1205,8 +1268,18 @@ function TestModal({ testId, onClose, onDone }) {
     }
     setBusy(true);
     try {
+      const choiceAnswers = {};
+      const textAnswers = {};
+      for (const q of data.questions) {
+        if (q.question_type === "text") {
+          textAnswers[q.id] = String(answers[q.id] || "").trim();
+        } else {
+          choiceAnswers[q.id] = answers[q.id];
+        }
+      }
       const r = await api(`/api/student/test/${testId}/submit`, {
-        method: "POST", body: JSON.stringify({ answers }),
+        method: "POST",
+        body: JSON.stringify({ answers: choiceAnswers, text_answers: textAnswers }),
       });
       setResult(r);
       if (r.passed && typeof window !== "undefined" && window.appToast) {
@@ -1224,6 +1297,7 @@ function TestModal({ testId, onClose, onDone }) {
     setResult(null);
     setAnswers({});
     setDetails(null);
+    api("/api/student/test/" + testId).then(setData).catch(() => {});
   };
 
   const viewDetails = async () => {
@@ -1240,7 +1314,10 @@ function TestModal({ testId, onClose, onDone }) {
       <div className="spread">
         <div>
           <h3 style={{ margin: 0 }}>{data.test.title}</h3>
-          <div className="muted small" style={{ marginTop: 2 }}>Проходной балл: {data.test.passing_score}%</div>
+          <div className="muted small" style={{ marginTop: 2 }}>
+            Проходной балл: {data.test.passing_score}%
+            {data.test.max_attempts > 0 && ` · Макс. попыток: ${data.test.max_attempts}`}
+          </div>
         </div>
         <button className="btn ghost" onClick={onClose} aria-label="Закрыть">✕</button>
       </div>
@@ -1282,31 +1359,59 @@ function TestModal({ testId, onClose, onDone }) {
 
       {!result && data.questions.map((q, i) => (
         <div className="q" id={"q-card-" + q.id} key={q.id} style={{ scrollMarginTop: 140 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-            <b style={{ color: "var(--navy)" }}>{i + 1}. {q.text}</b>
-            {answers[q.id] ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <b style={{ color: "var(--navy)" }}>{i + 1}. {q.text}</b>
+              {q.question_type === "text" && (
+                <span className="badge" style={{ fontSize: 11, background: "#eff6ff", color: "#1e40af" }}>
+                  ✍️ Развёрнутый ответ
+                </span>
+              )}
+            </div>
+            {answers[q.id] && String(answers[q.id]).trim() ? (
               <span className="tag ok" style={{ fontSize: 11, padding: "2px 8px" }}>Отвечен</span>
             ) : (
               <span className="muted small" style={{ fontSize: 11 }}>Ожидает ответа</span>
             )}
           </div>
-          {q.answers.map(a => {
-            const isSelected = answers[q.id] === a.id;
-            return (
-              <label
-                className={"test-answer-label " + (isSelected ? "selected" : "")}
-                key={a.id}
-              >
-                <input
-                  type="radio"
-                  name={"q" + q.id}
-                  checked={isSelected}
-                  onChange={() => setAnswers({ ...answers, [q.id]: a.id })}
-                />
-                <span style={{ fontSize: 14 }}>{a.text}</span>
-              </label>
-            );
-          })}
+
+          {q.question_type === "text" ? (
+            <div style={{ marginTop: 8 }}>
+              <textarea
+                rows={3}
+                value={answers[q.id] || ""}
+                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                placeholder="Введите ваш письменный ответ на вопрос..."
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  fontFamily: "inherit",
+                  fontSize: 14,
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+          ) : (
+            (q.answers || []).map(a => {
+              const isSelected = answers[q.id] === a.id;
+              return (
+                <label
+                  className={"test-answer-label " + (isSelected ? "selected" : "")}
+                  key={a.id}
+                >
+                  <input
+                    type="radio"
+                    name={"q" + q.id}
+                    checked={isSelected}
+                    onChange={() => setAnswers({ ...answers, [q.id]: a.id })}
+                  />
+                  <span style={{ fontSize: 14 }}>{a.text}</span>
+                </label>
+              );
+            })
+          )}
         </div>
       ))}
 
@@ -1326,13 +1431,38 @@ function TestModal({ testId, onClose, onDone }) {
             <div className="muted small" style={{ marginTop: 4 }}>
               {result.passed
                 ? "Вы можете перейти к следующей теме курса."
-                : `Для зачета требуется минимум ${result.passing_score}%. Повторите материал и попробуйте снова.`}
+                : `Для зачета требуется минимум ${result.passing_score}%.`}
             </div>
+            {result.max_attempts > 0 && (
+              <div className="muted small" style={{ marginTop: 6 }}>
+                Использовано попыток: <b>{result.attempts_used}</b> из <b>{result.max_attempts}</b>
+                {result.attempts_left !== null && (
+                  <span> · Осталось: <b>{result.attempts_left}</b></span>
+                )}
+              </div>
+            )}
           </div>
-          <div className="row" style={{ marginTop: 12, justifyContent: "center", gap: 10 }}>
+          <div className="row" style={{ marginTop: 12, justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
             <button className="btn" onClick={viewDetails}>🔍 Посмотреть свои ответы</button>
             {!result.passed && (
-              <button className="btn primary" onClick={handleRetry}>🔄 Попробовать снова</button>
+              result.attempts_left === 0 || (result.max_attempts > 0 && result.attempts_used >= result.max_attempts) ? (
+                <div
+                  style={{
+                    color: "var(--danger)",
+                    fontWeight: 600,
+                    padding: "6px 14px",
+                    background: "#fee2e2",
+                    borderRadius: 6,
+                    fontSize: 13,
+                  }}
+                >
+                  Лимит попыток ({result.max_attempts}) исчерпан. Повторная сдача недоступна.
+                </div>
+              ) : (
+                <button className="btn primary" onClick={handleRetry}>
+                  🔄 Попробовать снова {result.attempts_left !== null && `(осталось: ${result.attempts_left})`}
+                </button>
+              )
             )}
           </div>
         </div>

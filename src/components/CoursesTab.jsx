@@ -9,6 +9,21 @@ import { getIcon } from "../lib/materialIcons";
 
 export default function CoursesTab({ courses, groups = [], reload, apiPrefix = "/api/admin" }) {
   const [form, setForm] = useState({ title: "", description: "", order_index: courses.length + 1 });
+  const [curators, setCurators] = useState([]);
+
+  useEffect(() => {
+    api("/api/staff/curators")
+      .then((data) => setCurators(Array.isArray(data) ? data : []))
+      .catch(() => {
+        api("/api/admin/users")
+          .then((users) => {
+            if (Array.isArray(users)) {
+              setCurators(users.filter((u) => u.role === "curator" || u.role === "teacher" || (u.roles || []).includes("curator")));
+            }
+          })
+          .catch(() => {});
+      });
+  }, []);
 
   const add = async (e) => {
     e.preventDefault();
@@ -200,7 +215,7 @@ function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSet
           </button>
         }
       >
-        <ThemesList course={course} reload={reload} apiPrefix={apiPrefix} />
+        <ThemesList course={course} reload={reload} apiPrefix={apiPrefix} curators={curators} />
       </Collapsible>
       <Collapsible
         title="Дополнительные материалы курса"
@@ -617,16 +632,21 @@ function ExtraMaterialRow({ material, currentCourseId, onDelete, onUnlink, onUpd
   );
 }
 
-function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
-  const [form, setForm] = useState({ title: "", order_index: course.themes.length + 1 });
+function ThemesList({ course, reload, apiPrefix = "/api/admin", curators = [] }) {
+  const [form, setForm] = useState({ title: "", order_index: course.themes.length + 1, curator_id: "" });
 
   const add = async (e) => {
     e.preventDefault();
     await api(`${apiPrefix}/themes`, {
       method: "POST",
-      body: JSON.stringify({ course_id: course.id, title: form.title, order_index: +form.order_index }),
+      body: JSON.stringify({
+        course_id: course.id,
+        title: form.title,
+        order_index: +form.order_index,
+        curator_id: form.curator_id ? Number(form.curator_id) : null,
+      }),
     });
-    setForm({ title: "", order_index: course.themes.length + 2 });
+    setForm({ title: "", order_index: course.themes.length + 2, curator_id: "" });
     reload();
   };
   const del = async (id) => {
@@ -647,6 +667,7 @@ function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
             key={t.id}
             theme={t}
             course={course}
+            curators={curators}
             onDelete={() => del(t.id)}
             onUpdate={upd}
             reload={reload}
@@ -655,27 +676,43 @@ function ThemesList({ course, reload, apiPrefix = "/api/admin" }) {
         ))}
       </div>
 
-      <form className="row" onSubmit={add} style={{ marginTop: 10, gap: 8 }}>
+      <form className="row" onSubmit={add} style={{ marginTop: 10, gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input placeholder="Либо создать новую тему вручную..." value={form.title}
-               onChange={e => setForm({ ...form, title: e.target.value })} required style={{ flex: 1 }} />
+               onChange={e => setForm({ ...form, title: e.target.value })} required style={{ flex: 1, minWidth: 200 }} />
         <input type="number" placeholder="Порядок" value={form.order_index}
                onChange={e => setForm({ ...form, order_index: e.target.value })} style={{ width: 85 }} />
+        <select
+          value={form.curator_id}
+          onChange={e => setForm({ ...form, curator_id: e.target.value })}
+          style={{ padding: "6px 10px", fontSize: 13 }}
+        >
+          <option value="">Без куратора</option>
+          {curators.map(c => (
+            <option key={c.id} value={c.id}>
+              Куратор: {c.name}
+            </option>
+          ))}
+        </select>
         <button className="btn ghost">➕ Создать тему</button>
       </form>
     </div>
   );
 }
 
-function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api/admin" }) {
+function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api/admin", curators = [] }) {
   const [edit, setEdit] = useState(false);
   const [title, setTitle] = useState(theme.title);
   const [order, setOrder] = useState(theme.order_index);
+  const [curatorId, setCuratorId] = useState(theme.curator_id || "");
   const [expanded, setExpanded] = useState(false);
   const [materials, setMaterials] = useState([]);
   const [loadingMats, setLoadingMats] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
   const [previewMaterial, setPreviewMaterial] = useState(null);
+
+  const activeCurator = curators.find(c => String(c.id) === String(theme.curator_id))
+    || (theme.curator_name ? { name: theme.curator_name } : null);
 
   const loadMats = async () => {
     setLoadingMats(true);
@@ -704,15 +741,39 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
     <div className="card inner-card" style={{ padding: "10px 14px", margin: 0, border: "1px solid var(--border)" }}>
       <div className="spread" style={{ alignItems: "center" }}>
         {edit ? (
-          <div className="row" style={{ flex: 1, gap: 8 }}>
-            <input value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1 }} />
-            <input type="number" value={order} onChange={e => setOrder(e.target.value)} style={{ width: 80 }} />
-            <button className="btn primary small" onClick={() => { onUpdate(theme.id, { title, order_index: +order }); setEdit(false); }}>ОК</button>
+          <div className="row" style={{ flex: 1, gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+            <input type="number" value={order} onChange={e => setOrder(e.target.value)} style={{ width: 75 }} />
+            <select
+              value={curatorId}
+              onChange={e => setCuratorId(e.target.value)}
+              style={{ padding: "5px 8px", fontSize: 12 }}
+            >
+              <option value="">Без куратора</option>
+              {curators.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn primary small"
+              onClick={() => {
+                onUpdate(theme.id, {
+                  title,
+                  order_index: +order,
+                  curator_id: curatorId ? Number(curatorId) : null,
+                });
+                setEdit(false);
+              }}
+            >
+              ОК
+            </button>
             <button className="btn ghost small" onClick={() => setEdit(false)}>Отмена</button>
           </div>
         ) : (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="btn ghost small"
@@ -725,6 +786,22 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
               <b style={{ fontSize: 15, color: "var(--navy)" }}>
                 Тема {theme.order_index}. {theme.title}
               </b>
+              {activeCurator && (
+                <span
+                  className="badge"
+                  style={{
+                    fontSize: 11,
+                    background: "#f0fdf4",
+                    color: "#166534",
+                    border: "1px solid #bbf7d0",
+                    padding: "2px 8px",
+                    fontWeight: 500,
+                  }}
+                  title="Куратор, проверяющий отчёты и тесты по данной теме"
+                >
+                  👤 {activeCurator.name}
+                </span>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <button

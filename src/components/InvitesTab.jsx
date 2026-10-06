@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { api, getUser } from "../api";
 
-const ROLE_LABELS = { admin: "Администратор", student: "Ученик", teacher: "Куратор", manager: "Методист" };
+const ROLE_LABELS = {
+  admin: "Администратор",
+  student: "Ученик",
+  teacher: "Декан",
+  dean: "Декан",
+  curator: "Куратор",
+  manager: "Методист",
+};
 const roleLabel = (r) => ROLE_LABELS[r] || r;
 
 export default function InvitesTab({ allowManagerRole = true }) {
@@ -20,8 +27,8 @@ export default function InvitesTab({ allowManagerRole = true }) {
   const [loading, setLoading] = useState(true);
 
   const roleOptions = allowManagerRole
-    ? (isCurrentUserRoot ? ["student", "teacher", "manager", "admin"] : ["student", "teacher", "manager"])
-    : ["student", "teacher"];
+    ? (isCurrentUserRoot ? ["student", "curator", "teacher", "manager", "admin"] : ["student", "curator", "teacher", "manager"])
+    : ["student", "curator", "teacher"];
 
   const load = () =>
     api("/api/admin/invites")
@@ -35,7 +42,7 @@ export default function InvitesTab({ allowManagerRole = true }) {
 
   const activeRoles = [form.role, ...extra];
   const showStudentGroups = activeRoles.includes("student");
-  const showCuratorGroups = activeRoles.includes("teacher");
+  const showCuratorGroups = activeRoles.includes("teacher") || activeRoles.includes("curator");
 
   const toggleExtra = (r) => {
     setExtra(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
@@ -128,7 +135,8 @@ export default function InvitesTab({ allowManagerRole = true }) {
                    style={{ flex: 1, minWidth: 160 }} />
             <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
               <option value="student">Ученик</option>
-              <option value="teacher">Куратор</option>
+              <option value="curator">Куратор</option>
+              <option value="teacher">Декан</option>
               {allowManagerRole && <option value="manager">Методист</option>}
               {allowManagerRole && isCurrentUserRoot && <option value="admin">🛡️ Администратор</option>}
             </select>

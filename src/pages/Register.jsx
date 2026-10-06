@@ -7,7 +7,8 @@ const APP_NAME = "МКУ — Международные Курсы Ученич�
 const ROLE_LABELS = {
   admin: "Администратор",
   manager: "Методист",
-  teacher: "Куратор",
+  curator: "Куратор",
+  teacher: "Декан",
   student: "Ученик",
 };
 

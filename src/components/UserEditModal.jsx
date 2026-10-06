@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { api, getUser } from "../api";
 
-const ROLE_LABELS = { admin: "Администратор", student: "Ученик", teacher: "Куратор", manager: "Методист" };
+const ROLE_LABELS = {
+  admin: "Администратор",
+  student: "Ученик",
+  teacher: "Декан",
+  dean: "Декан",
+  curator: "Куратор",
+  manager: "Методист",
+};
 
 function fmtDateTime(iso) {
   if (!iso) return "—";
@@ -57,11 +64,11 @@ export default function UserEditModal({ user, variant = "admin", onClose, onSave
   }, []);
 
   const roleOptions = isAdminVariant
-    ? (isCurrentUserRoot ? ["student", "teacher", "manager", "admin"] : ["student", "teacher", "manager"])
-    : ["student", "teacher"];
+    ? (isCurrentUserRoot ? ["student", "curator", "teacher", "manager", "admin"] : ["student", "curator", "teacher", "manager"])
+    : ["student", "curator", "teacher"];
   const activeRoles = [role, ...extra];
   const showStudentBlock = groupsEditable && activeRoles.includes("student");
-  const showCuratorBlock = groupsEditable && activeRoles.includes("teacher");
+  const showCuratorBlock = groupsEditable && (activeRoles.includes("teacher") || activeRoles.includes("curator"));
 
   const toggleExtra = (r) => {
     setExtra(extra.includes(r) ? extra.filter(x => x !== r) : [...extra, r]);

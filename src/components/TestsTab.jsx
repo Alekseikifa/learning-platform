@@ -98,8 +98,18 @@ function CreateTestForm({ themeId, onCreate }) {
 function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState({
-    title: test.title, passing_score: test.passing_score, max_attempts: test.max_attempts,
+    title: test.title,
+    passing_score: test.passing_score,
+    max_attempts: Number(test.max_attempts) || 0,
   });
+
+  useEffect(() => {
+    setForm({
+      title: test.title,
+      passing_score: test.passing_score,
+      max_attempts: Number(test.max_attempts) || 0,
+    });
+  }, [test]);
 
   const fileRef = useRef(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -145,7 +155,9 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
           body: JSON.stringify({
             test_id: test.id,
             text: q.text,
-            answers: q.answers.map((a) => ({ text: a.text, is_correct: a.is_correct })),
+            question_type: q.question_type || "choice",
+            sample_answer: q.sample_answer || "",
+            answers: (q.answers || []).map((a) => ({ text: a.text, is_correct: a.is_correct })),
           }),
         });
         ok += 1;
@@ -262,15 +274,28 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
                       style={{ marginTop: 4 }}
                     />
                     <div style={{ flex: 1 }}>
-                      <b>{i + 1}. {q.text || "(пустой вопрос)"}</b>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <b>{i + 1}. {q.text || "(пустой вопрос)"}</b>
+                        {q.question_type === "text" && (
+                          <span className="badge" style={{ background: "#eff6ff", color: "#1e40af", fontSize: 11 }}>
+                            ✍️ Письменный
+                          </span>
+                        )}
+                      </div>
                       {!q.valid && <div className="small" style={{ color: "#b91c1c" }}>⚠ {q.issue}</div>}
-                      <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
-                        {q.answers.map((a, j) => (
-                          <li key={j} style={{ color: a.is_correct ? "#15803d" : "inherit", fontWeight: a.is_correct ? 600 : 400 }}>
-                            {a.is_correct ? "✅" : "▫️"} {String.fromCharCode(65 + j)}. {a.text}
-                          </li>
-                        ))}
-                      </ul>
+                      {q.question_type === "text" ? (
+                        <div className="small muted" style={{ marginTop: 4 }}>
+                          {q.sample_answer ? `Ключевой ответ / образец: «${q.sample_answer}»` : "Развёрнутый ответ (ручная проверка куратором)"}
+                        </div>
+                      ) : (
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                          {q.answers.map((a, j) => (
+                            <li key={j} style={{ color: a.is_correct ? "#15803d" : "inherit", fontWeight: a.is_correct ? 600 : 400 }}>
+                              {a.is_correct ? "✅" : "▫️"} {String.fromCharCode(65 + j)}. {a.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </label>
                 </div>
@@ -298,13 +323,24 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
 function QuestionRow({ idx, q, onDelete, onUpdate }) {
   const [edit, setEdit] = useState(false);
   const [text, setText] = useState(q.text);
-  const [answers, setAnswers] = useState(q.answers.map(a => ({ text: a.text, is_correct: a.is_correct })));
+  const [qType, setQType] = useState(q.question_type || "choice");
+  const [sampleAnswer, setSampleAnswer] = useState(q.sample_answer || "");
+  const [answers, setAnswers] = useState(
+    Array.isArray(q.answers) && q.answers.length > 0
+      ? q.answers.map(a => ({ text: a.text, is_correct: a.is_correct }))
+      : [{ text: "", is_correct: true }, { text: "", is_correct: false }]
+  );
 
   const save = async () => {
-    if (answers.length < 2) return alert("Минимум 2 варианта ответа");
-    if (answers.filter(a => a.is_correct).length < 1) return alert("Выберите хотя бы один правильный ответ");
-    if (answers.some(a => !a.text.trim())) return alert("Заполните текст всех вариантов ответа");
-    await onUpdate(q.id, { text, answers });
+    if (qType === "text") {
+      if (!text.trim()) return alert("Введите текст вопроса");
+      await onUpdate(q.id, { text, question_type: "text", sample_answer: sampleAnswer.trim() });
+    } else {
+      if (answers.length < 2) return alert("Минимум 2 варианта ответа");
+      if (answers.filter(a => a.is_correct).length < 1) return alert("Выберите хотя бы один правильный ответ");
+      if (answers.some(a => !a.text.trim())) return alert("Заполните текст всех вариантов ответа");
+      await onUpdate(q.id, { text, question_type: "choice", answers });
+    }
     setEdit(false);
   };
 
@@ -322,74 +358,133 @@ function QuestionRow({ idx, q, onDelete, onUpdate }) {
     setAnswers(filtered);
   };
 
+  const isText = q.question_type === "text";
+
   if (!edit) {
     return (
       <div className="q">
         <div className="spread">
-          <b>{idx + 1}. {q.text}</b>
           <div>
-            <span className="badge" style={{ marginRight: 8, background: "#f1f5f9", color: "#475569" }}>
-              {q.answers.length} вар.
+            <b>{idx + 1}. {q.text}</b>
+            <span
+              className="badge"
+              style={{
+                marginLeft: 8,
+                background: isText ? "#eff6ff" : "#f1f5f9",
+                color: isText ? "#1e40af" : "#475569",
+                fontWeight: 600,
+              }}
+            >
+              {isText ? "✍️ Письменный ответ" : `${q.answers?.length || 0} вар.`}
             </span>
+          </div>
+          <div>
             <button className="btn small" onClick={() => setEdit(true)}>Изм.</button>{" "}
             <button className="btn danger small" onClick={onDelete} aria-label="Удалить">✕</button>
           </div>
         </div>
-        <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
-          {q.answers.map(a => (
-            <li key={a.id} style={{ color: a.is_correct ? "#15803d" : "inherit", fontWeight: a.is_correct ? 600 : 400 }}>
-              {a.is_correct ? "✅" : "▫️"} {a.text}
-            </li>
-          ))}
-        </ul>
+
+        {isText ? (
+          <div className="small muted" style={{ marginTop: 6, paddingLeft: 12, borderLeft: "2px solid #93c5fd" }}>
+            {q.sample_answer ? (
+              <span>Ключевые слова для автопроверки: <b>«{q.sample_answer}»</b></span>
+            ) : (
+              <span>Развёрнутый письменный ответ (проверяется куратором/деканом)</span>
+            )}
+          </div>
+        ) : (
+          <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+            {q.answers.map(a => (
+              <li key={a.id} style={{ color: a.is_correct ? "#15803d" : "inherit", fontWeight: a.is_correct ? 600 : 400 }}>
+                {a.is_correct ? "✅" : "▫️"} {a.text}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }
+
   return (
     <div className="q" style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #cbd5e1" }}>
-      <label className="small muted">Текст вопроса:</label>
-      <input value={text} onChange={e => setText(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span className="small muted">Варианты ответа (отметьте правильный):</span>
-        <button type="button" className="btn small" onClick={addAnswerOption} disabled={answers.length >= 8}>
-          + Добавить вариант
+      <div className="row" style={{ gap: 8, marginBottom: 8, alignItems: "center" }}>
+        <span className="small muted">Тип вопроса:</span>
+        <button
+          type="button"
+          className={"btn small " + (qType === "choice" ? "primary" : "ghost")}
+          onClick={() => setQType("choice")}
+        >
+          🔘 Тест с вариантами
+        </button>
+        <button
+          type="button"
+          className={"btn small " + (qType === "text" ? "primary" : "ghost")}
+          onClick={() => setQType("text")}
+        >
+          ✍️ Письменный ответ
         </button>
       </div>
 
-      {answers.map((a, i) => (
-        <div className="row" key={i} style={{ marginTop: 4, alignItems: "center" }}>
-          <label className="radio" title="Отметить как правильный">
-            <input
-              type="radio"
-              name={"edit-ok-" + q.id}
-              checked={a.is_correct}
-              onChange={() => setAnswers(answers.map((x, j) => ({ ...x, is_correct: i === j })))}
-            />
+      <label className="small muted">Текст вопроса:</label>
+      <input value={text} onChange={e => setText(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
+
+      {qType === "text" ? (
+        <div style={{ marginTop: 8 }}>
+          <label className="small muted">
+            Образцовый ответ или ключевые фразы (опционально, для автопроверки совпадения):
           </label>
           <input
-            style={{ flex: 1 }}
-            value={a.text}
-            placeholder={`Вариант ${i + 1}`}
-            onChange={e => {
-              const copy = [...answers];
-              copy[i] = { ...copy[i], text: e.target.value };
-              setAnswers(copy);
-            }}
+            value={sampleAnswer}
+            placeholder="Оставьте пустым для ручной проверки развёрнутого ответа"
+            onChange={e => setSampleAnswer(e.target.value)}
+            style={{ width: "100%", marginTop: 4 }}
           />
-          {answers.length > 2 && (
-            <button
-              type="button"
-              className="btn danger small"
-              onClick={() => removeAnswerOption(i)}
-              title="Удалить этот вариант"
-            >
-              ✕
-            </button>
-          )}
         </div>
-      ))}
-      <div className="row" style={{ marginTop: 8, justifyContent: "flex-end" }}>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span className="small muted">Варианты ответа (отметьте правильный):</span>
+            <button type="button" className="btn small" onClick={addAnswerOption} disabled={answers.length >= 8}>
+              + Добавить вариант
+            </button>
+          </div>
+
+          {answers.map((a, i) => (
+            <div className="row" key={i} style={{ marginTop: 4, alignItems: "center" }}>
+              <label className="radio" title="Отметить как правильный">
+                <input
+                  type="radio"
+                  name={"edit-ok-" + q.id}
+                  checked={a.is_correct}
+                  onChange={() => setAnswers(answers.map((x, j) => ({ ...x, is_correct: i === j })))}
+                />
+              </label>
+              <input
+                style={{ flex: 1 }}
+                value={a.text}
+                placeholder={`Вариант ${i + 1}`}
+                onChange={e => {
+                  const copy = [...answers];
+                  copy[i] = { ...copy[i], text: e.target.value };
+                  setAnswers(copy);
+                }}
+              />
+              {answers.length > 2 && (
+                <button
+                  type="button"
+                  className="btn danger small"
+                  onClick={() => removeAnswerOption(i)}
+                  title="Удалить этот вариант"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="row" style={{ marginTop: 10, justifyContent: "flex-end" }}>
         <button className="btn ghost" onClick={() => setEdit(false)}>Отмена</button>
         <button className="btn primary" onClick={save}>Сохранить</button>
       </div>
@@ -398,7 +493,9 @@ function QuestionRow({ idx, q, onDelete, onUpdate }) {
 }
 
 function NewQuestionForm({ testId, onSubmit }) {
+  const [qType, setQType] = useState("choice"); // "choice" | "text"
   const [text, setText] = useState("");
+  const [sampleAnswer, setSampleAnswer] = useState("");
   const [answers, setAnswers] = useState(["", ""]);
   const [correct, setCorrect] = useState(0);
 
@@ -433,120 +530,166 @@ function NewQuestionForm({ testId, onSubmit }) {
   const submit = (e) => {
     e.preventDefault();
     if (!text.trim()) return alert("Введите текст вопроса");
-    if (answers.length < 2) return alert("Минимум 2 варианта ответа");
-    if (answers.some(a => !a.trim())) return alert("Заполните текст всех вариантов ответа");
-    onSubmit({
-      text: text.trim(),
-      answers: answers.map((a, i) => ({ text: a.trim(), is_correct: i === correct })),
-    });
-    setText("");
-    setAnswers(["", ""]);
-    setCorrect(0);
+    if (qType === "text") {
+      onSubmit({
+        text: text.trim(),
+        question_type: "text",
+        sample_answer: sampleAnswer.trim(),
+      });
+      setText("");
+      setSampleAnswer("");
+    } else {
+      if (answers.length < 2) return alert("Минимум 2 варианта ответа");
+      if (answers.some(a => !a.trim())) return alert("Заполните текст всех вариантов ответа");
+      onSubmit({
+        text: text.trim(),
+        question_type: "choice",
+        answers: answers.map((a, i) => ({ text: a.trim(), is_correct: i === correct })),
+      });
+      setText("");
+      setAnswers(["", ""]);
+      setCorrect(0);
+    }
   };
 
   return (
     <form className="card qform" onSubmit={submit} style={{ marginTop: 14 }}>
-      <div className="spread" style={{ alignItems: "center" }}>
+      <div className="spread" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <b>Добавить вопрос к тесту</b>
-        <span className="small muted">Вариантов ответа: {answers.length}</span>
+        <div className="row" style={{ gap: 6 }}>
+          <button
+            type="button"
+            className={"btn small " + (qType === "choice" ? "primary" : "ghost")}
+            onClick={() => setQType("choice")}
+          >
+            🔘 Выбор варианта
+          </button>
+          <button
+            type="button"
+            className={"btn small " + (qType === "text" ? "primary" : "ghost")}
+            onClick={() => setQType("text")}
+          >
+            ✍️ Письменный ответ
+          </button>
+        </div>
       </div>
 
-      {/* Preset Quick Buttons for 2 options and 4 options */}
-      <div className="row" style={{ gap: 6, margin: "8px 0 10px", flexWrap: "wrap" }}>
-        <span className="small muted" style={{ alignSelf: "center", marginRight: 4 }}>Быстрый выбор:</span>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => applyPreset("yes_no")}
-          title="Вопрос с 2 вариантами: Да / Нет"
-          style={{ background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
-        >
-          ⚡ 2 варианта: Да / Нет
-        </button>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => applyPreset("true_false")}
-          title="Вопрос с 2 вариантами: Верно / Неверно"
-          style={{ background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
-        >
-          ⚡ 2 варианта: Верно / Неверно
-        </button>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => applyPreset("two_custom")}
-          title="2 произвольных варианта"
-          style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e40af" }}
-        >
-          2 варианта (пустые)
-        </button>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => applyPreset("four_standard")}
-          title="4 стандартных варианта"
-        >
-          4 варианта (стандарт)
-        </button>
-      </div>
+      {qType === "choice" && (
+        <div className="row" style={{ gap: 6, margin: "8px 0 10px", flexWrap: "wrap" }}>
+          <span className="small muted" style={{ alignSelf: "center", marginRight: 4 }}>Быстрый выбор:</span>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => applyPreset("yes_no")}
+            title="Вопрос с 2 вариантами: Да / Нет"
+            style={{ background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
+          >
+            ⚡ 2 варианта: Да / Нет
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => applyPreset("true_false")}
+            title="Вопрос с 2 вариантами: Верно / Неверно"
+            style={{ background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
+          >
+            ⚡ 2 варианта: Верно / Неверно
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => applyPreset("two_custom")}
+            title="2 произвольных варианта"
+            style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e40af" }}
+          >
+            2 варианта (пустые)
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => applyPreset("four_standard")}
+            title="4 стандартных варианта"
+          >
+            4 варианта (стандарт)
+          </button>
+        </div>
+      )}
 
       <input
         placeholder="Текст вопроса *"
         value={text}
         onChange={e => setText(e.target.value)}
-        style={{ width: "100%", marginTop: 2, fontSize: 15 }}
+        style={{ width: "100%", marginTop: 8, fontSize: 15 }}
         required
       />
 
-      <div style={{ marginTop: 10 }}>
-        <div className="small muted" style={{ marginBottom: 4 }}>
-          Отметьте радиокнопку слева от правильного ответа:
-        </div>
-        {answers.map((a, i) => (
-          <div className="row" key={i} style={{ marginTop: 4, alignItems: "center" }}>
-            <label className="radio" title="Отметить этот вариант как правильный">
-              <input
-                type="radio"
-                name={"new-ok-" + testId}
-                checked={correct === i}
-                onChange={() => setCorrect(i)}
-              />
-            </label>
-            <input
-              style={{ flex: 1 }}
-              placeholder={"Вариант " + (i + 1) + (correct === i ? " (Правильный ✅)" : "")}
-              value={a}
-              onChange={e => {
-                const c = [...answers];
-                c[i] = e.target.value;
-                setAnswers(c);
-              }}
-              required
-            />
-            {answers.length > 2 && (
-              <button
-                type="button"
-                className="btn danger small"
-                onClick={() => removeOption(i)}
-                title="Удалить вариант"
-              >
-                ✕
-              </button>
-            )}
+      {qType === "text" ? (
+        <div style={{ marginTop: 10 }}>
+          <label className="small muted" style={{ display: "block", marginBottom: 4 }}>
+            Образцовый ответ / ключевые слова (для автопроверки, опционально):
+          </label>
+          <input
+            placeholder="Если не заполнено — ответ будет принят и проверен куратором вручную"
+            value={sampleAnswer}
+            onChange={e => setSampleAnswer(e.target.value)}
+            style={{ width: "100%", fontSize: 13 }}
+          />
+          <div className="small muted" style={{ marginTop: 4 }}>
+            💡 Ученик введёт свой развёрнутый ответ в текстовое поле во время прохождения теста.
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <div className="small muted" style={{ marginBottom: 4 }}>
+            Отметьте радиокнопку слева от правильного ответа:
+          </div>
+          {answers.map((a, i) => (
+            <div className="row" key={i} style={{ marginTop: 4, alignItems: "center" }}>
+              <label className="radio" title="Отметить этот вариант как правильный">
+                <input
+                  type="radio"
+                  name={"new-ok-" + testId}
+                  checked={correct === i}
+                  onChange={() => setCorrect(i)}
+                />
+              </label>
+              <input
+                style={{ flex: 1 }}
+                placeholder={"Вариант " + (i + 1) + (correct === i ? " (Правильный ✅)" : "")}
+                value={a}
+                onChange={e => {
+                  const c = [...answers];
+                  c[i] = e.target.value;
+                  setAnswers(c);
+                }}
+                required
+              />
+              {answers.length > 2 && (
+                <button
+                  type="button"
+                  className="btn danger small"
+                  onClick={() => removeOption(i)}
+                  title="Удалить вариант"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="spread" style={{ marginTop: 12, alignItems: "center" }}>
-        <button
-          type="button"
-          className="btn small"
-          onClick={addOption}
-          disabled={answers.length >= 8}
-        >
-          + Добавить вариант ответа
-        </button>
+        {qType === "choice" ? (
+          <button
+            type="button"
+            className="btn small"
+            onClick={addOption}
+            disabled={answers.length >= 8}
+          >
+            + Добавить вариант ответа
+          </button>
+        ) : <div />}
         <button className="btn primary">Сохранить вопрос</button>
       </div>
     </form>

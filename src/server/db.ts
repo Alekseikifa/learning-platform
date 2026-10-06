@@ -73,6 +73,7 @@ export interface Theme {
   course_id: number;
   title: string;
   order_index: number;
+  curator_id?: number | null;
 }
 
 export interface MaterialSource {
@@ -126,6 +127,8 @@ export interface Question {
   id: number;
   test_id: number;
   text: string;
+  question_type?: "choice" | "text";
+  sample_answer?: string | null;
 }
 
 export interface Answer {
@@ -149,6 +152,7 @@ export interface AttemptAnswer {
   attempt_id: number;
   question_id: number;
   answer_id: number | null;
+  text_answer?: string | null;
   is_correct: boolean;
 }
 
@@ -179,6 +183,7 @@ export interface ExtraMaterial {
   course_id?: number;
   course_ids: number[];
   group_ids: number[];
+  theme_id?: number | null;
   title: string;
   description?: string;
   type: string; // "video" | "audio" | "image" | "document" | "note" | "link"

@@ -137,7 +137,7 @@ export default function ScheduleCalendar({
           .then((data) => setAvailableThemes(Array.isArray(data) ? data : []))
           .catch(() => setAvailableThemes([]));
       });
-  }, [selectedCourseId, courses, isStaff]);
+  }, [selectedCourseId, isStaff]);
 
   // 3. Загрузка событий графика
   const loadSchedule = () => {
@@ -254,7 +254,7 @@ export default function ScheduleCalendar({
     return week;
   }, [currentDate]);
 
-  // Хелпер сопоставления событий с датой (по локальному дню)
+  // Хелпер сопоставления событий с датой (включая многодневные события от start_date до end_date)
   const getEventsForDate = (date) => {
     if (!date || !(date instanceof Date)) return [];
     const y = date.getFullYear();
@@ -264,9 +264,38 @@ export default function ScheduleCalendar({
 
     return events.filter((ev) => {
       if (!ev || !ev.start_date || typeof ev.start_date !== "string") return false;
-      const evDatePart = ev.start_date.split("T")[0];
-      return evDatePart === dateStr;
+      const startDay = ev.start_date.split("T")[0];
+      const endDay = ev.end_date && typeof ev.end_date === "string" ? ev.end_date.split("T")[0] : startDay;
+      return dateStr >= startDay && dateStr <= endDay;
     });
+  };
+
+  const getEventDayInfo = (ev, date) => {
+    if (!ev || !ev.start_date || typeof ev.start_date !== "string" || !date) {
+      return { isMultiDay: false, isStart: true, isEnd: true, label: "" };
+    }
+    const startDay = ev.start_date.split("T")[0];
+    const endDay = ev.end_date && typeof ev.end_date === "string" ? ev.end_date.split("T")[0] : startDay;
+    const isMultiDay = startDay !== endDay;
+    if (!isMultiDay) {
+      return { isMultiDay: false, isStart: true, isEnd: true, label: "" };
+    }
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${y}-${m}-${d}`;
+    const isStart = dateStr === startDay;
+    const isEnd = dateStr === endDay;
+    const isMiddle = dateStr > startDay && dateStr < endDay;
+    return {
+      isMultiDay: true,
+      isStart,
+      isEnd,
+      isMiddle,
+      startDay,
+      endDay,
+      label: isStart ? "Начало" : isEnd ? "Завершение" : "Длится",
+    };
   };
 
   const isToday = (d) => {
@@ -579,6 +608,7 @@ export default function ScheduleCalendar({
                       const isCompleted = ev.completion_status === "completed";
                       const isPending = ev.completion_status === "pending";
                       const isOverdue = ev.completion_status === "overdue";
+                      const dayInfo = getEventDayInfo(ev, item.date);
 
                       return (
                         <div
@@ -603,12 +633,20 @@ export default function ScheduleCalendar({
                             minWidth: 0,
                             width: "100%",
                             boxSizing: "border-box",
+                            boxShadow: dayInfo.isMultiDay ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
                           }}
-                          title={`${ev.title}${ev.description ? ` — ${ev.description}` : ""}`}
+                          title={`${ev.title}${dayInfo.isMultiDay ? ` (${dayInfo.label})` : ""}${ev.description ? ` — ${ev.description}` : ""}`}
                         >
-                          <span style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>{meta.icon}</span>
+                          <span style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>
+                            {dayInfo.isMultiDay ? (dayInfo.isStart ? "🏁" : dayInfo.isEnd ? "⚑" : "⏳") : meta.icon}
+                          </span>
                           <span style={{ flex: 1, minWidth: 0, fontWeight: 500, wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {ev.title}
+                            {dayInfo.isMultiDay && (
+                              <span style={{ fontSize: 9, opacity: 0.8, marginLeft: 4, fontStyle: "italic" }}>
+                                {dayInfo.isStart ? "(старт)" : dayInfo.isEnd ? "(финал)" : "(длится)"}
+                              </span>
+                            )}
                           </span>
                           {!readOnly && (
                             <span style={{ flexShrink: 0, marginLeft: 2, fontSize: 10 }}>
@@ -747,11 +785,38 @@ export default function ScheduleCalendar({
                         >
                           {meta.icon} {ev.title}
                         </div>
-                        {typeof ev.start_date === "string" && ev.start_date.includes("T") && (
-                          <div className="muted small" style={{ fontSize: 10 }}>
-                            ⏰ {ev.start_date.split("T")[1].slice(0, 5)}
-                          </div>
-                        )}
+                        {(() => {
+                          const hasStart = typeof ev.start_date === "string";
+                          const hasEnd = typeof ev.end_date === "string" && ev.end_date;
+                          const hasStartTime = hasStart && ev.start_date.includes("T");
+                          const hasEndTime = hasEnd && ev.end_date.includes("T");
+                          const startDay = hasStart ? ev.start_date.split("T")[0] : "";
+                          const endDay = hasEnd ? ev.end_date.split("T")[0] : startDay;
+                          const isMultiDay = hasEnd && startDay !== endDay;
+
+                          if (isMultiDay) {
+                            return (
+                              <div className="muted small" style={{ fontSize: 10, color: "#1e40af" }}>
+                                ⏳ {startDay.slice(5)} – {endDay.slice(5)} {hasStartTime ? `(${ev.start_date.split("T")[1].slice(0, 5)})` : ""}
+                              </div>
+                            );
+                          }
+                          if (hasStartTime && hasEndTime) {
+                            return (
+                              <div className="muted small" style={{ fontSize: 10 }}>
+                                ⏰ {ev.start_date.split("T")[1].slice(0, 5)} – {ev.end_date.split("T")[1].slice(0, 5)}
+                              </div>
+                            );
+                          }
+                          if (hasStartTime) {
+                            return (
+                              <div className="muted small" style={{ fontSize: 10 }}>
+                                ⏰ {ev.start_date.split("T")[1].slice(0, 5)}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                         {ev.link_url && (
                           <div style={{ fontSize: 10, color: "#2563eb", marginTop: 2 }}>
                             🔗 Онлайн-ссылка
@@ -823,7 +888,23 @@ export default function ScheduleCalendar({
                           {meta.icon} {meta.label}
                         </span>
                         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)" }}>
-                          📅 {dateStr} {timeStr ? `в ${timeStr}` : ""}
+                          {(() => {
+                            const hasEnd = typeof ev.end_date === "string" && ev.end_date;
+                            const startDay = ev.start_date ? ev.start_date.split("T")[0] : "";
+                            const endDay = hasEnd ? ev.end_date.split("T")[0] : startDay;
+                            const isMulti = hasEnd && startDay !== endDay;
+                            if (isMulti) {
+                              const endObj = new Date(ev.end_date);
+                              const endStr = !isNaN(endObj.getTime())
+                                ? endObj.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+                                : endDay;
+                              return `📅 с ${dateStr} по ${endStr}`;
+                            }
+                            if (hasEnd && ev.start_date.includes("T") && ev.end_date.includes("T")) {
+                              return `📅 ${dateStr} (${timeStr} – ${ev.end_date.split("T")[1].slice(0, 5)})`;
+                            }
+                            return `📅 ${dateStr} ${timeStr ? `в ${timeStr}` : ""}`;
+                          })()}
                         </span>
                         {ev.group_name && (
                           <span className="muted small" style={{ fontSize: 11 }}>
@@ -957,16 +1038,78 @@ export default function ScheduleCalendar({
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
               <div>
-                <b>📅 Дата и время:</b>{" "}
-                {typeof selectedEvent.start_date === "string"
-                  ? new Date(selectedEvent.start_date).toLocaleString("ru-RU", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                      hour: selectedEvent.start_date.includes("T") ? "2-digit" : undefined,
-                      minute: selectedEvent.start_date.includes("T") ? "2-digit" : undefined,
-                    })
-                  : "—"}
+                <b>📅 Период проведения:</b>{" "}
+                {(() => {
+                  const ev = selectedEvent;
+                  const hasEnd = typeof ev.end_date === "string" && ev.end_date;
+                  const startDay = typeof ev.start_date === "string" ? ev.start_date.split("T")[0] : "";
+                  const endDay = hasEnd ? ev.end_date.split("T")[0] : startDay;
+                  const isMultiDay = hasEnd && startDay !== endDay;
+
+                  if (isMultiDay) {
+                    const d1 = new Date(ev.start_date);
+                    const d2 = new Date(ev.end_date);
+                    const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+                    return (
+                      <span>
+                        с{" "}
+                        <b>
+                          {d1.toLocaleString("ru-RU", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                            hour: ev.start_date.includes("T") ? "2-digit" : undefined,
+                            minute: ev.start_date.includes("T") ? "2-digit" : undefined,
+                          })}
+                        </b>{" "}
+                        по{" "}
+                        <b>
+                          {d2.toLocaleString("ru-RU", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                            hour: ev.end_date.includes("T") ? "2-digit" : undefined,
+                            minute: ev.end_date.includes("T") ? "2-digit" : undefined,
+                          })}
+                        </b>
+                        <span
+                          className="badge"
+                          style={{ marginLeft: 8, background: "#eff6ff", color: "#1e40af", fontWeight: 600 }}
+                        >
+                          ⏳ Длится {diffDays} {diffDays === 1 ? "день" : diffDays < 5 ? "дня" : "дней"}
+                        </span>
+                      </span>
+                    );
+                  }
+
+                  if (hasEnd && ev.start_date.includes("T") && ev.end_date.includes("T")) {
+                    const d1 = new Date(ev.start_date);
+                    const t1 = ev.start_date.split("T")[1].slice(0, 5);
+                    const t2 = ev.end_date.split("T")[1].slice(0, 5);
+                    return (
+                      <span>
+                        <b>{d1.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</b>
+                        {" "}с <b>{t1}</b> до <b>{t2}</b>
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <span>
+                      {typeof ev.start_date === "string" ? (
+                        new Date(ev.start_date).toLocaleString("ru-RU", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                          hour: ev.start_date.includes("T") ? "2-digit" : undefined,
+                          minute: ev.start_date.includes("T") ? "2-digit" : undefined,
+                        })
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                  );
+                })()}
               </div>
 
               {selectedEvent.group_name && (
@@ -1109,8 +1252,10 @@ function EditScheduleEventModal({
 }) {
   const isEditing = !!event;
 
-  const [formCourseId, setFormCourseId] = useState(event ? event.course_id : courseId);
+  const [formCourseId, setFormCourseId] = useState(event ? event.course_id : (courseId || (courses[0] ? courses[0].id : "")));
   const [formGroupId, setFormGroupId] = useState(event ? event.group_id || "" : "");
+  const [modalGroups, setModalGroups] = useState(groups || []);
+  const [modalThemes, setModalThemes] = useState(themes || []);
   const [title, setTitle] = useState(event ? event.title : "");
   const [eventType, setEventType] = useState(event ? event.event_type : "theme_open");
   const [startDate, setStartDate] = useState(
@@ -1127,8 +1272,34 @@ function EditScheduleEventModal({
   const [linkUrl, setLinkUrl] = useState(event?.link_url || "");
   const [description, setDescription] = useState(event?.description || "");
   const [notifyStudents, setNotifyStudents] = useState(true);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [repeatInterval, setRepeatInterval] = useState(7);
+  const [repeatCount, setRepeatCount] = useState(4);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!formCourseId) {
+      setModalGroups([]);
+      setModalThemes([]);
+      return;
+    }
+    if (String(formCourseId) === String(courseId) && groups?.length && themes?.length) {
+      setModalGroups(groups);
+      setModalThemes(themes);
+      return;
+    }
+    api(`/api/groups?course_id=${formCourseId}`)
+      .then((data) => setModalGroups(Array.isArray(data) ? data : []))
+      .catch(() => setModalGroups([]));
+    api(`/api/schedule/themes?course_id=${formCourseId}`)
+      .then((data) => setModalThemes(Array.isArray(data) ? data : []))
+      .catch(() => {
+        api(`/api/student/course/${formCourseId}/themes`)
+          .then((data) => setModalThemes(Array.isArray(data) ? data : []))
+          .catch(() => setModalThemes([]));
+      });
+  }, [formCourseId, courseId, groups, themes]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1168,6 +1339,35 @@ function EditScheduleEventModal({
           method: "POST",
           body: JSON.stringify(payload),
         });
+
+        if (isRecurring && repeatCount > 1) {
+          const shiftDateStr = (origStr, daysToAdd) => {
+            if (!origStr) return null;
+            const d = new Date(origStr);
+            d.setDate(d.getDate() + daysToAdd);
+            const pad = (n) => String(n).padStart(2, "0");
+            const y = d.getFullYear();
+            const m = pad(d.getMonth() + 1);
+            const day = pad(d.getDate());
+            const h = pad(d.getHours());
+            const min = pad(d.getMinutes());
+            return `${y}-${m}-${day}T${h}:${min}`;
+          };
+
+          for (let i = 1; i < repeatCount; i++) {
+            const nextStart = shiftDateStr(startDate, i * repeatInterval);
+            const nextEnd = endDate ? shiftDateStr(endDate, i * repeatInterval) : null;
+            await api("/api/schedule/events", {
+              method: "POST",
+              body: JSON.stringify({
+                ...payload,
+                start_date: nextStart,
+                end_date: nextEnd,
+                notify_students: false,
+              }),
+            });
+          }
+        }
       }
       onSaved();
     } catch (err) {
@@ -1221,7 +1421,7 @@ function EditScheduleEventModal({
                 style={{ width: "100%", padding: 6, fontSize: 13 }}
               >
                 <option value="">Для всех групп курса</option>
-                {groups.map((g) => (
+                {modalGroups.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
                   </option>
@@ -1303,25 +1503,23 @@ function EditScheduleEventModal({
             </div>
           </div>
 
-          {themes && themes.length > 0 && (
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
-                Связанная тема курса (опционально):
-              </label>
-              <select
-                value={themeId}
-                onChange={(e) => setThemeId(e.target.value)}
-                style={{ width: "100%", padding: 6, fontSize: 13 }}
-              >
-                <option value="">Не привязана к теме</option>
-                {themes.map((th) => (
-                  <option key={th.id} value={th.id}>
-                    Тема {th.order_index}: {th.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+              Связанная тема курса (опционально):
+            </label>
+            <select
+              value={themeId}
+              onChange={(e) => setThemeId(e.target.value)}
+              style={{ width: "100%", padding: 6, fontSize: 13 }}
+            >
+              <option value="">Не привязана к теме</option>
+              {(modalThemes || []).map((th) => (
+                <option key={th.id} value={th.id}>
+                  Тема {th.order_index}: {th.title}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
@@ -1348,6 +1546,47 @@ function EditScheduleEventModal({
               style={{ width: "100%", padding: "6px 10px", fontSize: 13 }}
             />
           </div>
+
+          {!isEditing && (
+            <div style={{ padding: 10, background: "var(--bg-soft, #f8fafc)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                />
+                <span>🔁 Создать регулярную серию занятий (повторы)</span>
+              </label>
+              {isRecurring && (
+                <div className="row" style={{ marginTop: 8, gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <label className="small muted" style={{ display: "block", marginBottom: 3 }}>Периодичность:</label>
+                    <select
+                      value={repeatInterval}
+                      onChange={(e) => setRepeatInterval(Number(e.target.value))}
+                      style={{ width: "100%", padding: 5, fontSize: 13 }}
+                    >
+                      <option value={7}>Каждую неделю (раз в 7 дней)</option>
+                      <option value={14}>Каждые 2 недели (раз в 14 дней)</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <label className="small muted" style={{ display: "block", marginBottom: 3 }}>Количество занятий:</label>
+                    <select
+                      value={repeatCount}
+                      onChange={(e) => setRepeatCount(Number(e.target.value))}
+                      style={{ width: "100%", padding: 5, fontSize: 13 }}
+                    >
+                      <option value={4}>4 занятия (~1 месяц)</option>
+                      <option value={8}>8 занятий (~2 месяца)</option>
+                      <option value={12}>12 занятий (~3 месяца)</option>
+                      <option value={16}>16 занятий (семестр / 4 месяца)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {!isEditing && (
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", marginTop: 4 }}>

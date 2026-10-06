@@ -17,8 +17,8 @@ export function StudentsTab({ groupId, initialTheme, onThemeConsumed, onDirectMe
   const [themes, setThemes] = useState([]);
   const [filterQuery, setFilterQuery] = useState("");
   const activeRole = getUser()?.role;
-  const canUnlock = activeRole === "admin" || activeRole === "teacher";
-  const unlockPrefix = activeRole === "admin" ? "/api/admin" : "/api/teacher";
+  const canUnlock = activeRole === "admin" || activeRole === "teacher" || activeRole === "curator" || activeRole === "manager";
+  const unlockPrefix = activeRole === "admin" ? "/api/admin" : activeRole === "curator" ? "/api/curator" : activeRole === "manager" ? "/api/manager" : "/api/teacher";
 
   useEffect(() => {
     let cancelled = false;
@@ -732,17 +732,19 @@ export function AttemptsTab({ groupId }) {
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
 
-  useEffect(() => {
-    let cancelled = false;
-    setThemeFilter("");
-    setDetails(null); // модалка ответов прошлой группы
+  const loadAttempts = () => {
     setLoading(true);
     setErr(null);
     api(`/api/teacher/groups/${groupId}/attempts`)
-      .then((a) => { if (!cancelled) setAttempts(a); })
-      .catch((e) => { if (!cancelled) setErr(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((a) => setAttempts(a))
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setThemeFilter("");
+    setDetails(null);
+    loadAttempts();
   }, [groupId]);
 
   const openDetails = async (id) => {
@@ -836,12 +838,42 @@ export function AttemptsTab({ groupId }) {
               <td className="muted small">{a.theme_title || "—"}</td>
               <td>{a.score}%</td>
               <td>{a.passed ? <span className="tag ok">сдан</span> : <span className="tag no">не сдан</span>}</td>
-              <td><button className="btn small" onClick={() => openDetails(a.id)}>Ответы ученика</button></td>
+              <td>
+                <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className="btn small" onClick={() => openDetails(a.id)}>
+                    Ответы ученика
+                  </button>
+                  {a.user_id && a.test_id && (
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      style={{ color: "#d97706", borderColor: "#fde68a" }}
+                      title="Сбросить попытки по этому тесту для ученика"
+                      onClick={async () => {
+                        if (!confirm(`Сбросить все попытки теста «${a.test}» для ученика «${a.student}»?`)) return;
+                        try {
+                          await api(`/api/teacher/students/${a.user_id}/tests/${a.test_id}/reset-attempts`, { method: "POST" });
+                          if (typeof window !== "undefined" && window.appToast) {
+                            window.appToast.success("Попытки сброшены!");
+                          }
+                          loadAttempts();
+                        } catch (e) {
+                          if (typeof window !== "undefined" && window.appToast) {
+                            window.appToast.error(e.message || "Ошибка сброса");
+                          }
+                        }
+                      }}
+                    >
+                      🔄 Сбросить
+                    </button>
+                  )}
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
       </table></div>
-      {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} />}
+      {details && <AttemptDetailsModal data={details} onClose={() => setDetails(null)} onUpdated={loadAttempts} />}
     </div>
   );
 }
