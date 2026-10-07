@@ -154,7 +154,8 @@ export default function ChatPanel({
 
   const getRoleBadge = (role) => {
     if (role === "admin") return " (администратор)";
-    if (role === "teacher") return " (куратор)";
+    if (role === "teacher") return " (декан)";
+    if (role === "curator") return " (куратор)";
     if (role === "manager") return " (методист)";
     return " (ученик)";
   };
@@ -223,14 +224,14 @@ export default function ChatPanel({
 
               <div className="chat-text">{m.text}</div>
 
-              {/* Комментарий куратора к отчёту, если есть */}
+              {/* Комментарий декана к отчёту, если есть */}
               {m.is_report && m.report_comment && (
                 <div className="chat-report-feedback">
-                  <b>Комментарий куратора:</b> {m.report_comment}
+                  <b>Комментарий декана:</b> {m.report_comment}
                 </div>
               )}
 
-              {/* Блок действий куратора/администратора по проверке отчёта */}
+              {/* Блок действий декана/администратора по проверке отчёта */}
               {m.is_report && isStaff && (
                 <div className="chat-report-actions">
                   {m.report_status !== "accepted" && (
@@ -561,7 +562,7 @@ export default function ChatPanel({
                         )}
                         {rep && (
                           <div style={{ fontSize: 11, color: rep.status === "accepted" ? "#15803d" : rep.status === "rejected" ? "#b91c1c" : "#b45309" }}>
-                            Текущий статус отчёта: {rep.status === "accepted" ? "✅ Зачтён" : rep.status === "rejected" ? "🔄 Требует доработки" : "⏳ На проверке куратором"}
+                            Текущий статус отчёта: {rep.status === "accepted" ? "✅ Зачтён" : rep.status === "rejected" ? "🔄 Требует доработки" : "⏳ На проверке деканом"}
                             {rep.comment && ` (Замечание: «${rep.comment}»)`}
                           </div>
                         )}

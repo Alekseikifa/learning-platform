@@ -157,7 +157,7 @@ export default function StaffChatsPanel() {
         <div className="card">
           <h3>Обсуждение темы курса</h3>
           <div className="muted small" style={{ marginBottom: 12 }}>
-            Чат темы курса: сообщение увидят ученики группы, кураторы и администраторы.
+            Чат темы курса: сообщение увидят ученики группы, деканы и администраторы.
           </div>
           <ChatPanel themeId={+themeId} apiBase="/api/staff" />
         </div>
@@ -179,7 +179,7 @@ export default function StaffChatsPanel() {
             <span className="tag ok">Без тестов</span>
           </div>
           <div className="muted small" style={{ marginBottom: 12 }}>
-            Общий чат обсуждения: участвуют ученики группы, кураторы и администраторы курса.
+            Общий чат обсуждения: участвуют ученики группы, деканы и администраторы курса.
           </div>
           <ChatPanel extraMaterialId={+extraId} apiBase="/api/staff" />
         </div>

@@ -31,7 +31,16 @@ export default function ScheduleCalendar({
   readOnly = false,
 }) {
   const me = getUser();
-  const isStaff = !readOnly && me && (me.role === "admin" || me.role === "manager" || me.role === "teacher");
+  const isStaffRole = ["admin", "manager", "teacher", "curator"].includes(me?.role);
+  const isStaff = !readOnly && me && isStaffRole;
+  // эндпоинты курсов/групп зависят от роли: куратор/декан ходят под своим префиксом
+  const staffCoursesEndpoint = () =>
+    me?.role === "teacher" || me?.role === "curator" ? "/api/teacher/courses" : "/api/courses";
+  const staffGroupsEndpoint = () => {
+    if (me?.role === "manager") return `/api/manager/groups/${selectedCourseId}`;
+    if (me?.role === "admin" || me?.role === "teacher" || me?.role === "curator") return "/api/teacher/groups";
+    return `/api/groups?course_id=${selectedCourseId}`;
+  };
 
   const inputCourses = (studentCourses && studentCourses.length > 0)
     ? studentCourses
@@ -71,7 +80,7 @@ export default function ScheduleCalendar({
         if (found) setSelectedCourseId(found.id);
       }
     } else {
-      const endpoint = isStaff ? (me?.role === "teacher" ? "/api/teacher/courses" : "/api/courses") : "/api/student/courses";
+      const endpoint = isStaff ? staffCoursesEndpoint() : "/api/student/courses";
       api(endpoint)
         .then((data) => {
           if (Array.isArray(data) && data.length > 0) {
@@ -118,7 +127,7 @@ export default function ScheduleCalendar({
       }
     } else {
       // Для персонала или если групп не было в объекте курса
-      const grpEndpoint = me?.role === "teacher" ? "/api/teacher/groups" : `/api/groups?course_id=${selectedCourseId}`;
+      const grpEndpoint = staffGroupsEndpoint();
       api(grpEndpoint)
         .then((data) => {
           const filtered = Array.isArray(data)
@@ -1156,7 +1165,7 @@ export default function ScheduleCalendar({
                     <span className="tag ok">✅ Успешно выполнено (зачтено)</span>
                   )}
                   {selectedEvent.completion_status === "pending" && (
-                    <span className="tag warn">⏳ Отчёт находится на проверке куратора</span>
+                    <span className="tag warn">⏳ Отчёт находится на проверке декана</span>
                   )}
                   {selectedEvent.completion_status === "overdue" && (
                     <span className="tag no">⚠️ Срок сдачи истёк</span>
@@ -1470,7 +1479,7 @@ function EditScheduleEventModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Например: Сдача отчёта по теме 1 или Вебинар с куратором"
+              placeholder="Например: Сдача отчёта по теме 1 или Вебинар с деканом"
               style={{ width: "100%", padding: "7px 10px", fontSize: 13 }}
               required
             />

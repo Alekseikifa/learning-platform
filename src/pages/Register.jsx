@@ -75,7 +75,7 @@ export default function Register() {
       return;
     }
     if (!form.phone.trim()) {
-      setError("Укажите ваш номер телефона для связи с куратором");
+      setError("Укажите ваш номер телефона для связи с деканом");
       return;
     }
     if (!form.name.trim()) {
@@ -106,6 +106,8 @@ export default function Register() {
           ? "/manager"
           : res.role === "teacher"
           ? "/teacher"
+          : res.role === "curator"
+          ? "/curator"
           : "/student";
       navigate(target);
     } catch (err) {
@@ -184,7 +186,7 @@ export default function Register() {
               marginBottom: 10,
             }}
           >
-            ❌ Email не найден в списке приглашённых учеников. Убедитесь, что указали Email, с которым регистрировались в Tilda, или обратитесь к куратору/администратору.
+            ❌ Email не найден в списке приглашённых учеников. Убедитесь, что указали Email, с которым регистрировались в Tilda, или обратитесь к декану или администратору.
           </div>
         )}
 

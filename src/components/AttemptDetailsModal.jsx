@@ -137,7 +137,7 @@ export default function AttemptDetailsModal({ data, onClose, onUpdated }) {
                         }}
                       >
                         <span className="small muted" style={{ fontWeight: 600 }}>
-                          Оценка куратора/преподавателя:
+                          Оценка декана/преподавателя:
                         </span>
                         <button
                           type="button"

@@ -68,7 +68,7 @@ export default function UserEditModal({ user, variant = "admin", onClose, onSave
     : ["student", "curator", "teacher"];
   const activeRoles = [role, ...extra];
   const showStudentBlock = groupsEditable && activeRoles.includes("student");
-  const showCuratorBlock = groupsEditable && (activeRoles.includes("teacher") || activeRoles.includes("curator"));
+  const showCuratorBlock = groupsEditable && activeRoles.includes("teacher");
 
   const toggleExtra = (r) => {
     setExtra(extra.includes(r) ? extra.filter(x => x !== r) : [...extra, r]);
@@ -154,9 +154,9 @@ export default function UserEditModal({ user, variant = "admin", onClose, onSave
 
       {showCuratorBlock && (
         <>
-          <label style={labelStyle}>Куратор в группах</label>
+          <label style={labelStyle}>Группы декана</label>
           <div className="muted small" style={{ marginBottom: 6 }}>
-            Отметьте группы, в которых пользователь является куратором.
+            Отметьте группы, в которых пользователь будет деканом.
           </div>
           <div className="chips">
             {allGroups === null && <span className="muted small">Загрузка групп…</span>}

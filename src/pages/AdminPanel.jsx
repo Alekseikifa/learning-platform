@@ -14,7 +14,8 @@ import RepositoryPickerModal from "../components/RepositoryPickerModal";
 import WarningCard from "../components/WarningCard";
 import InvitesTab from "../components/InvitesTab";
 import WelcomeModal from "../components/WelcomeModal";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
+import MonitoringView from "../components/MonitoringView";
+import { MONITORING_TABS, normalizeMonitoringTab, setMonitoringParams, useThemeGroupReady } from "../lib/monitoringTabs";
 import PasswordModal from "../components/PasswordModal";
 import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
@@ -49,22 +50,23 @@ const TABS = [
   { id: "settings",      label: "Настройки" },
 ];
 
-const MONITORING_ITEMS = [
-  { id: "students",  label: "Ученики" },
-  { id: "progress",  label: "Таблица прогресса" },
-  { id: "reports",   label: "Отчёты по урокам" },
-  { id: "attempts",  label: "Попытки" },
-  { id: "analytics", label: "Аналитика" },
-];
+const MONITORING_ITEMS = MONITORING_TABS;
 
-// старые ссылки вида ?tab=mon_students из прошлых сборок
-const LEGACY_TABS = {
-  mon_students: "students",
-  mon_progress: "progress",
-  mon_attempts: "attempts",
-  mon_analytics: "analytics",
+// при смене вкладки убираем параметры, относящиеся только к соседним вкладкам
+const dropMonitoringParams = (next, tabId) => {
+  if (tabId !== "review") {
+    next.delete("student");
+    next.delete("theme");
+  }
+  if (tabId !== "progress") {
+    next.delete("view");
+    next.delete("scope");
+  }
+  return next;
 };
-const normalizeTab = (t) => LEGACY_TABS[t] || t;
+
+// старые ссылки вида ?tab=mon_students / ?tab=reports из прошлых сборок
+const normalizeTab = (t) => normalizeMonitoringTab(t);
 
 export default function AdminPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,9 +88,25 @@ export default function AdminPanel() {
   // переключение таба пишем в URL — F5 и «назад» сохраняют место
   const changeTab = (id) => {
     setTabState(id);
-    const next = new URLSearchParams(searchParams);
+    let next = new URLSearchParams(searchParams);
     next.set("tab", id);
+    next = dropMonitoringParams(next, id);
     setSearchParams(next);
+  };
+
+  // переход из «Прогресса» в «Проверку» к конкретному отчёту
+  const openReview = ({ studentId, themeId }) => {
+    setTabState("review");
+    let next = dropMonitoringParams(new URLSearchParams(searchParams), "review");
+    next.set("tab", "review");
+    next.set("student", String(studentId));
+    next.set("theme", String(themeId));
+    setSearchParams(next);
+  };
+
+  const openChatWithStudent = (studentId) => {
+    setTabState("messages");
+    setSearchParams({ tab: "messages", user: String(studentId) });
   };
 
   // реакция на внешнее изменение URL (клик по уведомлению, назад/вперёд)
@@ -116,6 +134,9 @@ export default function AdminPanel() {
       .catch((e) => setDataErr(`группы: ${e.message}`))
       .finally(() => setGroupsLoading(false));
   }, [key]);
+
+  // deep-link ?theme= — до готовности группы вкладку не монтируем (иначе фильтр сгорает)
+  const themeGroupReady = useThemeGroupReady(searchParams, tab, groups, setGroupId);
 
   useEffect(() => {
     if (!groupId && groups[0]) setGroupId(String(groups[0].id));
@@ -149,11 +170,16 @@ export default function AdminPanel() {
       {isMonitoring && !groupsLoading && !groups.length && (
         <div className="card muted">Группы не найдены</div>
       )}
-      {isMonitoring && groupId && tab === "students" && <StudentsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "progress" && <ProgressTable groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "reports"  && <ReportsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "attempts" && <AttemptsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "analytics" && <AnalyticsTab groupId={+groupId} />}
+      {isMonitoring && groupId && themeGroupReady && (
+        <MonitoringView
+          tab={tab}
+          groupId={groupId}
+          searchParams={searchParams}
+          setSearchParams={setSearchParams}
+          onOpenReview={openReview}
+          onDirectMessage={openChatWithStudent}
+        />
+      )}
 
       {tab === "invites"       && <InvitesTab />}      
       {tab === "users"         && <UsersTab users={users} loading={usersLoading} reload={reload} />}   
@@ -200,7 +226,7 @@ function UsersTab({ users, loading, reload }) {
   const needle = q.trim().toLowerCase();
   const filtered = needle
     ? users.filter(u =>
-        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${u.role} ${u.extra_roles || ""}`.toLowerCase().includes(needle))
+        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${ROLE_LABELS[u.role] || u.role} ${u.extra_roles || ""} ${(u.extra_roles || "").split(",").map(r => ROLE_LABELS[r.trim()] || r.trim()).join(" ")}`.toLowerCase().includes(needle))
     : users;
 
   return (
@@ -377,7 +403,7 @@ function MaterialsTab({ courses, groups = [] }) {
 /* ---------- UPLOADS ---------- */
 /* ---------- SETTINGS ---------- */
 function SettingsTab({ groups = [] }) {
-  const [names, setNames] = useState({ admin: "", teacher: "", student: "", manager: "" });
+  const [names, setNames] = useState({ admin: "", teacher: "", curator: "", student: "", manager: "" });
   const [platform, setPlatform] = useState({
     college_name: "МКУ — Международные Курсы Ученичества",
     welcome_title: "Добро пожаловать в МКУ!",
@@ -430,7 +456,8 @@ function SettingsTab({ groups = [] }) {
         setPlatform(p => ({ ...p, ...data.settings }));
         setNames({
           admin: data.settings.role_admin_name || "Администратор",
-          teacher: data.settings.role_teacher_name || "Куратор",
+          teacher: data.settings.role_teacher_name || "Декан",
+          curator: data.settings.role_curator_name || "Куратор",
           student: data.settings.role_student_name || "Ученик",
           manager: data.settings.role_manager_name || "Методист",
         });
@@ -553,6 +580,7 @@ function SettingsTab({ groups = [] }) {
           ...platform,
           role_admin_name: names.admin,
           role_teacher_name: names.teacher,
+          role_curator_name: names.curator,
           role_student_name: names.student,
           role_manager_name: names.manager,
         }),
@@ -751,7 +779,7 @@ function SettingsTab({ groups = [] }) {
                 checked={platform.notify_curators_on_test === "true"}
                 onChange={e => setPlatform({ ...platform, notify_curators_on_test: e.target.checked ? "true" : "false" })}
               />
-              Отправлять кураторам уведомление о завершении теста учеником
+              Отправлять деканам и кураторам уведомление о завершении теста учеником
             </label>
           </div>
         </div>
@@ -780,10 +808,18 @@ function SettingsTab({ groups = [] }) {
             />
           </div>
           <div>
-            <label>Куратор</label>
+            <label>Декан</label>
             <input
               value={names.teacher}
               onChange={e => setNames({ ...names, teacher: e.target.value })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <div>
+            <label>Куратор</label>
+            <input
+              value={names.curator}
+              onChange={e => setNames({ ...names, curator: e.target.value })}
               style={{ width: "100%", marginTop: 4 }}
             />
           </div>
@@ -845,6 +881,8 @@ function SettingsTab({ groups = [] }) {
 
       {/* 7. Резервное копирование и статистика */}
       <div className="card" style={{ background: "#f8fafc", border: "1px solid #cbd5e1" }}>
+        {getUser()?.is_root_admin ? (
+          <>
         <div className="spread" style={{ alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h3 style={{ margin: 0 }}>💾 Резервное копирование и сводка данных</h3>
@@ -900,6 +938,13 @@ function SettingsTab({ groups = [] }) {
           </div>
         </div>
 
+          </>
+        ) : (
+          <div className="muted small" style={{ marginTop: 4 }}>
+            🔒 Резервное копирование и восстановление базы доступны только главному администратору.
+          </div>
+        )}
+
         {stats && (
           <div
             style={{
@@ -916,6 +961,10 @@ function SettingsTab({ groups = [] }) {
             <div className="card" style={{ padding: 10, textAlign: "center", margin: 0 }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#0d9488" }}>{stats.total_curators}</div>
               <div className="small muted">Кураторов</div>
+            </div>
+            <div className="card" style={{ padding: 10, textAlign: "center", margin: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{stats.total_deans}</div>
+              <div className="small muted">Деканов</div>
             </div>
             <div className="card" style={{ padding: 10, textAlign: "center", margin: 0 }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{stats.total_courses}</div>

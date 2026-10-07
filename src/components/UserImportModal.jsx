@@ -12,7 +12,7 @@ const FIELDS = [
   { key: "extra_roles", label: "Доп. роли", aliases: ["extra_roles", "доп. роли", "дополнительные роли", "additional roles"] },
   { key: "password", label: "Пароль", aliases: ["password", "пароль", "pass"] },
   { key: "groups", label: "Группы", aliases: ["groups", "group", "группы", "группа", "класс"] },
-  { key: "curator_groups", label: "Кураторские группы", aliases: ["curator_groups", "кураторские группы", "кураторство", "curator groups", "куратор"] },
+  { key: "curator_groups", label: "Группы декана", aliases: ["curator_groups", "кураторские группы", "кураторство", "curator groups", "куратор", "деканские группы", "группы декана", "декан"] },
   { key: "is_active", label: "Активен", aliases: ["is_active", "active", "активен", "доступ", "статус", "status"] },
 ];
 

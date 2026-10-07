@@ -15,7 +15,17 @@ import UserEditModal from "../components/UserEditModal";
 import GroupsTab from "../components/GroupsTab";
 import UploadsTab from "../components/UploadsTab";
 import ScheduleCalendar from "../components/ScheduleCalendar";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
+import MonitoringView from "../components/MonitoringView";
+import { MONITORING_TABS, normalizeMonitoringTab, setMonitoringParams, useThemeGroupReady } from "../lib/monitoringTabs";
+
+const ROLE_LABELS = {
+  admin: "Администратор",
+  manager: "Методист",
+  teacher: "Декан",
+  curator: "Куратор",
+  student: "Ученик",
+};
+const roleLabel = (r) => ROLE_LABELS[String(r || "").trim()] || r;
 
 const TABS = [
   { id: "invites",       label: "Приглашения" },
@@ -31,17 +41,26 @@ const TABS = [
   { id: "uploads",       label: "Файлы" },
 ];
 
-const MONITORING_ITEMS = [
-  { id: "students",  label: "Ученики" },
-  { id: "progress",  label: "Таблица прогресса" },
-  { id: "reports",   label: "Отчёты по урокам" },
-  { id: "attempts",  label: "Попытки" },
-  { id: "analytics", label: "Аналитика" },
-];
+const MONITORING_ITEMS = MONITORING_TABS;
 
+// при смене вкладки убираем параметры, относящиеся только к соседним вкладкам
+const dropMonitoringParams = (next, tabId) => {
+  if (tabId !== "review") {
+    next.delete("student");
+    next.delete("theme");
+  }
+  if (tabId !== "progress") {
+    next.delete("view");
+    next.delete("scope");
+  }
+  return next;
+};
+
+// старые ссылки ?tab=mon_students / ?tab=reports переписываем на новые id
 const resolveTab = (t) => {
   if (!t) return null;
-  if (TABS.some(x => x.id === t) || MONITORING_ITEMS.some(x => x.id === t)) return t;
+  const n = normalizeMonitoringTab(t);
+  if (TABS.some(x => x.id === n) || MONITORING_ITEMS.some(x => x.id === n)) return n;
   return null;
 };
 
@@ -62,9 +81,24 @@ export default function ManagerPanel() {
   // переключение таба пишем в URL — F5 и «назад» сохраняют место
   const changeTab = (id) => {
     setTabState(id);
-    const next = new URLSearchParams(searchParams);
+    const next = dropMonitoringParams(new URLSearchParams(searchParams), id);
     next.set("tab", id);
     setSearchParams(next);
+  };
+
+  // переход из «Прогресса» в «Проверку» к конкретному отчёту
+  const openReview = ({ studentId, themeId }) => {
+    setTabState("review");
+    const next = dropMonitoringParams(new URLSearchParams(searchParams), "review");
+    next.set("tab", "review");
+    next.set("student", String(studentId));
+    next.set("theme", String(themeId));
+    setSearchParams(next);
+  };
+
+  const openChatWithStudent = (studentId) => {
+    setTabState("messages");
+    setSearchParams({ tab: "messages", user: String(studentId) });
   };
 
   // реакция на внешнее изменение URL (клик по уведомлению, назад/вперёд)
@@ -91,6 +125,9 @@ export default function ManagerPanel() {
       .catch((e) => setDataErr(`пользователи: ${e.message}`))
       .finally(() => setUsersLoading(false));
   }, [key]);
+
+  // deep-link ?theme= — до готовности группы вкладку не монтируем (иначе фильтр сгорает)
+  const themeGroupReady = useThemeGroupReady(searchParams, tab, groups, setGroupId);
 
   useEffect(() => {
     if (!groupId && groups[0]) setGroupId(groups[0].id);
@@ -123,11 +160,16 @@ export default function ManagerPanel() {
       {isMonitoring && !groups.length && (
         <div className="card muted">Группы не найдены</div>
       )}
-      {isMonitoring && groupId && tab === "students" && <StudentsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "progress" && <ProgressTable groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "reports"  && <ReportsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "attempts" && <AttemptsTab groupId={+groupId} />}
-      {isMonitoring && groupId && tab === "analytics" && <AnalyticsTab groupId={+groupId} />}
+      {isMonitoring && groupId && themeGroupReady && (
+        <MonitoringView
+          tab={tab}
+          groupId={groupId}
+          searchParams={searchParams}
+          setSearchParams={setSearchParams}
+          onOpenReview={openReview}
+          onDirectMessage={openChatWithStudent}
+        />
+      )}
 
       {tab === "users"          && <UsersTab groups={groups} users={users} usersLoading={usersLoading} reload={reload} />}
       {tab === "invites"        && <InvitesTab allowManagerRole={false} />}
@@ -185,7 +227,7 @@ function UsersTab({ groups, users, usersLoading, reload }) {
   const needle = q.trim().toLowerCase();
   const filtered = needle
     ? users.filter(u =>
-        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${u.role} ${u.extra_roles || ""} ${(u.groups || []).map(g => `${g.course} ${g.name}`).join(" ")}`
+        `${u.name} ${u.username} ${u.email || ""} ${u.phone || ""} ${roleLabel(u.role)} ${u.extra_roles || ""} ${(u.extra_roles || "").split(",").map(roleLabel).join(" ")} ${(u.groups || []).map(g => `${g.course} ${g.name}`).join(" ")}`
           .toLowerCase().includes(needle))
     : users;
 
@@ -201,7 +243,8 @@ function UsersTab({ groups, users, usersLoading, reload }) {
         <select value={form.role}
                  onChange={e => setForm({ ...form, role: e.target.value, group_ids: [] })}>
           <option value="student">Ученик</option>
-          <option value="teacher">Куратор</option>
+          <option value="curator">Куратор</option>
+          <option value="teacher">Декан</option>
         </select>
         <label className="chip" style={{ cursor: "pointer" }} title="Разрешить пользоваться курсами">
           <input type="checkbox" checked={form.is_active}
@@ -259,9 +302,9 @@ function UsersTab({ groups, users, usersLoading, reload }) {
                 )}
               </td>
               <td>
-                {u.role}
+                {roleLabel(u.role)}
                 {u.extra_roles && (
-                  <span className="muted small"> + {u.extra_roles}</span>
+                  <span className="muted small"> + {u.extra_roles.split(",").map(roleLabel).join(", ")}</span>
                 )}
               </td>
               <td>
@@ -300,7 +343,11 @@ function UsersTab({ groups, users, usersLoading, reload }) {
                 )}
               </td>
               <td>
-                <button className="btn small" onClick={() => setEditing(u)}>Изм.</button>
+                {u.role === "manager" ? (
+                  <span className="muted small" title="Методиста может изменять только администратор">—</span>
+                ) : (
+                  <button className="btn small" onClick={() => setEditing(u)}>Изм.</button>
+                )}
               </td>
             </tr>
           ))}

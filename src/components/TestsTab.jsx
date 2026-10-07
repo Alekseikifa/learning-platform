@@ -285,7 +285,7 @@ function TestCard({ test, reload, apiPrefix = "/api/admin" }) {
                       {!q.valid && <div className="small" style={{ color: "#b91c1c" }}>⚠ {q.issue}</div>}
                       {q.question_type === "text" ? (
                         <div className="small muted" style={{ marginTop: 4 }}>
-                          {q.sample_answer ? `Ключевой ответ / образец: «${q.sample_answer}»` : "Развёрнутый ответ (ручная проверка куратором)"}
+                          {q.sample_answer ? `Ключевой ответ / образец: «${q.sample_answer}»` : "Развёрнутый ответ (ручная проверка деканом)"}
                         </div>
                       ) : (
                         <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
@@ -389,7 +389,7 @@ function QuestionRow({ idx, q, onDelete, onUpdate }) {
             {q.sample_answer ? (
               <span>Ключевые слова для автопроверки: <b>«{q.sample_answer}»</b></span>
             ) : (
-              <span>Развёрнутый письменный ответ (проверяется куратором/деканом)</span>
+              <span>Развёрнутый письменный ответ (проверяется деканом)</span>
             )}
           </div>
         ) : (
@@ -629,7 +629,7 @@ function NewQuestionForm({ testId, onSubmit }) {
             Образцовый ответ / ключевые слова (для автопроверки, опционально):
           </label>
           <input
-            placeholder="Если не заполнено — ответ будет принят и проверен куратором вручную"
+            placeholder="Если не заполнено — ответ будет принят и проверен деканом вручную"
             value={sampleAnswer}
             onChange={e => setSampleAnswer(e.target.value)}
             style={{ width: "100%", fontSize: 13 }}

@@ -18,7 +18,10 @@ export default function CoursesTab({ courses, groups = [], reload, apiPrefix = "
         api("/api/admin/users")
           .then((users) => {
             if (Array.isArray(users)) {
-              setCurators(users.filter((u) => u.role === "curator" || u.role === "teacher" || (u.roles || []).includes("curator")));
+              setCurators(users.filter((u) =>
+                u.role === "curator" || u.role === "teacher" ||
+                String(u.extra_roles || "").split(",").map(s => s.trim()).some(r => r === "curator" || r === "teacher")
+              ));
             }
           })
           .catch(() => {});
@@ -90,13 +93,14 @@ export default function CoursesTab({ courses, groups = [], reload, apiPrefix = "
           onDelete={() => del(c.id)}
           onSetOrder={handleSetCourseOrder}
           apiPrefix={apiPrefix}
+          curators={curators}
         />
       ))}
     </div>
   );
 }
 
-function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSetOrder, apiPrefix = "/api/admin" }) {
+function CourseCard({ course, courses = [], groups = [], reload, onDelete, onSetOrder, apiPrefix = "/api/admin", curators = [] }) {
   const [edit, setEdit] = useState(false);
   const [showImportThemeModal, setShowImportThemeModal] = useState(false);
   const [openThemes, setOpenThemes] = useState(false);
@@ -374,7 +378,7 @@ function ExtraMaterialsList({ course, courses = [], groups = [], reload, apiPref
   return (
     <div style={{ marginTop: 8 }}>
       <div className="muted small" style={{ marginBottom: 8 }}>
-        Список дополнительных материалов курса. В них <b>нет тестов</b>, и к каждому материалу прикреплён <b>отдельный чат обсуждения</b>, где участвуют ученики группы, кураторы и администраторы.
+        Список дополнительных материалов курса. В них <b>нет тестов</b>, и к каждому материалу прикреплён <b>отдельный чат обсуждения</b>, где участвуют ученики группы, деканы и администраторы.
       </div>
 
       {/* Select Box to attach existing extra material to this course */}
@@ -532,7 +536,7 @@ function ExtraMaterialsList({ course, courses = [], groups = [], reload, apiPref
               <div>
                 <h3 style={{ margin: 0 }}>💬 Чат обсуждения материала</h3>
                 <div className="muted small">
-                  «{chatMaterial.title}» · Участвуют ученики группы, кураторы и администраторы
+                  «{chatMaterial.title}» · Участвуют ученики группы, деканы и администраторы
                 </div>
               </div>
               <button className="btn ghost" onClick={() => setChatMaterial(null)} aria-label="Закрыть чат">✕</button>
@@ -797,7 +801,7 @@ function ThemeRow({ theme, course, onDelete, onUpdate, reload, apiPrefix = "/api
                     padding: "2px 8px",
                     fontWeight: 500,
                   }}
-                  title="Куратор, проверяющий отчёты и тесты по данной теме"
+                  title="Куратор темы: закреплённая тема, чаты и отчёты по ней"
                 >
                   👤 {activeCurator.name}
                 </span>

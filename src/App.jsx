@@ -71,6 +71,21 @@ function ProtectedRoute({ role, children }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (!getToken()) return;
+    let cancelled = false;
+    api("/api/auth/me")
+      .then((me) => {
+        if (cancelled || !me) return;
+        const cur = getUser();
+        if (!cur) return;
+        const next = { ...cur, role: me.role, roles: me.roles, name: me.name, is_root_admin: me.is_root_admin };
+        if (JSON.stringify(next) !== JSON.stringify(cur)) setUser(next);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <BrowserRouter>
       <ToastContainer />

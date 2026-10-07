@@ -4,30 +4,50 @@ import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import Collapsible from "../components/Collapsible";
 import ChatPanel from "../components/ChatPanel";
-import { StudentsTab, ProgressTable, AttemptsTab, AnalyticsTab, ReportsTab } from "../components/MonitoringTabsLazy";
+import MonitoringView from "../components/MonitoringView";
+import { normalizeMonitoringTab, useThemeGroupReady } from "../lib/monitoringTabs";
 import Modal from "../components/Modal";
 import UnlockThemeModal from "../components/UnlockThemeModal";
-import { api } from "../api";
+import { api, getUser } from "../api";
 import ScheduleCalendar from "../components/ScheduleCalendar";
 import { getIcon } from "../lib/materialIcons";
 
+// порядок и названия вкладок панели декана/куратора (сверху вниз)
 const TABS = [
-  { id: "students",      label: "Ученики" },
-  { id: "progress",      label: "Таблица прогресса" },
-  { id: "reports",       label: "Отчёты по урокам" },
-  { id: "schedule",      label: "Учебный график" },
-  { id: "materials",     label: "Доп. материалы" },
-  { id: "attempts",      label: "Попытки" },
+  { id: "review",        label: "Проверка" },
+  { id: "attempts",      label: "Тесты учеников" },
+  { id: "progress",      label: "Прогресс" },
   { id: "analytics",     label: "Аналитика" },
-  { id: "announcements", label: "Объявления" },
+  { id: "schedule",      label: "Учебный план" },
   { id: "messages",      label: "Сообщения" },
+  { id: "announcements", label: "Объявления" },
+  { id: "materials",     label: "Доп. материалы" },
+  { id: "themes",        label: "Мои темы", curatorOnly: true },
 ];
+
+const DEFAULT_TAB = TABS[0].id;
+
+// при смене вкладки убираем параметры, относящиеся только к соседним вкладкам
+const dropMonitoringParams = (next, tabId) => {
+  if (tabId !== "review") {
+    next.delete("student");
+    next.delete("theme");
+  }
+  if (tabId !== "progress") {
+    next.delete("view");
+    next.delete("scope");
+  }
+  return next;
+};
 
 export default function TeacherPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const me = getUser();
+  const isCurator = me?.role === "curator";
+  const visibleTabs = TABS.filter((t) => !t.curatorOnly || isCurator);
   const [tab, setTabState] = useState(() => {
-    const t = searchParams.get("tab");
-    return TABS.some((x) => x.id === t) ? t : "students";
+    const t = normalizeMonitoringTab(searchParams.get("tab"));
+    return TABS.some((x) => x.id === t) ? t : DEFAULT_TAB;
   });
   const [groups, setGroups] = useState([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
@@ -40,14 +60,19 @@ export default function TeacherPanel() {
   // переключение таба пишем в URL — F5 и «назад» сохраняют место
   const changeTab = (id) => {
     setTabState(id);
-    const next = new URLSearchParams(searchParams);
+    const next = dropMonitoringParams(new URLSearchParams(searchParams), id);
     next.set("tab", id);
-    if (id !== "students") {
-      next.delete("theme");
-    }
-    if (id !== "materials") {
-      next.delete("extra_material");
-    }
+    if (id !== "materials") next.delete("extra_material");
+    setSearchParams(next);
+  };
+
+  // переход из «Прогресса» в «Проверку» к конкретному отчёту
+  const openReview = ({ studentId, themeId }) => {
+    setTabState("review");
+    const next = dropMonitoringParams(new URLSearchParams(searchParams), "review");
+    next.set("tab", "review");
+    next.set("student", String(studentId));
+    next.set("theme", String(themeId));
     setSearchParams(next);
   };
 
@@ -71,7 +96,11 @@ export default function TeacherPanel() {
       .finally(() => setGroupsLoading(false));
   }, []);
 
-  // 2. Дефолтная группа
+  // 2. Deep-link ?theme= — выбираем группу курса темы до монтирования вкладки,
+  //    чтобы фильтр «Проверки» и чат темы не применялись к группе по умолчанию
+  const themeGroupReady = useThemeGroupReady(searchParams, tab, groups, setGroupId);
+
+  // 3. Дефолтная группа
   useEffect(() => {
     if (!groupId && groups[0]) setGroupId(groups[0].id);
   }, [groups, groupId]);
@@ -80,17 +109,17 @@ export default function TeacherPanel() {
   useEffect(() => {
     const urlTheme = searchParams.get("theme");
     const urlExtra = searchParams.get("extra_material");
-    const urlTab = searchParams.get("tab");
+    const urlTab = normalizeMonitoringTab(searchParams.get("tab"));
     if (urlTab && TABS.some((x) => x.id === urlTab)) {
       setTabState(urlTab);
-      if (urlTab === "students" && urlTheme) {
+      if ((urlTab === "progress" || urlTab === "review") && urlTheme) {
         setPendingTheme(+urlTheme);
       } else if (urlTab === "materials" && urlExtra) {
         setPendingExtra(+urlExtra);
       }
     } else if (urlTheme) {
       setPendingTheme(+urlTheme);
-      setTabState("students");
+      setTabState("progress");
     } else if (urlExtra) {
       setPendingExtra(+urlExtra);
       setTabState("materials");
@@ -113,7 +142,8 @@ export default function TeacherPanel() {
         if (matching) setGroupId(matching.id);
         else alert("Открыть тему не удалось: вам не назначена группа этого курса");
         setPendingTheme(null);
-        clearParams(["theme"]);
+        // параметр theme не чистим: для «Прогресса» его поглотит компонент чата,
+        // для «Проверки» он остаётся фильтром очереди
       } catch (e) {
         alert(`Открыть тему не удалось: ${e.message}`);
         setPendingTheme(null);
@@ -145,8 +175,16 @@ export default function TeacherPanel() {
     })();
   }, [pendingExtra, groups, groupsLoading]);
 
+  // вкладки, доступные текущей роли: кураторские разделы декану не показываем
+  const shownTab = visibleTabs.some((t) => t.id === tab) ? tab : (visibleTabs[0] && visibleTabs[0].id);
+
+  const openTheme = (themeId) => {
+    setTabState("progress");
+    setSearchParams({ tab: "progress", theme: String(themeId) });
+  };
+
   return (
-    <Layout title="Панель куратора" tabs={TABS} active={tab} onChange={changeTab}>
+    <Layout title={isCurator ? "Панель куратора" : "Панель декана"} tabs={visibleTabs} active={shownTab} onChange={changeTab}>
       <div className="card row">
         <label>Группа:</label>
         <select value={groupId} onChange={e => setGroupId(e.target.value)}>
@@ -164,29 +202,28 @@ export default function TeacherPanel() {
           Не удалось загрузить группы: {groupsErr}
         </div>
       )}
-      {!groupsLoading && !groupsErr && !groups.length && tab !== "messages" && (
+      {!groupsLoading && !groupsErr && !groups.length && !["messages", "themes"].includes(shownTab) && (
         <div className="card muted">Вам ещё не назначены группы</div>
       )}
 
-       {groupId && tab === "students"      && (
-        <StudentsTab groupId={+groupId}
-                     initialTheme={pendingTheme}
-                     onThemeConsumed={() => {
-                       setPendingTheme(null);
-                       clearParams(["theme"]);
-                     }}
-                     onDirectMessage={openChatWithStudent} />
+      {groupId && themeGroupReady && ["progress", "review", "attempts", "analytics"].includes(shownTab) && (
+        <MonitoringView
+          tab={shownTab}
+          groupId={groupId}
+          searchParams={searchParams}
+          setSearchParams={setSearchParams}
+          onOpenReview={openReview}
+          onDirectMessage={openChatWithStudent}
+        />
       )}
-      {groupId && tab === "progress"      && <ProgressTable groupId={+groupId} />}
-      {groupId && tab === "reports"       && <ReportsTab groupId={+groupId} />}
-      {groupId && tab === "schedule"      && (
+      {groupId && shownTab === "schedule"      && (
         <ScheduleCalendar
           courseId={groups.find(g => g.id === +groupId)?.course_id}
           groupId={+groupId}
           readOnly={false}
         />
       )}
-      {groupId && tab === "materials"     && (
+      {groupId && shownTab === "materials"     && (
         <TeacherMaterialsTab
           group={groups.find(g => g.id === +groupId)}
           initialExtra={pendingExtra}
@@ -196,10 +233,9 @@ export default function TeacherPanel() {
           }}
         />
       )}
-      {groupId && tab === "attempts"      && <AttemptsTab groupId={+groupId} />}
-      {groupId && tab === "analytics"     && <AnalyticsTab groupId={+groupId} />}
-      {groupId && tab === "announcements" && <AnnouncementsTab groups={groups} />}
-      {tab === "messages"                   && <DirectMessages />}
+      {groupId && shownTab === "announcements" && <AnnouncementsTab groups={groups} />}
+      {shownTab === "messages"                 && <DirectMessages />}
+      {shownTab === "themes"                   && <CuratorThemesTab onOpenTheme={openTheme} />}
     </Layout>
   );
 }
@@ -361,7 +397,7 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
           <div>
             <h3 style={{ margin: 0 }}>Дополнительные материалы курса «{group.course_title}»</h3>
             <div className="muted small">
-              В дополнительных материалах нет тестов. Каждый материал содержит чат обсуждения, объединяющий учеников группы, куратора и администраторов.
+              В дополнительных материалах нет тестов. Каждый материал содержит чат обсуждения, объединяющий учеников группы, декана и администраторов.
             </div>
           </div>
           <span className="tag ok">Без тестов</span>
@@ -427,7 +463,7 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
             <div>
               <b>Обсуждение: {chatMaterial.title}</b>
               <div className="muted small">
-                Группа: {group.name} · Участвуют ученики группы, кураторы и администрация
+                Группа: {group.name} · Участвуют ученики группы, деканы и администрация
               </div>
             </div>
             <button className="btn ghost" onClick={() => setChatMaterial(null)} aria-label="Закрыть чат">✕</button>
@@ -439,3 +475,59 @@ function TeacherMaterialsTab({ group, initialExtra, onExtraConsumed }) {
   );
 }
 
+
+/** Темы, закреплённые за куратором (Theme.curator_id === текущий пользователь) */
+function CuratorThemesTab({ onOpenTheme }) {
+  const [themes, setThemes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api("/api/curator/themes")
+      .then((data) => { if (alive) setThemes(Array.isArray(data) ? data : []); })
+      .catch((e) => { if (alive) setErr(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  if (loading) return <div className="card muted">Загрузка тем…</div>;
+  if (err) {
+    return (
+      <div className="card" style={{ color: "#dc2626" }}>
+        Не удалось загрузить темы: {err}
+      </div>
+    );
+  }
+  if (!themes.length) {
+    return (
+      <div className="card muted">
+        За вами не закреплено ни одной темы. Закрепить тему за вами может методист или администратор — напишите им.
+      </div>
+    );
+  }
+
+  return (
+    <div className="list">
+      {themes.map((t) => (
+        <div className="card" key={t.id}>
+          <div className="spread">
+            <div>
+              <b>{t.title}</b>
+              <div className="muted small">{t.course_title}</div>
+            </div>
+            <button className="btn primary small" onClick={() => onOpenTheme(t.id)}>
+              💬 Чат темы
+            </button>
+          </div>
+          <div className="chips" style={{ marginTop: 6 }}>
+            <span className="tag">📎 Уроков: {t.materials_count}</span>
+            {t.test_id
+              ? <span className="tag">📝 Тест: {t.test_title}</span>
+              : <span className="tag muted">Тест не назначен</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

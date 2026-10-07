@@ -42,7 +42,7 @@ export default function InvitesTab({ allowManagerRole = true }) {
 
   const activeRoles = [form.role, ...extra];
   const showStudentGroups = activeRoles.includes("student");
-  const showCuratorGroups = activeRoles.includes("teacher") || activeRoles.includes("curator");
+  const showCuratorGroups = activeRoles.includes("teacher");
 
   const toggleExtra = (r) => {
     setExtra(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
@@ -72,8 +72,8 @@ export default function InvitesTab({ allowManagerRole = true }) {
           ...form,
           role,
           extra_roles: extra.filter(r => r !== role).join(","),
-          group_ids: activeRoles.includes("student") ? groupIds : [],
-          curator_group_ids: activeRoles.includes("teacher") ? curatorGroupIds : [],
+          group_ids: showStudentGroups ? groupIds : [],
+          curator_group_ids: showCuratorGroups ? curatorGroupIds : [],
         }),
       });
       resetForm();
@@ -176,9 +176,9 @@ export default function InvitesTab({ allowManagerRole = true }) {
 
           {showCuratorGroups && (
             <>
-              <div className="section-title">Группы (куратор)</div>
+              <div className="section-title">Группы декана</div>
               <div className="muted small" style={{ marginBottom: 6 }}>
-                Отметьте группы, в которых пользователь станет куратором при регистрации.
+                Отметьте группы, в которых пользователь станет деканом при регистрации.
               </div>
               {groupChips(curatorGroupIds, setCuratorGroupIds)}
             </>
@@ -256,7 +256,7 @@ export default function InvitesTab({ allowManagerRole = true }) {
                       <div>Ученик: {studentGroups.join(", ")}</div>
                     )}
                     {curatorGroups.length > 0 && (
-                      <div>Куратор: {curatorGroups.join(", ")}</div>
+                      <div>Группы декана: {curatorGroups.join(", ")}</div>
                     )}
                     {!studentGroups.length && !curatorGroups.length && <span className="muted">—</span>}
                   </td>

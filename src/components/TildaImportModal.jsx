@@ -134,8 +134,9 @@ export default function TildaImportModal({ allGroups = [], onClose, onSuccess })
 
       // Определение роли
       if (lower.includes("админ") || lower.includes("admin")) {
-        // Назначать администратора может только главный администратор
-        targetRole = isCurrentUserRoot ? "admin" : "curator";
+        // Назначать администратора может только главный администратор,
+        // для остальных запись сохраняется без привилегий (ученик)
+        targetRole = isCurrentUserRoot ? "admin" : "student";
       } else if (lower.includes("методист") || lower.includes("метод") || lower.includes("manager")) {
         targetRole = "manager";
       } else if (lower.includes("куратор") || lower.includes("curator")) {

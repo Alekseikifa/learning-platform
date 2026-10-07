@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, getUser, logout, setToken, setUser } from "../api";
 import HeaderBanner from "./HeaderBanner";
 import WelcomeModal from "./WelcomeModal";
+import ErrorBoundary from "./ErrorBoundary";
 
 const APP_NAME = "МКУ — Международные Курсы Ученичества";
 
@@ -13,6 +14,22 @@ const ROLE_NAMES = {
   dean: "Декан",
   curator: "Куратор",
   student: "Ученик",
+};
+
+// ключи настроек с переименовываемыми названиями ролей
+const ROLE_NAME_KEYS = {
+  admin: "role_admin_name",
+  manager: "role_manager_name",
+  teacher: "role_teacher_name",
+  curator: "role_curator_name",
+  student: "role_student_name",
+};
+
+// название роли: сначала настройки администратора, затем значения по умолчанию
+const roleName = (role, settings) => {
+  const key = role && ROLE_NAME_KEYS[role];
+  const custom = key && settings ? settings[key] : "";
+  return custom || ROLE_NAMES[role] || role;
 };
 
 const TAB_ICONS = {
@@ -155,7 +172,7 @@ function NotificationBell() {
   );
 }
 
-function RoleSwitcher() {
+function RoleSwitcher({ settings }) {
   const user = getUser();
   const [isOpen, setIsOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -190,7 +207,7 @@ function RoleSwitcher() {
   return (
     <div style={{ position: "relative" }}>
       <button className="btn ghost small" onClick={() => setIsOpen((v) => !v)} title="Сменить роль">
-        🎭 {ROLE_NAMES[user.role] || user.role}
+        🎭 {roleName(user.role, settings)}
       </button>
       {isOpen && (
         <>
@@ -216,7 +233,7 @@ function RoleSwitcher() {
                   onClick={() => !isSwitching && handleSwitch(r)}
                 >
                   <div className="notif-title">
-                    {ROLE_NAMES[r] || r}
+                    {roleName(r, settings)}
                     {r === user.role && <span className="muted small"> · текущая</span>}
                   </div>
                 </div>
@@ -303,7 +320,7 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
             {!sidebarCollapsed && (
               <div className="sidebar-brand-text">
                 <div className="sidebar-title">МКУ</div>
-                <div className="sidebar-badge">{ROLE_NAMES[user?.role] || title}</div>
+                <div className="sidebar-badge">{roleName(user?.role, publicSettings) || title}</div>
               </div>
             )}
           </div>
@@ -412,13 +429,13 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
             {!sidebarCollapsed && (
               <div className="sidebar-user-details">
                 <b title={user?.name}>{user?.name}</b>
-                <span className="sidebar-role-label">{ROLE_NAMES[user?.role] || user?.role}</span>
+                <span className="sidebar-role-label">{roleName(user?.role, publicSettings) || user?.role}</span>
               </div>
             )}
           </div>
           {!sidebarCollapsed ? (
             <div className="sidebar-actions-row">
-              <RoleSwitcher />
+              <RoleSwitcher settings={publicSettings} />
               <button className="btn ghost small" onClick={logout} title="Выйти из системы">
                 Выйти
               </button>
@@ -477,7 +494,7 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
               </button>
             )}
             <NotificationBell />
-            <RoleSwitcher />
+            <RoleSwitcher settings={publicSettings} />
             <span className="staff-user-name">
               <b>{user?.name}</b>
             </span>
@@ -512,7 +529,9 @@ export default function Layout({ title, tabs, active, onChange, children, dropdo
           />
         )}
 
-        <main className="content staff-content">{children}</main>
+        <main className="content staff-content">
+          <ErrorBoundary key={active}>{children}</ErrorBoundary>
+        </main>
       </div>
     </div>
   );

@@ -655,7 +655,7 @@ export default function ExtraMaterialsTabContent({ courses = [], groups = [], ap
               <div>
                 <h3 style={{ margin: 0 }}>💬 Чат обсуждения материала</h3>
                 <div className="muted small">
-                  «{chatMaterial.title}» · Участвуют ученики привязанных групп, кураторы и администраторы
+                  «{chatMaterial.title}» · Участвуют ученики привязанных групп, деканы и администраторы
                 </div>
               </div>
               <button className="btn ghost" onClick={() => setChatMaterial(null)}>

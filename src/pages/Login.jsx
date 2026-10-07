@@ -21,7 +21,7 @@ export default function Login() {
         body: JSON.stringify({ username, password }),
       });
       setToken(res.access_token);
-      setUser({ role: res.role, roles: res.roles || [res.role], name: res.name });
+      setUser({ role: res.role, roles: res.roles || [res.role], name: res.name, is_root_admin: res.is_root_admin });
       const target =
         res.role === "admin"
           ? "/admin"
@@ -29,6 +29,8 @@ export default function Login() {
           ? "/manager"
           : res.role === "teacher"
           ? "/teacher"
+          : res.role === "curator"
+          ? "/curator"
           : "/student";
       navigate(target);
     } catch (err) {

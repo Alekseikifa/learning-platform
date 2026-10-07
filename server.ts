@@ -285,6 +285,26 @@ function normalizeExtraRoles(primaryRole: string, value: unknown): string {
   return out.join(",");
 }
 
+/** Роль, под которой пользователь работает в текущем запросе (активная роль из токена). */
+function activeRoleOf(req: AuthRequest): string {
+  return (req.tokenPayload && req.tokenPayload.role) || (req.user && req.user.role) || "";
+}
+
+/**
+ * Область видимости мониторинга: куратор видит только свои темы
+ * ("mine" — темы, закреплённые за ним; ?scope=all игнорируется),
+ * остальные роли — все темы ("all").
+ */
+function monitoringScope(req: AuthRequest): "mine" | "all" {
+  return activeRoleOf(req) === "curator" ? "mine" : "all";
+}
+
+function isCuratorTheme(req: AuthRequest, themeId: number | null | undefined): boolean {
+  if (activeRoleOf(req) !== "curator") return true;
+  const th = themeId ? db.themes.find((x) => x.id === themeId) : null;
+  return !!th && th.curator_id === req.user!.id;
+}
+
 function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !req.tokenPayload) {
@@ -329,7 +349,7 @@ function studentGroupsOf(u: User) {
     .filter(Boolean);
 }
 
-// группы, в которых пользователь является куратором
+// группы, в которых пользователь является деканом
 function curatorGroupsOf(u: User) {
   return db.groupTeachers
     .filter((gt) => gt.teacher_id === u.id)
@@ -367,7 +387,7 @@ function setUserStudentGroups(userId: number, groupIds: unknown) {
   for (const gid of ids) db.groupStudents.push({ group_id: gid, user_id: userId });
 }
 
-// полная замена связей «пользователь — группы» (куратор)
+// полная замена связей «пользователь — группы» (декан)
 function setUserCuratorGroups(userId: number, groupIds: unknown) {
   const ids = [...new Set(
     (Array.isArray(groupIds) ? groupIds : [])
@@ -388,7 +408,8 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/public/roles", (_req, res) => {
   const defaults: Record<string, string> = {
     role_admin_name: "Администратор",
-    role_teacher_name: "Куратор",
+    role_teacher_name: "Декан",
+    role_curator_name: "Куратор",
     role_student_name: "Ученик",
     role_manager_name: "Методист",
   };
@@ -640,7 +661,7 @@ app.post("/api/auth/register", (req, res) => {
   });
 
   if (inviteIdx === -1) {
-    return res.status(400).json({ detail: "Приглашение не найдено в списке. Обратитесь к администратору или куратору." });
+    return res.status(400).json({ detail: "Приглашение не найдено в списке. Обратитесь к администратору или декану." });
   }
 
   const invite = db.phoneInvites[inviteIdx];
@@ -666,7 +687,7 @@ app.post("/api/auth/register", (req, res) => {
   db.users.push(newUser);
 
   const roles = getAllRolesOf(newUser);
-  // группы из приглашения: group_ids → ученик, curator_group_ids → куратор
+  // группы из приглашения: group_ids → ученик, curator_group_ids → декан
   if (roles.includes("student")) {
     for (const gid of invite.group_ids || []) {
       if (db.groups.find((g) => g.id === gid) &&
@@ -675,7 +696,7 @@ app.post("/api/auth/register", (req, res) => {
       }
     }
   }
-  if (roles.includes("teacher")) {
+  if (roles.includes("teacher") || roles.includes("curator")) {
     for (const gid of invite.curator_group_ids || []) {
       if (db.groups.find((g) => g.id === gid) &&
           !db.groupTeachers.find((gt) => gt.group_id === gid && gt.teacher_id === newUser.id)) {
@@ -1061,6 +1082,9 @@ app.put("/api/admin/users/:user_id/password", authMiddleware, requireRole("admin
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u) return res.status(404).json({ detail: "Пользователь не найден" });
+  if (isRootAdmin(u)) {
+    return res.status(400).json({ detail: "Пароль главного администратора меняется только в Настройках" });
+  }
   const newPassword = String(req.body.password || "").trim();
   if (newPassword.length < 4) return res.status(400).json({ detail: "Пароль должен содержать минимум 4 символа" });
   u.password_hash = bcrypt.hashSync(newPassword, 10);
@@ -1239,7 +1263,7 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req: 
     if (!username) errs.push("не указан логин, email или телефон");
 
     const roleRaw = String(row.role ?? "").trim();
-    let role: "teacher" | "student" | "manager" | "admin" | null = null;
+    let role: "teacher" | "curator" | "student" | "manager" | "admin" | null = null;
     if (!roleRaw) {
       role = "student"; // По умолчанию роль Ученик
     } else if (["admin", "админ", "администратор", "administrator"].includes(roleRaw.toLowerCase())) {
@@ -1297,7 +1321,7 @@ app.post("/api/admin/users/import", authMiddleware, requireRole("admin"), (req: 
       return ids;
     };
     const groupIds = resolveGroups(row.groups, "ученик");
-    const curatorIds = resolveGroups(row.curator_groups, "куратор");
+    const curatorIds = resolveGroups(row.curator_groups, "декан");
 
     const unameKey = username.toLowerCase();
     if (username && seenUsernames.has(unameKey)) errs.push("дубликат логина внутри файла");
@@ -1423,8 +1447,8 @@ app.post(["/api/admin/invites", "/api/manager/invites"], authMiddleware, require
     if (!isRootAdmin(req.user)) {
       return res.status(403).json({ detail: "Только главный администратор может приглашать администраторов" });
     }
-  } else if (!["teacher", "student", "manager"].includes(role)) {
-    return res.status(400).json({ detail: "role must be teacher, student, manager or admin" });
+  } else if (!["teacher", "curator", "student", "manager"].includes(role)) {
+    return res.status(400).json({ detail: "role must be teacher, curator, student, manager or admin" });
   }
   const activeRole = req.tokenPayload!.role || req.user!.role;
   const cleanedExtras = normalizeExtraRoles(role, extra_roles);
@@ -1707,6 +1731,9 @@ app.put("/api/admin/settings", authMiddleware, requireRole("admin"), (req: AuthR
 });
 
 app.get("/api/admin/backup", authMiddleware, requireRole("admin"), (req: AuthRequest, res: Response) => {
+  if (!isRootAdmin(req.user)) {
+    return res.status(403).json({ detail: "Только главный администратор может создавать резервные копии" });
+  }
   const dump = {
     exported_at: new Date().toISOString(),
     settings: db.settings,
@@ -1766,6 +1793,9 @@ app.post(
   requireRole("admin"),
   restoreUpload.single("file") as any,
   (req: AuthRequest, res: Response) => {
+    if (!isRootAdmin(req.user)) {
+      return res.status(403).json({ detail: "Только главный администратор может восстанавливать базу данных" });
+    }
     if (!req.file) return res.status(400).json({ detail: "Файл не передан" });
 
     let parsed: any;
@@ -2069,7 +2099,8 @@ app.delete("/api/admin/logs/clear", authMiddleware, requireRole("admin"), (req: 
 app.get("/api/admin/settings/roles", authMiddleware, requireRole("admin"), (_req, res) => {
   const defaults: Record<string, string> = {
     role_admin_name: "Администратор",
-    role_teacher_name: "Куратор",
+    role_teacher_name: "Декан",
+    role_curator_name: "Куратор",
     role_student_name: "Ученик",
     role_manager_name: "Методист",
   };
@@ -2282,8 +2313,8 @@ app.post(["/api/admin/groups/:group_id/teachers", "/api/manager/groups/:group_id
   const groupId = parseInt(req.params.group_id, 10);
   const teacherId = req.body.teacher_id;
   const t = db.users.find((u) => u.id === teacherId);
-  if (!t || t.role === "admin" || !hasRole(t, "teacher")) {
-    return res.status(400).json({ detail: "У пользователя нет роли куратора" });
+  if (!t || t.role === "admin" || (!hasRole(t, "teacher") && !hasRole(t, "curator"))) {
+    return res.status(400).json({ detail: "У пользователя нет роли декана или куратора" });
   }
   if (!db.groupTeachers.find((gt) => gt.group_id === groupId && gt.teacher_id === teacherId)) {
     db.groupTeachers.push({ group_id: groupId, teacher_id: teacherId });
@@ -2909,6 +2940,9 @@ app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (
   const userId = parseInt(req.params.user_id, 10);
   const u = db.users.find((x) => x.id === userId);
   if (!u || u.role === "admin") return res.status(404).json({ detail: "Пользователь не найден" });
+  if (u.role === "manager") {
+    return res.status(403).json({ detail: "Методист не может изменять другого методиста" });
+  }
   const { name, username, email, phone, role, extra_roles, is_active, group_ids, curator_group_ids } = req.body;
   if (name !== undefined && String(name).trim()) u.name = String(name).trim();
   if (username !== undefined) {
@@ -2945,23 +2979,21 @@ app.put("/api/manager/users/:user_id", authMiddleware, requireRole("manager"), (
     }
   }
   if (is_active !== undefined) u.is_active = !!is_active;
-  if (u.role !== "manager") {
-    if (role !== undefined) {
-      if (!["student", "teacher", "curator"].includes(role)) {
-        return res.status(400).json({ detail: "Методист может назначать только роли ученика и куратора" });
-      }
-      u.role = role;
-      u.extra_roles = normalizeExtraRoles(u.role, u.extra_roles);
+  if (role !== undefined) {
+    if (!["student", "teacher", "curator"].includes(role)) {
+      return res.status(400).json({ detail: "Методист может назначать только роли ученика и куратора" });
     }
-    if (extra_roles !== undefined) {
-      const cleaned = (Array.isArray(extra_roles) ? extra_roles : String(extra_roles).split(","))
-        .map((r: unknown) => String(r).trim())
-        .filter((r: string) => r && r !== "manager");
-      u.extra_roles = normalizeExtraRoles(u.role, cleaned);
-    }
-    if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
-    if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
+    u.role = role;
+    u.extra_roles = normalizeExtraRoles(u.role, u.extra_roles);
   }
+  if (extra_roles !== undefined) {
+    const cleaned = (Array.isArray(extra_roles) ? extra_roles : String(extra_roles).split(","))
+      .map((r: unknown) => String(r).trim())
+      .filter((r: string) => r && r !== "manager");
+    u.extra_roles = normalizeExtraRoles(u.role, cleaned);
+  }
+  if (Array.isArray(group_ids)) setUserStudentGroups(userId, group_ids);
+  if (Array.isArray(curator_group_ids)) setUserCuratorGroups(userId, curator_group_ids);
   res.json({ ...userInfo(u), is_active: u.is_active !== false });
 });
 
@@ -3396,7 +3428,7 @@ app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("te
   if (!msg) return res.status(404).json({ detail: "Сообщение не найдено" });
   if (!msg.is_report) return res.status(400).json({ detail: "Сообщение не является отчётом" });
 
-  if (req.user!.role === "curator" && msg.theme_id) {
+  if (activeRoleOf(req) === "curator" && msg.theme_id) {
     const th = db.themes.find((t) => t.id === msg.theme_id);
     if (th && th.curator_id !== req.user!.id) {
       return res.status(403).json({ detail: "Куратор может проверять отчёты только по своим курируемым темам" });
@@ -3427,8 +3459,8 @@ app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("te
     [msg.user_id],
     "report",
     `Отчёт ${lessonPart}${theme ? ` (тема «${theme.title}»)` : ""}: ${statusLabels[status] || status}`,
-    comment ? `Комментарий куратора: ${comment}` : `Статус отчёта обновлён (${req.user!.name})`,
-    theme ? `/student?course=${theme.course_id}&theme=${theme.id}` : "/student"
+    comment ? `Комментарий декана: ${comment}` : `Статус отчёта обновлён (${req.user!.name})`,
+    theme ? `/student?course=${theme.course_id}&theme=${theme.id}${mat ? `&lesson=${mat.id}` : ""}` : "/student"
   );
 
   res.json({ ok: true, msg });
@@ -3437,7 +3469,7 @@ app.post("/api/chat/messages/:id/review-report", authMiddleware, requireRole("te
 // Список отчётов группы для куратора, администратора или методиста
 app.get(["/api/teacher/groups/:group_id/reports", "/api/curator/groups/:group_id/reports"], authMiddleware, requireRole("teacher", "admin", "manager", "curator"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
-  if ((req.user!.role === "teacher" || req.user!.role === "curator") && !ownTeacherGroup(req.user!.id, groupId)) {
+  if ((activeRoleOf(req) === "teacher" || activeRoleOf(req) === "curator") && !ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
   const group = db.groups.find((g) => g.id === groupId);
@@ -3452,7 +3484,7 @@ app.get(["/api/teacher/groups/:group_id/reports", "/api/curator/groups/:group_id
       if (!m.is_report) return false;
       const inScope = m.group_id === groupId || (sIds.includes(m.user_id) && m.theme_id && themeIds.includes(m.theme_id));
       if (!inScope) return false;
-      if (req.user!.role === "curator") {
+      if (activeRoleOf(req) === "curator") {
         return m.theme_id && myCuratedThemeIds.includes(m.theme_id);
       }
       return true;
@@ -3688,11 +3720,11 @@ app.get("/api/schedule/events", authMiddleware, requireRole("admin", "manager", 
   let events = db.scheduleEvents || [];
 
   // Преподаватель видит только свои группы и курсы
-  if (u.role === "teacher") {
+  if (activeRoleOf(req) === "teacher") {
     const gids = teacherGroupIds(u.id);
     const cids = [...new Set(db.groups.filter((g) => gids.includes(g.id)).map((g) => g.course_id))];
     events = events.filter((e) => cids.includes(e.course_id) && (!e.group_id || gids.includes(e.group_id)));
-  } else if (u.role === "curator") {
+  } else if (activeRoleOf(req) === "curator") {
     const myCuratedThemes = db.themes.filter((t) => t.curator_id === u.id);
     const myCuratedThemeIds = myCuratedThemes.map((t) => t.id);
     const myCuratedCourseIds = [...new Set(myCuratedThemes.map((t) => t.course_id))];
@@ -3754,7 +3786,7 @@ app.post("/api/schedule/events", authMiddleware, requireRole("admin", "manager",
   }
 
   // Проверка прав для куратора/преподавателя
-  if ((u.role === "teacher" || u.role === "curator") && group_id) {
+  if ((activeRoleOf(req) === "teacher" || activeRoleOf(req) === "curator") && group_id) {
     const gids = teacherGroupIds(u.id);
     const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
     const grp = db.groups.find((g) => g.id === Number(group_id));
@@ -3828,7 +3860,7 @@ app.put("/api/schedule/events/:id", authMiddleware, requireRole("admin", "manage
   if (!ev) return res.status(404).json({ detail: "Событие не найдено" });
 
   const u = req.user!;
-  if ((u.role === "teacher" || u.role === "curator") && ev.group_id) {
+  if ((activeRoleOf(req) === "teacher" || activeRoleOf(req) === "curator") && ev.group_id) {
     const gids = teacherGroupIds(u.id);
     const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
     const grp = db.groups.find((g) => g.id === ev.group_id);
@@ -3862,7 +3894,7 @@ app.delete("/api/schedule/events/:id", authMiddleware, requireRole("admin", "man
 
   const ev = db.scheduleEvents[idx];
   const u = req.user!;
-  if ((u.role === "teacher" || u.role === "curator") && ev.group_id) {
+  if ((activeRoleOf(req) === "teacher" || activeRoleOf(req) === "curator") && ev.group_id) {
     const gids = teacherGroupIds(u.id);
     const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === u.id).map((t) => t.course_id);
     const grp = db.groups.find((g) => g.id === ev.group_id);
@@ -3903,19 +3935,33 @@ app.get(["/api/teacher/courses", "/api/curator/courses"], authMiddleware, requir
 
 app.get(["/api/teacher/groups", "/api/curator/groups"], authMiddleware, requireRole("teacher", "curator", "admin"), (req: AuthRequest, res: Response) => {
   const gids = teacherGroupIds(req.user!.id);
-  const myCuratedCourseIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.course_id);
+  const myThemes = db.themes.filter((t) => t.curator_id === req.user!.id);
+  const myCuratedCourseIds = myThemes.map((t) => t.course_id);
+  const isCurator = activeRoleOf(req) === "curator";
   const out = db.groups
-    .filter((g) => req.user!.role === "admin" || gids.includes(g.id) || myCuratedCourseIds.includes(g.course_id))
+    .filter((g) => {
+      if (req.user!.role === "admin") return true;
+      // куратор видит только группы курсов, где закреплены именно его темы
+      if (isCurator) return myCuratedCourseIds.includes(g.course_id);
+      return gids.includes(g.id) || myCuratedCourseIds.includes(g.course_id);
+    })
     .map((g) => {
       const c = db.courses.find((x) => x.id === g.course_id);
-      return { id: g.id, name: g.name, course_id: g.course_id, course_title: c ? c.title : "" };
+      return {
+        id: g.id,
+        name: g.name,
+        course_id: g.course_id,
+        course_title: c ? c.title : "",
+        my_themes: myThemes.filter((t) => t.course_id === g.course_id).length,
+        total_themes: db.themes.filter((t) => t.course_id === g.course_id).length,
+      };
     });
   res.json(out);
 });
 
 // Темы, закреплённые за куратором
 app.get("/api/curator/themes", authMiddleware, requireRole("curator", "admin"), (req: AuthRequest, res: Response) => {
-  const isAdm = req.user!.role === "admin";
+  const isAdm = activeRoleOf(req) === "admin";
   const themes = isAdm
     ? db.themes
     : db.themes.filter((t) => t.curator_id === req.user!.id);
@@ -3943,10 +3989,21 @@ app.get(["/api/teacher/groups/:group_id/students", "/api/curator/groups/:group_i
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
   const group = db.groups.find((g) => g.id === groupId);
-  const courseThemes = group ? db.themes.filter((t) => t.course_id === group.course_id) : [];
+  const scope = monitoringScope(req);
+  const allCourseThemes = group ? db.themes.filter((t) => t.course_id === group.course_id) : [];
+  // куратор всегда видит только свои темы (monitoringScope → "mine")
+  const courseThemes = scope === "mine"
+    ? allCourseThemes.filter((t) => t.curator_id === req.user!.id)
+    : allCourseThemes;
   const themeIds = courseThemes.map((t) => t.id);
 
-  const testIds = testIdsForGroups([groupId]);
+  let testIds = testIdsForGroups([groupId]);
+  if (scope === "mine") {
+    testIds = testIds.filter((tid) => {
+      const t = db.tests.find((x) => x.id === tid);
+      return !!t && themeIds.includes(t.theme_id);
+    });
+  }
   const sIds = db.groupStudents.filter((gs) => gs.group_id === groupId).map((gs) => gs.user_id);
   const students = db.users.filter((u) => sIds.includes(u.id));
 
@@ -3992,7 +4049,7 @@ app.get(["/api/teacher/groups/:group_id/students", "/api/curator/groups/:group_i
   res.json(out);
 });
 
-app.get("/api/teacher/groups/:group_id/attention", authMiddleware, requireRole("teacher", "admin"), (req: AuthRequest, res: Response) => {
+app.get(["/api/teacher/groups/:group_id/attention", "/api/curator/groups/:group_id/attention"], authMiddleware, requireRole("teacher", "curator", "admin", "manager"), (req: AuthRequest, res: Response) => {
   const groupId = parseInt(req.params.group_id, 10);
   if (!ownTeacherGroup(req.user!.id, groupId)) {
     return res.status(403).json({ detail: "Доступ запрещён" });
@@ -4003,9 +4060,13 @@ app.get("/api/teacher/groups/:group_id/attention", authMiddleware, requireRole("
   const sIds = db.groupStudents.filter((gs) => gs.group_id === groupId).map((gs) => gs.user_id);
   const students = db.users.filter((u) => sIds.includes(u.id));
 
-  const courseThemes = db.themes
+  const scope = monitoringScope(req);
+  const allCourseThemes = db.themes
     .filter((t) => t.course_id === group.course_id)
     .sort((a, b) => a.order_index - b.order_index || a.id - b.id);
+  const courseThemes = scope === "mine"
+    ? allCourseThemes.filter((t) => t.curator_id === req.user!.id)
+    : allCourseThemes;
   const themeIds = courseThemes.map((t) => t.id);
   const courseTests = db.tests.filter((t) => themeIds.includes(t.theme_id));
 
@@ -4073,7 +4134,7 @@ app.get("/api/teacher/groups/:group_id/attention", authMiddleware, requireRole("
   }
 
   const unlocks = db.themeUnlocks
-    .filter((tu) => sIds.includes(tu.user_id))
+    .filter((tu) => sIds.includes(tu.user_id) && courseThemes.some((t) => t.id === tu.theme_id))
     .map((tu) => {
       const s = students.find((x) => x.id === tu.user_id);
       const th = courseThemes.find((x) => x.id === tu.theme_id);
@@ -4102,9 +4163,14 @@ app.get(["/api/teacher/groups/:group_id/progress", "/api/curator/groups/:group_i
   const group = db.groups.find((g) => g.id === groupId);
   if (!group) return res.status(404).json({ detail: "Группа не найдена" });
 
-  const themes = db.themes
+  const scope = monitoringScope(req);
+  const allThemes = db.themes
     .filter((t) => t.course_id === group.course_id)
     .sort((a, b) => a.order_index - b.order_index || a.id - b.id);
+  // куратор всегда видит только свои темы (monitoringScope → "mine")
+  const themes = scope === "mine"
+    ? allThemes.filter((t) => t.curator_id === req.user!.id)
+    : allThemes;
   const sIds = db.groupStudents.filter((gs) => gs.group_id === groupId).map((gs) => gs.user_id);
   const students = db.users.filter((u) => sIds.includes(u.id));
 
@@ -4117,6 +4183,7 @@ app.get(["/api/teacher/groups/:group_id/progress", "/api/curator/groups/:group_i
       order_index: th.order_index,
       curator_id: th.curator_id || null,
       curator_name: curator ? curator.name : null,
+      is_mine: th.curator_id === req.user!.id,
       test_id: test ? test.id : null,
       test_title: test ? test.title : null,
     };
@@ -4241,7 +4308,12 @@ app.get(["/api/teacher/groups/:group_id/progress", "/api/curator/groups/:group_i
     };
   });
 
-  res.json({ themes: themesOut, students: studentsOut });
+  res.json({
+    themes: themesOut,
+    students: studentsOut,
+    total_themes: allThemes.length,
+    my_themes: allThemes.filter((t) => t.curator_id === req.user!.id).length,
+  });
 });
 
 app.get(["/api/teacher/groups/:group_id/attempts", "/api/curator/groups/:group_id/attempts"], authMiddleware, requireRole("teacher", "curator", "admin", "manager"), (req: AuthRequest, res: Response) => {
@@ -4254,7 +4326,7 @@ app.get(["/api/teacher/groups/:group_id/attempts", "/api/curator/groups/:group_i
 
   let attempts = db.attempts
     .filter((a) => testIds.includes(a.test_id) && sIds.includes(a.user_id));
-  if (req.user!.role === "curator") {
+  if (activeRoleOf(req) === "curator") {
     const myCuratedThemeIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.id);
     attempts = attempts.filter((a) => {
       const test = db.tests.find((t) => t.id === a.test_id);
@@ -4297,7 +4369,7 @@ app.get(
 
     const test = db.tests.find((t) => t.id === a.test_id);
     const theme = test ? db.themes.find((th) => th.id === test.theme_id) : null;
-    if (req.user!.role === "curator" && theme && theme.curator_id !== req.user!.id) {
+    if (activeRoleOf(req) === "curator" && theme && theme.curator_id !== req.user!.id) {
       return res.status(403).json({ detail: "Куратор может просматривать попытки только по своим темам" });
     }
     const student = db.users.find((u) => u.id === a.user_id);
@@ -4445,6 +4517,20 @@ app.post(
     const userId = parseInt(req.params.user_id, 10);
     const testId = parseInt(req.params.test_id, 10);
 
+    const test = db.tests.find((t) => t.id === testId);
+    if (!test) return res.status(404).json({ detail: "Тест не найден" });
+    const theme = db.themes.find((t) => t.id === test.theme_id);
+    const activeRole = activeRoleOf(req);
+    if (activeRole === "curator") {
+      if (!theme || theme.curator_id !== req.user!.id) {
+        return res.status(403).json({ detail: "Куратор может сбрасывать попытки только по своим темам" });
+      }
+    } else if (activeRole === "teacher") {
+      const studentGroups = db.groupStudents.filter((gs) => gs.user_id === userId).map((gs) => gs.group_id);
+      const allowed = studentGroups.some((gid) => ownTeacherGroup(req.user!.id, gid));
+      if (!allowed) return res.status(403).json({ detail: "Доступ запрещён" });
+    }
+
     const attIds = db.attempts
       .filter((a) => a.user_id === userId && a.test_id === testId)
       .map((a) => a.id);
@@ -4577,7 +4663,7 @@ app.get(["/api/teacher/groups/:group_id/analytics", "/api/curator/groups/:group_
     return res.status(403).json({ detail: "Доступ запрещён" });
   }
   let testIds = testIdsForGroups([groupId]);
-  if (req.user!.role === "curator") {
+  if (activeRoleOf(req) === "curator") {
     const myThemeIds = db.themes.filter((t) => t.curator_id === req.user!.id).map((t) => t.id);
     testIds = testIds.filter((tid) => {
       const t = db.tests.find((x) => x.id === tid);
@@ -4637,7 +4723,7 @@ app.get(
     const theme = db.themes.find((t) => t.id === themeId);
     if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-    if (req.user!.role === "curator" && theme.curator_id !== req.user!.id) {
+    if (activeRoleOf(req) === "curator" && theme.curator_id !== req.user!.id) {
       return res.status(403).json({ detail: "Куратор может просматривать чат только своих курируемых тем" });
     }
 
@@ -4662,7 +4748,7 @@ app.post(
     const theme = db.themes.find((t) => t.id === themeId);
     if (!theme) return res.status(404).json({ detail: "Тема не найдена" });
 
-    if (req.user!.role === "curator" && theme.curator_id !== req.user!.id) {
+    if (activeRoleOf(req) === "curator" && theme.curator_id !== req.user!.id) {
       return res.status(403).json({ detail: "Куратор может отправлять сообщения только в чат своих курируемых тем" });
     }
 
@@ -4804,7 +4890,7 @@ app.post(["/api/teacher/extra-materials/:id/chat", "/api/curator/extra-materials
   notifyUsers(
     Array.from(new Set(studentIds)),
     "chat",
-    `Сообщение от куратора ${req.user!.name} в доп. материале «${em.title}»`,
+    `Сообщение от декана/куратора ${req.user!.name} в доп. материале «${em.title}»`,
     text.slice(0, 160),
     `/student?extra_material=${extraId}`
   );
@@ -4812,7 +4898,7 @@ app.post(["/api/teacher/extra-materials/:id/chat", "/api/curator/extra-materials
   notifyUsers(
     Array.from(new Set(adminIds)),
     "chat",
-    `Сообщение от куратора ${req.user!.name} в доп. материале «${em.title}»`,
+    `Сообщение от декана/куратора ${req.user!.name} в доп. материале «${em.title}»`,
     text.slice(0, 160),
     `/admin?tab=chats&extra_material=${extraId}`
   );
@@ -5043,6 +5129,7 @@ app.get(
     const grants = themeGrants(userId);
     const out = [];
     const isStaffAdmin = req.user!.role === "admin" || req.user!.role === "manager";
+    const isCuratorOnly = activeRoleOf(req) === "curator";
     let targetCourseIds = studentCourseIds(userId);
     if (isStaffAdmin) {
       const allCourseIds = db.courses.map((c) => c.id);
@@ -5078,16 +5165,19 @@ app.get(
         }
         const themeCompleted = (test ? passed : true) && (requiredMaterials.length > 0 ? reportsDone : true);
 
-        // Показываем ВСЕ темы курса, чтобы администратор и преподаватели видели полный список
-        items.push({
-          id: th.id,
-          title: th.title,
-          order_index: th.order_index,
-          locked: !open,
-          granted,
-          passed: test ? passed : themeCompleted,
-          naturally_unlocked: chain && !granted,
-        });
+        // Показываем ВСЕ темы курса, чтобы администратор и преподаватели видели полный список.
+        // Куратор видит только свои темы (счётчик цепочки при этом считается по всем темам).
+        if (!isCuratorOnly || th.curator_id === req.user!.id) {
+          items.push({
+            id: th.id,
+            title: th.title,
+            order_index: th.order_index,
+            locked: !open,
+            granted,
+            passed: test ? passed : themeCompleted,
+            naturally_unlocked: chain && !granted,
+          });
+        }
 
         chain = chain && themeCompleted;
       }
@@ -5112,6 +5202,9 @@ app.post(
     const u = db.users.find((x) => x.id === userId && isStudent(x));
     const th = db.themes.find((x) => x.id === themeId);
     if (!u || !th) return res.status(404).json({ detail: "Не найдено" });
+    if (!isCuratorTheme(req, th.id)) {
+      return res.status(403).json({ detail: "Куратор может открывать только свои темы" });
+    }
     if (!inStudentCourse(userId, th.course_id)) {
       if (req.user!.role === "admin" || req.user!.role === "manager") {
         const grp = db.groups.find((g) => g.course_id === th.course_id);
@@ -5151,6 +5244,9 @@ app.delete(
   (req: AuthRequest, res: Response) => {
     const userId = parseInt(req.params.user_id, 10);
     const themeId = parseInt(req.query?.theme_id as string, 10);
+    if (!isCuratorTheme(req, themeId)) {
+      return res.status(403).json({ detail: "Куратор может отзывать доступ только по своим темам" });
+    }
     db.themeUnlocks = db.themeUnlocks.filter((gu) => !(gu.user_id === userId && gu.theme_id === themeId));
     (db as any).save();
     res.json({ ok: true });

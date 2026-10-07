@@ -38,6 +38,7 @@ export default function StudentPanel() {
     setTabState(id);
     const next = new URLSearchParams(searchParams);
     next.set("tab", id);
+    next.delete("lesson");
     if (id !== "themes") {
       next.delete("theme");
       next.delete("extra_material");
@@ -49,6 +50,21 @@ export default function StudentPanel() {
   const clearParams = (keys) => {
     const next = new URLSearchParams(searchParams);
     keys.forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+  };
+
+  // страница урока: ?lesson=<material_id> — урок открывается отдельной страницей
+  const lessonId = searchParams.get("lesson") ? +searchParams.get("lesson") : null;
+
+  const openLessonById = (matId) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("lesson", String(matId));
+    setSearchParams(next);
+  };
+
+  const closeLesson = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("lesson");
     setSearchParams(next, { replace: true });
   };
 
@@ -101,6 +117,17 @@ export default function StudentPanel() {
 
   return (
     <Layout title="Кабинет ученика" tabs={TABS} active={tab} onChange={changeTab}>
+      {lessonId ? (
+        // открытый урок — отдельная страница с навигацией по урокам
+        <LessonPage
+          courseId={courseId ? +courseId : 0}
+          materialId={lessonId}
+          groups={myGroups}
+          onClose={closeLesson}
+          onNavigate={openLessonById}
+        />
+      ) : (
+        <>
       {tab === "themes" && (
         <div>
           <div className="card row">
@@ -161,6 +188,7 @@ export default function StudentPanel() {
                 setPendingTheme(null);
                 clearParams(["course", "theme"]);
               }}
+              onOpenLesson={openLessonById}
             />
           )}
 
@@ -193,11 +221,13 @@ export default function StudentPanel() {
       {tab === "announcements" && <Announcements />}
       {tab === "messages" && <DirectMessages />}
       {tab === "history" && <History />}
+        </>
+      )}
     </Layout>
   );
 }
 
-function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
+function ThemesList({ courseId, groups, initialTheme, onThemeConsumed, onOpenLesson }) {
   const [themes, setThemes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -346,7 +376,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                 )}
                 {!th.unlocked && <span className="muted small"> 🔒 заблокировано</span>}
                 {th.unlock_granted && (
-                  <span className="tag ok" title="Тема открыта куратором/администратором">
+                  <span className="tag ok" title="Тема открыта деканом/администратором">
                     🔓 открыто вручную
                   </span>
                 )}
@@ -429,7 +459,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                             color: activeTab === "chat" ? "#ffffff" : "#1e40af",
                           }}
                         >
-                          Вопросы куратору
+                          Вопросы декану
                         </span>
                       </button>
 
@@ -511,6 +541,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                             themeId={th.id}
                             completedIds={completedIds}
                             onToggleCompleted={handleToggleCompleted}
+                            onOpenLesson={onOpenLesson}
                             onOpenReport={(matId) =>
                               setChatFor({
                                 chatThemeId: th.id,
@@ -618,7 +649,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                               </b>
                             </div>
                             <div className="muted small" style={{ marginTop: 2 }}>
-                              Здесь вы можете задавать любые вопросы куратору и преподавателю по урокам этой темы.
+                              Здесь вы можете задавать любые вопросы декану и преподавателю по урокам этой темы.
                             </div>
                           </div>
                           <div className="row" style={{ gap: 6 }}>
@@ -771,7 +802,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
                 );
               })()
             ) : (
-              <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы или обратитесь к куратору.</div>
+              <div className="muted">🔒 Заблокировано. Сдайте тест предыдущей темы или обратитесь к декану.</div>
             )}
           </Collapsible>
         );
@@ -787,7 +818,7 @@ function ThemesList({ courseId, groups, initialTheme, onThemeConsumed }) {
             <div>
               <b>Обсуждение темы: {chatFor.chatTitle}</b>
               <div className="muted small">
-                Группа: {groups && groups[0] ? groups[0].name : "—"} · Общаются ученики этой группы, куратор и администрация
+                Группа: {groups && groups[0] ? groups[0].name : "—"} · Общаются ученики этой группы, декан и администрация
               </div>
             </div>
             <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
@@ -993,53 +1024,31 @@ function ThemeSplitView({ materials, themeId, completedIds = [], onToggleComplet
   );
 }
 
-function MaterialsBlock({ materials, themeId, completedIds = [], onToggleCompleted, onOpenReport }) {
+function MaterialsBlock({ materials, themeId, completedIds = [], onToggleCompleted, onOpenReport, onOpenLesson }) {
   const me = getUser();
   const storageKey = `student_last_opened_mat_${me?.id || "me"}_${themeId}`;
 
-  const [open, setOpen] = useState(() => {
+  // запоминаем последний открытый урок и уходим на отдельную страницу урока
+  const openLesson = (m) => {
     try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved && materials && materials.some((m) => String(m.id) === String(saved))) {
-        return { [saved]: true };
+      localStorage.setItem(storageKey, String(m.id));
+      if (m.type === "video" || (m.type === "link" && parseVideoUrl(m.url))) {
+        localStorage.setItem(`student_last_opened_video_${me?.id || "me"}_${themeId}`, String(m.id));
       }
     } catch (_) {}
-    // If not saved previously, do NOT auto-open lesson 1!
-    // Start collapsed so the student cleanly sees all lessons in the theme
-    return {};
-  });
-
-  const handleToggle = (matId) => {
-    setOpen((prev) => {
-      const willOpen = !prev[matId];
-      // Компактный режим: открыт только 1 урок, остальные свернуты
-      const next = willOpen ? { [matId]: true } : {};
-      try {
-        if (willOpen) {
-          localStorage.setItem(storageKey, String(matId));
-          const m = materials.find((x) => x.id === matId);
-          if (m && (m.type === "video" || (m.type === "link" && parseVideoUrl(m.url)))) {
-            localStorage.setItem(`student_last_opened_video_${me?.id || "me"}_${themeId}`, String(matId));
-          }
-        } else {
-          localStorage.removeItem(storageKey);
-        }
-      } catch (_) {}
-      return next;
-    });
+    if (onOpenLesson) onOpenLesson(m.id);
   };
 
   return (
     <div>
       {materials.map(m => {
-        const isOpen = open[m.id];
         const isCompleted = completedIds.includes(m.id);
         const isLastOpened = localStorage.getItem(storageKey) === String(m.id);
         return (
           <div key={m.id} className="material-block">
-            <div className="material-head spread" onClick={() => handleToggle(m.id)}>
+            <div className="material-head spread" onClick={() => openLesson(m)} style={{ cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span className="collapsible-arrow">{isOpen ? "▾" : "▸"}</span>{" "}
+                <span className="collapsible-arrow">▸</span>{" "}
                 <b style={{ color: isCompleted ? "var(--olive)" : "var(--navy)" }}>
                   {m.type === "video" ? "🎬"
                    : m.type === "audio" ? "🎧"
@@ -1056,7 +1065,7 @@ function MaterialsBlock({ materials, themeId, completedIds = [], onToggleComplet
                     Без отчёта
                   </span>
                 )}
-                {isLastOpened && !isOpen && (
+                {isLastOpened && (
                   <span className="tag small" style={{ fontSize: 10, padding: "1px 6px", background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}>
                     📌 Последний открытый
                   </span>
@@ -1098,50 +1107,317 @@ function MaterialsBlock({ materials, themeId, completedIds = [], onToggleComplet
                 )}
               </div>
             </div>
-            {isOpen && (
-              <div className="material-body">
-                {(m.type === "video" || m.type === "link" || (m.sources && m.sources.length > 0)) && (
-                  <SmartMediaViewer
-                    url={m.url}
-                    title={m.title}
-                    sources={m.sources}
-                    synopsis={m.synopsis}
-                    audio_url={m.audio_url}
-                    attachments={m.attachments}
-                    materialType={m.type}
-                  />
-                )}
-                {m.type === "audio" && <audio controls src={m.url} style={{ width: "100%" }} />}
-                {m.type === "image" && (
-                  <img
-                    src={m.url}
-                    alt={m.title}
-                    referrerPolicy="no-referrer"
-                    style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, display: "block" }}
-                    onError={(e) => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.style.display = "none";
-                      const p = e.currentTarget.parentElement;
-                      if (p && !p.querySelector(".img-fallback")) {
-                        const fb = document.createElement("div");
-                        fb.className = "img-fallback muted small";
-                        fb.style.padding = "10px";
-                        fb.style.background = "#f1f5f9";
-                        fb.style.borderRadius = "8px";
-                        fb.innerHTML = `🖼️ <a href="${m.url}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">Открыть изображение в новой вкладке: ${m.title}</a>`;
-                        p.appendChild(fb);
-                      }
-                    }}
-                  />
-                )}
-                {m.type === "note" && <div style={{ whiteSpace: "pre-wrap" }}>{m.url}</div>}
-                {m.type === "document" && <a href={m.url} target="_blank" rel="noreferrer">📄 Открыть документ</a>}
-              </div>
-            )}
           </div>
         );
       })}
       {!materials.length && <div className="muted small">В этой теме пока нет материалов</div>}
+    </div>
+  );
+}
+
+// Отдельная страница урока (?lesson=<material_id>): тело урока, навигация и действия
+function LessonPage({ courseId, materialId, groups = [], onClose, onNavigate }) {
+  const [themes, setThemes] = useState([]);
+  const [completedIds, setCompletedIds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+  const [chatFor, setChatFor] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const fetchData = (showLoading) => {
+    if (showLoading) {
+      setLoading(true);
+      setErr(null);
+    }
+    return Promise.all([
+      courseId ? api(`/api/student/course/${courseId}/themes`) : Promise.resolve([]),
+      api("/api/student/materials/completed").catch(() => ({ material_ids: [] })),
+    ])
+      .then(([data, comp]) => {
+        setThemes(data);
+        setCompletedIds(comp.material_ids || []);
+      })
+      .catch((e) => {
+        if (showLoading) setErr(e.message);
+      })
+      .finally(() => {
+        if (showLoading) setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
+  // при переходе к другому уроку прокручиваем страницу наверх
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [materialId]);
+
+  // ищем тему, в которой лежит урок (theme в URL не обязателен)
+  let theme = null;
+  let mat = null;
+  let idx = -1;
+  for (const th of themes) {
+    const i = (th.materials || []).findIndex((m) => m.id === materialId);
+    if (i >= 0) {
+      theme = th;
+      mat = th.materials[i];
+      idx = i;
+      break;
+    }
+  }
+
+  const prevMat = theme && idx > 0 ? theme.materials[idx - 1] : null;
+  const nextMat = theme && idx < theme.materials.length - 1 ? theme.materials[idx + 1] : null;
+  const isCompleted = !!mat && completedIds.includes(mat.id);
+
+  const toggleCompleted = async () => {
+    if (!mat || busy) return;
+    setBusy(true);
+    try {
+      const res = await api(`/api/student/materials/${mat.id}/toggle-completed`, { method: "POST" });
+      setCompletedIds((prev) => (res.completed ? [...prev, mat.id] : prev.filter((id) => id !== mat.id)));
+    } catch (e) {
+      alert("Не удалось обновить статус урока: " + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openReport = () => {
+    if (!mat || !theme) return;
+    setChatFor({
+      chatThemeId: theme.id,
+      chatTitle: theme.title,
+      initialIsReport: true,
+      initialMaterialId: mat.id,
+      materials: theme.materials,
+    });
+  };
+
+  if (loading) return <div className="card muted">Загрузка урока…</div>;
+
+  if (err) {
+    return (
+      <div className="card" style={{ color: "#dc2626" }}>
+        Не удалось загрузить урок: {err}{" "}
+        <button type="button" className="btn ghost small" onClick={onClose}>
+          ✕ Закрыть
+        </button>
+      </div>
+    );
+  }
+
+  if (!mat || !theme) {
+    return (
+      <div className="card">
+        Урок не найден или курс не выбран.
+        <div style={{ marginTop: 10 }}>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            ✕ Вернуться к списку уроков
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const reportStatus = mat.report?.status;
+  const statusCls =
+    reportStatus === "accepted" ? "ok" : reportStatus === "pending" ? "warn" : reportStatus === "rejected" ? "danger" : "primary";
+
+  return (
+    <div>
+      {/* Шапка: крошки, закрытие, навигация по урокам */}
+      <div className="card">
+        <div className="spread" style={{ flexWrap: "wrap", gap: 8 }}>
+          <div className="muted small">
+            Курс и материалы › Тема {theme.order_index}. {theme.title} › Урок {idx + 1} из {theme.materials.length}
+          </div>
+          <button type="button" className="btn ghost small" onClick={onClose} title="Вернуться к списку уроков">
+            ✕ Закрыть урок
+          </button>
+        </div>
+
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+          <button
+            type="button"
+            className="btn small ghost"
+            disabled={!prevMat}
+            onClick={() => prevMat && onNavigate(prevMat.id)}
+            title={prevMat ? `Урок ${idx}: ${prevMat.title}` : "Это первый урок темы"}
+          >
+            ← Предыдущий
+          </button>
+          <button
+            type="button"
+            className="btn small ghost"
+            disabled={!nextMat}
+            onClick={() => nextMat && onNavigate(nextMat.id)}
+            title={nextMat ? `Урок ${idx + 2}: ${nextMat.title}` : "Это последний урок темы"}
+          >
+            Следующий →
+          </button>
+        </div>
+
+        <h3 style={{ margin: "14px 0 6px" }}>
+          {mat.type === "video" ? "🎬"
+           : mat.type === "audio" ? "🎧"
+           : mat.type === "image" ? "🖼"
+           : mat.type === "document" ? "📄"
+           : mat.type === "link" ? "🔗"
+           : "📝"}{" "}
+          {mat.title}
+        </h3>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {isCompleted && <span className="tag ok">✓ Изучено</span>}
+          {mat.no_report && <span className="tag">Без отчёта</span>}
+          {!mat.no_report && reportStatus && (
+            <span className={"tag " + statusCls}>
+              {reportStatus === "accepted"
+                ? "✅ Отчёт зачтён"
+                : reportStatus === "pending"
+                ? "⏳ Отчёт на проверке"
+                : "🔄 Отчёт: доработка"}
+            </span>
+          )}
+          {!theme.unlocked && <span className="tag warn">🔒 Тема закрыта</span>}
+        </div>
+      </div>
+
+      {/* Тело урока */}
+      <div className="material-body" style={{ marginTop: 12 }}>
+        {(mat.type === "video" || mat.type === "link" || (mat.sources && mat.sources.length > 0)) && (
+          <SmartMediaViewer
+            url={mat.url}
+            title={mat.title}
+            sources={mat.sources}
+            synopsis={mat.synopsis}
+            audio_url={mat.audio_url}
+            attachments={mat.attachments}
+            materialType={mat.type}
+          />
+        )}
+        {mat.type === "audio" && <audio controls src={mat.url} style={{ width: "100%" }} />}
+        {mat.type === "image" && (
+          <img
+            src={mat.url}
+            alt={mat.title}
+            referrerPolicy="no-referrer"
+            style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, display: "block" }}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.style.display = "none";
+              const p = e.currentTarget.parentElement;
+              if (p && !p.querySelector(".img-fallback")) {
+                const fb = document.createElement("div");
+                fb.className = "img-fallback muted small";
+                fb.style.padding = "10px";
+                fb.style.background = "#f1f5f9";
+                fb.style.borderRadius = "8px";
+                fb.innerHTML = `🖼️ <a href="${mat.url}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">Открыть изображение в новой вкладке: ${mat.title}</a>`;
+                p.appendChild(fb);
+              }
+            }}
+          />
+        )}
+        {mat.type === "note" && <div style={{ whiteSpace: "pre-wrap" }}>{mat.url}</div>}
+        {mat.type === "document" && <a href={mat.url} target="_blank" rel="noreferrer">📄 Открыть документ</a>}
+      </div>
+
+      {/* Действия по уроку */}
+      <div className="card row" style={{ gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
+        <button
+          type="button"
+          className={"btn small " + (isCompleted ? "ok" : "ghost")}
+          disabled={busy}
+          onClick={toggleCompleted}
+          title={isCompleted ? "Нажмите, чтобы снять отметку" : "Отметить урок как изученный"}
+        >
+          {isCompleted ? "✓ Изучено" : "✓ Отметить изученным"}
+        </button>
+        {!mat.no_report && (
+          <button type="button" className={"btn small " + statusCls} onClick={openReport}>
+            {reportStatus === "accepted"
+              ? "✅ Отчёт зачтён"
+              : reportStatus === "pending"
+              ? "⏳ Отчёт на проверке"
+              : reportStatus === "rejected"
+              ? "🔄 Отчёт: доработка"
+              : "📝 Сдать отчёт"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn small ghost"
+          onClick={() => setChatFor({ chatThemeId: theme.id, chatTitle: theme.title, materials: theme.materials })}
+        >
+          💬 Чат темы
+        </button>
+        {theme.test && (
+          <button type="button" className="btn small ghost" onClick={() => setChatFor({ test: theme.test })}>
+            ✍️ Проверочный тест {theme.test.passed ? "✓" : ""}
+          </button>
+        )}
+        {(prevMat || nextMat) && (
+          <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
+            {prevMat && (
+              <button
+                type="button"
+                className="btn small ghost"
+                onClick={() => onNavigate(prevMat.id)}
+                title={`Урок ${idx}: ${prevMat.title}`}
+              >
+                ← Урок {idx}
+              </button>
+            )}
+            {nextMat && (
+              <button
+                type="button"
+                className="btn small primary"
+                onClick={() => onNavigate(nextMat.id)}
+                title={`Урок ${idx + 2}: ${nextMat.title}`}
+              >
+                Урок {idx + 2} →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Чат темы / отчёт / тест */}
+      {chatFor?.test && (
+        <TestModal
+          testId={chatFor.test.id}
+          onClose={() => setChatFor(null)}
+          onDone={() => {
+            setChatFor(null);
+            fetchData(false);
+          }}
+        />
+      )}
+      {chatFor?.chatThemeId && (
+        <Modal onClose={() => setChatFor(null)}>
+          <div className="spread" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <b>Обсуждение темы: {chatFor.chatTitle}</b>
+              <div className="muted small">
+                Группа: {groups && groups[0] ? groups[0].name : "—"} · Общаются ученики этой группы, декан и администрация
+              </div>
+            </div>
+            <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>
+          </div>
+          <ChatPanel
+            themeId={chatFor.chatThemeId}
+            apiBase="/api/student"
+            initialIsReport={!!chatFor.initialIsReport}
+            initialMaterialId={chatFor.initialMaterialId || null}
+            materials={chatFor.materials || []}
+            onReportSubmitted={() => fetchData(false)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1667,7 +1943,7 @@ function History() {
                   <th>Курс / Урок</th>
                   <th>Текст отчёта</th>
                   <th>Статус</th>
-                  <th>Замечания куратора</th>
+                  <th>Замечания декана</th>
                   <th></th>
                 </tr>
               </thead>
@@ -1711,7 +1987,7 @@ function History() {
                     <td>
                       {r.course_id && r.theme_id && (
                         <a
-                          href={`/student?course=${r.course_id}&theme=${r.theme_id}`}
+                          href={`/student?course=${r.course_id}&theme=${r.theme_id}${r.material_id ? `&lesson=${r.material_id}` : ""}`}
                           className="btn small ghost"
                         >
                           Перейти к уроку
@@ -1767,7 +2043,7 @@ function ExtraMaterialsStudentList({ courseId, groups, initialExtra, onExtraCons
           <div>
             <b>Дополнительные материалы курса</b>
             <div className="muted small">
-              Материалы для углубленного изучения курса. <b>Без тестов.</b> В каждом материале доступен отдельный чат обсуждения для учеников группы, куратора и администратора.
+              Материалы для углубленного изучения курса. <b>Без тестов.</b> В каждом материале доступен отдельный чат обсуждения для учеников группы, декана и администратора.
             </div>
           </div>
           <span className="tag ok">Без тестов</span>
@@ -1855,7 +2131,7 @@ function ExtraMaterialsStudentList({ courseId, groups, initialExtra, onExtraCons
 
           <div className="spread" style={{ marginTop: 12, alignItems: "center", borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
             <span className="muted small">
-              💬 Чат: ученики группы, куратор, администратор
+              💬 Чат: ученики группы, декан, администратор
             </span>
             <button
               className="btn primary"
@@ -1873,7 +2149,7 @@ function ExtraMaterialsStudentList({ courseId, groups, initialExtra, onExtraCons
             <div>
               <b>Обсуждение: {chatFor.title}</b>
               <div className="muted small">
-                Группа: {groups && groups[0] ? groups[0].name : "—"} · Сообщения видят ученики этой группы, куратор и администрация
+                Группа: {groups && groups[0] ? groups[0].name : "—"} · Сообщения видят ученики этой группы, декан и администрация
               </div>
             </div>
             <button className="btn ghost" onClick={() => setChatFor(null)} aria-label="Закрыть чат">✕</button>

@@ -1305,7 +1305,7 @@ export default function UnifiedMaterialsRepository({ courses = [], apiPrefix = "
                   <span>Отметить материал: по нему не нужно писать отчёт (без отчёта)</span>
                 </label>
                 <div className="small muted" style={{ marginTop: 4, marginLeft: 26, color: form.no_report ? "#B45309" : undefined }}>
-                  Ученикам не потребуется сдавать отчёт по этому уроку куратору. Урок не будет требоваться в обязательной статистике сдачи отчётов по теме.
+                  Ученикам не потребуется сдавать отчёт по этому уроку декану. Урок не будет требоваться в обязательной статистике сдачи отчётов по теме.
                 </div>
               </div>
 

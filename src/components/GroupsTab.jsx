@@ -137,18 +137,18 @@ function GroupCard({ group, teachers, students, reload, apiPrefix }) {
         )}
       </div>
 
-      <div className="section-title">Кураторы</div>
+      <div className="section-title">Деканы</div>
       <div className="chips">
         {group.teachers.map(t => (
           <span key={t.id} className="chip">
-            {t.name}<button onClick={() => removeTeacher(t.id)} aria-label="Убрать куратора">✕</button>
+            {t.name}<button onClick={() => removeTeacher(t.id)} aria-label="Убрать декана">✕</button>
           </span>
         ))}
         {!group.teachers.length && <span className="muted small">нет</span>}
       </div>
       <div className="row">
         <select value={teacherId} onChange={e => setTeacherId(e.target.value)}>
-          <option value="">— куратор —</option>
+          <option value="">— декан —</option>
           {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
         <button className="btn" onClick={addTeacher}>Добавить</button>

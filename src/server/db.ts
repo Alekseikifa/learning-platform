@@ -502,6 +502,30 @@ class DatabaseStore {
             }
           }
         }
+        // приводим названия ролей к актуальным: роль teacher = «Декан», роль curator = «Куратор»
+        if (!this.settings || typeof this.settings !== "object" || Array.isArray(this.settings)) {
+          this.settings = {};
+          dbChanged = true;
+        }
+        const roleDefaults: Record<string, string> = {
+          role_admin_name: "Администратор",
+          role_manager_name: "Методист",
+          role_teacher_name: "Декан",
+          role_curator_name: "Куратор",
+          role_student_name: "Ученик",
+        };
+        for (const [k, d] of Object.entries(roleDefaults)) {
+          const cur = String(this.settings[k] || "").trim();
+          if (!cur) {
+            this.settings[k] = d;
+            dbChanged = true;
+          }
+        }
+        // в старых базах роль teacher отображалась как «Куратор» — переименовываем в «Декан»
+        if (String(this.settings.role_teacher_name || "").trim() === "Куратор") {
+          this.settings.role_teacher_name = "Декан";
+          dbChanged = true;
+        }
         if (dbChanged) {
           this.save();
         }
@@ -790,7 +814,8 @@ class DatabaseStore {
     // Default Settings
     this.settings = {
       role_admin_name: "Администратор",
-      role_teacher_name: "Куратор",
+      role_teacher_name: "Декан",
+      role_curator_name: "Куратор",
       role_student_name: "Ученик",
       role_manager_name: "Методист",
       school_name: "МКУ — Международные Курсы Ученичества",
